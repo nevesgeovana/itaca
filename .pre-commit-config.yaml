@@ -1,0 +1,22 @@
+# Local CI mirror (REQ-96): ruff check, ruff format, mypy, fast pytest.
+# Install once with: pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.7
+    hooks:
+      - id: ruff
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy --strict (public API)
+        entry: mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: pytest-fast
+        name: pytest -x (fast, no coverage; CI enforces the gate)
+        entry: pytest -x -q --no-cov
+        language: system
+        types: [python]
+        pass_filenames: false
