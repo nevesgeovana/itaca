@@ -8,6 +8,17 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Added
 
+* M0 Phase 2, loading and inspection: `itc.load` with folder, single
+  file, coordinate dictionary, NumPy, and pandas sources, datapoint
+  mode, filename patterns, NaN fill for sparse matrices, and
+  provenance plus history at load time (REQ-01 to REQ-07); `db.pivot`
+  with auto-detection and loud duplicate rejection (REQ-14);
+  `db.inspect` (REQ-13); `db.summary` with RAM footprint (REQ-16,
+  REQ-89); `db.diagnostics` returning a `DiagnosticsReport` with
+  `log=` support (REQ-17); `db.manifest` in CSV and JSON with the `*`
+  swept-here convention backed by per-file coordinates recorded in
+  Provenance (REQ-15).
+
 * M0 Phase 1, core data model: frozen `Dimension`, `Variable`, and
   `VarFrame` with construction-time shape and naming validation (SRS
   4.1, DD-03) and read-only arrays throughout (REQ-102); `Provenance`

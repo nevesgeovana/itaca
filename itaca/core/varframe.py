@@ -301,6 +301,68 @@ class VarFrame:
             comment=comment,
         )
 
+    def inspect(self, threshold: int = 20) -> None:
+        """Print a dimension-vs-variable candidacy report (REQ-13).
+
+        Delegates to :func:`itaca.io.inspector.inspect`; a no-op with
+        a notice on structured VarFrames.
+
+        Parameters
+        ----------
+        threshold : int, optional
+            Unique-value bound for dimension candidacy, 20 by default.
+        """
+        from itaca.io.inspector import inspect as _inspect
+
+        _inspect(self, threshold=threshold)
+
+    def summary(self) -> object:
+        """Print and return the one-screen summary (REQ-16).
+
+        Returns
+        -------
+        itaca.io.summary.Summary
+            Dimensions, variables, per-variable stats, RAM footprint,
+            mode, and current history index.
+        """
+        from itaca.io.summary import summary as _summary
+
+        return _summary(self)
+
+    def diagnostics(self, log: object = None) -> object:
+        """Print, optionally log, and return diagnostics (REQ-17).
+
+        Parameters
+        ----------
+        log : path or None, optional
+            When given, the printed output is also written there.
+
+        Returns
+        -------
+        itaca.io.diagnostics.DiagnosticsReport
+            Missing and non-finite counts, coverage, and warnings.
+        """
+        from itaca.io.diagnostics import diagnostics as _diagnostics
+
+        return _diagnostics(self, log=log)  # type: ignore[arg-type]
+
+    def manifest(self, path: object) -> object:
+        """Export the source-file manifest as CSV or JSON (REQ-15).
+
+        Parameters
+        ----------
+        path : path
+            Target file; the suffix selects the format.
+
+        Returns
+        -------
+        pathlib.Path
+            The written path.
+        """
+        from itaca.io.manifest import manifest as _manifest
+
+        return _manifest(self, path)  # type: ignore[arg-type]
+
     def __str__(self) -> str:
         marker = "DRAFT " if self.mode == "draft" else ""
         dims_desc = (
