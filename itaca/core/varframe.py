@@ -8,7 +8,7 @@ UncFrame effect (REQ-18, REQ-98). Arrays are read-only (REQ-102).
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
@@ -255,6 +255,50 @@ class VarFrame:
             history=self.history.append(
                 operation=operation, state_hash=new_hash, comment=comment
             ),
+        )
+
+    def pivot(
+        self,
+        dims: Sequence[str] | None = None,
+        *,
+        auto_detect: bool = False,
+        threshold: int = 20,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Reorganize a datapoint-mode VarFrame into a structured one.
+
+        Delegates to :func:`itaca.io.pivot.pivot` (REQ-14); the import
+        is deferred to call time to keep ``core`` free of module-level
+        intra-project dependencies.
+
+        Parameters
+        ----------
+        dims : sequence of str or None, optional
+            Columns that become dimensions, in order.
+        auto_detect : bool, optional
+            Detect additional dimension candidates (REQ-14).
+        threshold : int, optional
+            Unique-value bound for auto-detection.
+        history : bool, optional
+            In draft mode, record the operation only when True.
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new structured VarFrame; ``self`` is unchanged.
+        """
+        from itaca.io.pivot import pivot as _pivot
+
+        return _pivot(
+            self,
+            dims=dims,
+            auto_detect=auto_detect,
+            threshold=threshold,
+            history=history,
+            comment=comment,
         )
 
     def __str__(self) -> str:

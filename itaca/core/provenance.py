@@ -140,6 +140,11 @@ class Provenance:
         ``"production"`` or ``"draft"``.
     version_tag : str or None, optional
         User-defined tag, e.g. ``"v1.0-raw"``.
+    source_coords : tuple or None, optional
+        Per-file dimension coordinates recorded at load time; the
+        backing data of ``db.manifest`` (REQ-15). Each entry is
+        ``(path_str, ((dim, value_or_star), ...))`` where ``"*"``
+        marks a dimension swept within the file.
 
     Raises
     ------
@@ -154,6 +159,7 @@ class Provenance:
     source_hash: str
     mode: str
     version_tag: str | None = None
+    source_coords: tuple[tuple[str, tuple[tuple[str, object], ...]], ...] | None = None
 
     def __post_init__(self) -> None:
         validate_mode(self.mode)
