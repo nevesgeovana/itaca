@@ -12,6 +12,24 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.1.1, 2026-07-21, M0 Uncertainty-Semantics Validation}
+
+Issued at the M0 Phase 4 checkpoint, with the implementation and its
+test suite as evidence.
+
+\paragraph{Changed.} REQ-98 and REQ-99 promoted from draft to stable;
+the smooth and diff row of REQ-98 stays provisional until OQ-18 is
+resolved during v0.2.0 implementation, and operations without a frozen
+weight rule raise when uncertainty is present. REQ-01 and REQ-03 gain
+the dict-mode \code{"*"} swept sentinel (OQ-19). REQ-01 restricts
+string-valued columns to dimension coordinates (OQ-21). REQ-11 states
+the draft-guard scope: result exports guarded, inspection artifacts
+exempt (OQ-22). Section~4.2 states that declared correlation applies
+to both uncertainty components (OQ-23).
+
+\paragraph{Added.} The \code{source\_coords} field of the
+\code{Provenance} object, backing \code{db.manifest} (OQ-20).
+
 \section*{Document 0.1.0, 2026-07-21, First Workspace-Tracked Version}
 
 This version establishes the full requirement and design baseline of

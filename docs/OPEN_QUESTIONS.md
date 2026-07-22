@@ -277,3 +277,20 @@ result exports (`save`, `to_csv`, `to_json`, `to_pandas`,
 they exist precisely to understand draft data.
 **SRS:** REQ-11 (wording to gain the clarification at the next
 document revision).
+
+---
+
+## OQ-23: Does declared correlation apply to both uncertainty components?
+
+**Status:** resolved (2026-07-21, approved by Geovana at the M0 Phase 4
+checkpoint)
+**Question:** `set_correlation` declares one coefficient per variable
+pair, but the UncFrame carries two components. The SRS did not state
+whether r(a, b) enters the LPU for the systematic component, the
+random component, or both.
+**Resolution:** the declared coefficient applies identically to both
+components, in `compute` propagation and in the `cross_correlation=`
+of `combine`. A future need for per-component correlation (e.g.
+common calibration biasing only the systematic parts) would be a new
+requirement, not a reinterpretation.
+**SRS:** Section 4.2 (document 0.1.1); REQ-40, REQ-41.

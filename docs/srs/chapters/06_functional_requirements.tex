@@ -20,7 +20,10 @@ user=None, comment=None)} is the single entry point for loading data into
   \item a folder path (loads all compatible files);
   \item a single file path (loads as a one-source dataset);
   \item a dictionary mapping coordinate tuples to file paths (most
-    traceable, recommended for production);
+    traceable, recommended for production); a tuple position may hold
+    the sentinel \code{"*"} to declare the dimension swept within the
+    file, its coordinates then being read from the file column of the
+    same name (OQ-19);
   \item a NumPy array plus a list of variable names;
   \item a pandas DataFrame.
 \end{itemize}
@@ -28,7 +31,9 @@ When \code{dims} is omitted or set to \code{None}, the result is in
 \emph{datapoint mode}: a single synthetic dimension named
 \code{datapoint} indexes rows in acquisition order and every column
 becomes a variable. A later call to \code{db.pivot(dims=[...])}
-reorganizes the data into a structured VarFrame.
+reorganizes the data into a structured VarFrame. String-valued columns
+are accepted only as dimension coordinates; loading one as a variable
+raises \code{DataError} (OQ-21).
 \end{reqbox}
 
 \begin{reqbox}{REQ-02}{\stable}
@@ -110,7 +115,10 @@ Calling \code{db.save(...)} or any export method on a VarFrame in draft
 mode raises \code{DraftModeExportError} by default. The guard is
 overridable by passing \code{allow\_draft=True}, which forces a deliberate
 second decision and embeds a prominent warning in the output file
-metadata.
+metadata. The guard covers result exports (\code{save} and the
+\code{to\_*} family); inspection artifacts (\code{db.manifest} files,
+\code{db.diagnostics(log=...)} logs) are exempt because they exist to
+understand draft data (OQ-22).
 \end{reqbox}
 
 \begin{reqbox}{REQ-12}{\stable}
@@ -546,7 +554,7 @@ Uncertainty is per-variable; keys not matching any variable raise
 \code{UncertaintyKeyError}.
 \end{reqbox}
 
-\begin{reqbox}{REQ-99}{\draft}
+\begin{reqbox}{REQ-99}{\stable}
 \textbf{Two uncertainty components.}\\
 \code{db.set\_uncertainty(\{...\}, component="systematic")} (default) and
 \code{component="random"} assign the two UncFrame components of
@@ -607,12 +615,17 @@ specified input variability. No separate sensitivity module is required
 (P-12, DD-09).
 \end{reqbox}
 
-\begin{reqbox}{REQ-98}{\draft}
+\begin{reqbox}{REQ-98}{\stable}
 \textbf{Uncertainty propagation through every operation.}\\
 Every operation declares its effect on the UncFrame (DD-18).
 Table~\ref{tab:unc-ops} is normative. All listed operations are linear in
 the variable values, so propagation through the operation weights is
 exact. No operation silently drops or silently carries an UncFrame.
+The \code{smooth} and \code{diff} row remains provisional until OQ-18
+is resolved during v0.2.0 implementation; an operation whose weight
+rule is not yet frozen raises when uncertainty is present rather than
+guessing. The M0 rows were validated against the implementation on
+2026-07-21.
 
 \begin{table}[H]
 \centering

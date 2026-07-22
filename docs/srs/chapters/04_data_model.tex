@@ -155,7 +155,9 @@ u^2(f) = \sum_i \left(\frac{\partial f}{\partial x_i}\right)^2 u^2(x_i)
 \label{eq:lpu}
 \end{equation}
 where $r(x_i, x_j)$ is the correlation coefficient declared via
-\code{db.set\_correlation(...)}. By default all correlations are zero and
+\code{db.set\_correlation(...)}. The declared coefficient applies
+identically to both uncertainty components (validated 2026-07-21,
+OQ-23 in the companion log). By default all correlations are zero and
 Equation~\eqref{eq:lpu} reduces to the independence form. Partial derivatives
 are obtained symbolically via chain rule on the RPN expression tree
 (Section~\ref{sec:rpn-engine}).
@@ -228,6 +230,7 @@ at creation time and never modified afterward.
 \code{source\_hash}   & \code{str}     & SHA-256 digest of the concatenated source file contents.\\
 \code{mode}           & \code{str}     & \code{"production"} or \code{"draft"}.\\
 \code{version\_tag}   & \code{str}     & User-defined string (e.g.\ \code{"v1.0-raw"}).\\
+\code{source\_coords} & \code{tuple \textbar\ None} & Per-file dimension coordinates captured at load time (\code{"*"} marks a dimension swept within the file); the backing record of \code{db.manifest} (OQ-20).\\
 \bottomrule
 \end{tabularx}
 \end{table}

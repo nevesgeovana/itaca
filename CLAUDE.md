@@ -30,10 +30,13 @@ and random); releases are incremental (M0 to M3 as v0.1.0 to v0.4.0).
 
 ## Gate before coding draft requirements
 
-REQ-98, REQ-99, and REQ-101 are tagged draft pending Geovana's
-validation, and OQ-18 (systematic-component weights through smooth and
-diff kernels) is open. Do not freeze their implementations without her
-confirmation; everything tagged stable may proceed.
+REQ-98 and REQ-99 were validated by Geovana at the M0 Phase 4
+checkpoint (2026-07-21, SRS document 0.1.1) and are stable; the
+smooth and diff row of REQ-98 remains provisional pending OQ-18
+(revisit during v0.2.0). REQ-101 (condition-dependent axes, v0.2.0
+scope) is still tagged draft pending her validation. Do not freeze
+draft implementations without her confirmation; everything tagged
+stable may proceed.
 
 ## Development rules (non-negotiable)
 
