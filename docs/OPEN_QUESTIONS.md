@@ -225,3 +225,55 @@ should additionally track sign changes of the weights (relevant for
 derivative kernels, where a common bias cancels exactly) needs a worked
 derivation and property-based tests before the rule in REQ-98 is frozen
 for these two operations.
+
+---
+
+## OQ-19: Dict-mode representation of dimensions swept within a file
+
+**Status:** resolved (2026-07-21, approved by Geovana during M0 Phase 2)
+**Resolution:** in `itc.load` dict mode, a coordinate tuple position may
+hold the sentinel `"*"` to declare that the dimension is swept within
+that file; the coordinate values are then read from the file column of
+the same name. Tuple length always equals `len(dims)` (REQ-03 letter
+preserved). The sentinel mirrors the manifest `*` convention (REQ-15).
+**SRS:** REQ-03, REQ-15. To be folded into the SRS text at the next
+document revision (Chapter 11 and revision history updated together).
+
+---
+
+## OQ-20: Where the manifest gets its file-to-coordinates mapping
+
+**Status:** resolved (2026-07-21, approved by Geovana during M0 Phase 2)
+**Resolution:** `Provenance` carries an additional field
+`source_coords` recording, per source file, the dimension coordinate
+values (or `"*"`) captured at load time. It is origin information, so
+it lives in Provenance, is immutable, and is excluded from the state
+hash like all Provenance fields. `db.manifest` is a pure read of this
+record.
+**SRS:** REQ-15, Section 4.4.1 (Provenance table to gain one row at
+the next document revision).
+
+---
+
+## OQ-21: String-valued columns in loaded tables
+
+**Status:** resolved (2026-07-21, approved by Geovana during M0 Phase 2)
+**Resolution:** string-valued columns are accepted only as dimension
+coordinates (dict-mode tuples or in-file swept columns); loading a
+string column as a variable raises `DataError` with the suggestion to
+use it as a dimension. Variables remain numeric arrays with `np.nan`
+for missing entries (Section 4.1.4).
+**SRS:** REQ-01, REQ-04, REQ-05, Section 4.1.4.
+
+---
+
+## OQ-22: Scope of the draft-mode export guard
+
+**Status:** resolved (2026-07-21, approved by Geovana during M0 Phase 2)
+**Resolution:** the `DraftModeExportError` guard (REQ-11) protects
+result exports (`save`, `to_csv`, `to_json`, `to_pandas`,
+`to_numpy`). Inspection artifacts (`db.manifest` files,
+`db.diagnostics(log=...)` logs) are exploration aids and are exempt;
+they exist precisely to understand draft data.
+**SRS:** REQ-11 (wording to gain the clarification at the next
+document revision).
