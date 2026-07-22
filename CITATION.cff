@@ -6,6 +6,8 @@ authors:
   - family-names: Neves
     given-names: Geovana
 license: MIT
+version: 0.1.0
+date-released: 2026-07-22
 repository-code: "https://github.com/nevesgeovana/itaca"
 abstract: >-
   Python library for rigorous engineering data management, analysis, and

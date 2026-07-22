@@ -5,4 +5,4 @@ build time via ``tool.setuptools.dynamic``. M0 ships as ``0.1.0``; the
 ``dev`` suffix marks the pre-release state and is removed at tag time.
 """
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"

@@ -6,6 +6,12 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.0] - 2026-07-22
+
+Milestone M0, the foundation release (SRS Chapter 10, DD-21).
+
 ### Added
 
 * M0 Phase 6, release hardening: REQ-76 edge-case sweep closed for M0
