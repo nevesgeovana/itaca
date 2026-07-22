@@ -8,6 +8,19 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Added
 
+* M0 Phase 3, structural operations: `db.select` with operator-suffixed
+  keys, `Frame=` targeting (values, uncertainty, origin tags), masking
+  semantics with fully-masked coordinate slices dropped and the masked
+  count recorded in History (REQ-20); `db.at` recorded as a single
+  entry (REQ-21); `db.squeeze` including the fully-squeezed datapoint
+  holder (REQ-22); `db.fill` with linear, nearest, and moving or
+  global polyfit, filled values tagged `+1`, and two-component
+  uncertainty propagation through the interpolation weights per
+  REQ-98 (systematic through the weight sum, random through the RSS;
+  polyfit with uncertainty raises pending the REQ-98 freeze, DD-18).
+  All operations honor draft-mode opt-in recording (REQ-10) and
+  `comment=` (REQ-19).
+
 * M0 Phase 2, loading and inspection: `itc.load` with folder, single
   file, coordinate dictionary, NumPy, and pandas sources, datapoint
   mode, filename patterns, NaN fill for sparse matrices, and

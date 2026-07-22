@@ -11,6 +11,7 @@ import dataclasses
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from typing import cast
 
 from itaca.core.coords import Cartesian, CoordSystem
 from itaca.core.correlation import CorrelationMatrix
@@ -26,6 +27,8 @@ from itaca.core.historyframe import HistoryFrame
 from itaca.core.provenance import Provenance, validate_mode
 from itaca.core.uncframe import UncFrame
 from itaca.core.variable import Variable
+
+_UNSET: object = object()
 
 
 @dataclass(frozen=True, eq=False)
@@ -297,6 +300,203 @@ class VarFrame:
             dims=dims,
             auto_detect=auto_detect,
             threshold=threshold,
+            history=history,
+            comment=comment,
+        )
+
+    def _derive(
+        self,
+        *,
+        operation: str,
+        comment: str | None,
+        history: bool,
+        dims: Mapping[str, Dimension] | None = None,
+        variables: Mapping[str, Variable] | None = None,
+        uncertainty: object = _UNSET,
+        tags: object = _UNSET,
+    ) -> VarFrame:
+        """Return a new VarFrame with content replaced and recorded.
+
+        Implements the shared REQ-18 contract: new object, History
+        entry with the fresh state hash, draft-mode opt-in recording
+        (REQ-10), and explicit mirror handling (DD-18).
+        """
+        new_dims = self.dims if dims is None else dims
+        new_vars = self.vars if variables is None else variables
+        new_unc = (
+            self.uncertainty
+            if uncertainty is _UNSET
+            else cast("UncFrame | None", uncertainty)
+        )
+        new_tags = self.tags if tags is _UNSET else cast("HistoryFrame | None", tags)
+        record = self.mode == "production" or history
+        new_history = self.history
+        if record:
+            operations = (
+                *((e.operation, e.comment) for e in self.history),
+                (operation, comment),
+            )
+            state_hash = compute_state_hash(
+                dims=new_dims,
+                variables=new_vars,
+                operations=operations,
+                uncertainty=new_unc,
+                correlation=self.correlation,
+                tags=new_tags,
+            )
+            new_history = self.history.append(
+                operation=operation, state_hash=state_hash, comment=comment
+            )
+        return dataclasses.replace(
+            self,
+            dims=dict(new_dims),
+            vars=dict(new_vars),
+            uncertainty=new_unc,
+            tags=new_tags,
+            history=new_history,
+        )
+
+    def select(
+        self,
+        filters: Mapping[str, object],
+        Frame: str = "VarFrame",  # noqa: N803  (SRS REQ-20 keyword)
+        *,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Restrict to coordinates or cells matching the filters (REQ-20).
+
+        Parameters
+        ----------
+        filters : mapping
+            Keys are ``dim_op`` strings (name plus optional ``=``,
+            ``>``, ``>=``, ``<``, ``<=``, ``!=``); values are scalars
+            or lists. Dimension keys subset the grid; variable keys
+            mask non-matching cells to NaN.
+        Frame : str, optional
+            Comparison source: ``"VarFrame"`` (values, default),
+            ``"UncFrame"`` (standard uncertainty), or
+            ``"HistoryFrame"`` (origin tags).
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame; ``self`` is unchanged.
+        """
+        from itaca.ops.select import select as _select
+
+        return _select(self, filters, frame=Frame, history=history, comment=comment)
+
+    def at(
+        self,
+        *,
+        history: bool = False,
+        comment: str | None = None,
+        **coords: object,
+    ) -> VarFrame:
+        """Slice at single coordinates, removing those dims (REQ-21).
+
+        Equivalent to ``select({dim: [value]}).squeeze()`` recorded as
+        one History entry.
+
+        Parameters
+        ----------
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+        **coords
+            ``dim=value`` pairs.
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame without the sliced dimensions.
+        """
+        from itaca.ops.select import at as _at
+
+        return _at(self, coords, history=history, comment=comment)
+
+    def squeeze(
+        self,
+        along: str | None = None,
+        *,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Remove unit-cardinality dimensions (REQ-22).
+
+        Parameters
+        ----------
+        along : str or None, optional
+            Squeeze only the named dimension (its cardinality must be
+            1); by default every unit-cardinality dimension.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame; if every dimension was squeezed, a single
+            ``datapoint`` dimension with one entry remains.
+        """
+        from itaca.ops.squeeze import squeeze as _squeeze
+
+        return _squeeze(self, along=along, history=history, comment=comment)
+
+    def fill(
+        self,
+        along: str,
+        method: str = "linear",
+        *,
+        deg: int | None = None,
+        window: int | None = None,
+        global_fit: bool = False,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Fill NaN entries along a dimension (REQ-26).
+
+        Parameters
+        ----------
+        along : str
+            Dimension to fill along.
+        method : str, optional
+            ``"linear"`` (between neighbors, default), ``"nearest"``,
+            or ``"polyfit"`` (moving window of ``window`` points and
+            degree ``deg``; ``global_fit=True`` fits the full
+            dimension instead).
+        deg : int or None, optional
+            Polynomial degree for ``"polyfit"``.
+        window : int or None, optional
+            Moving-window size for ``"polyfit"``; must exceed ``deg``.
+        global_fit : bool, optional
+            Fit one polynomial over the whole dimension.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame with filled values tagged ``+1`` (SRS 4.3).
+        """
+        from itaca.ops.fill import fill as _fill
+
+        return _fill(
+            self,
+            along=along,
+            method=method,
+            deg=deg,
+            window=window,
+            global_fit=global_fit,
             history=history,
             comment=comment,
         )
