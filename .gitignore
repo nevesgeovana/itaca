@@ -37,5 +37,8 @@ docs/srs/main.pdf
 Thumbs.db
 .DS_Store
 
+# Generated example output
+examples/output/
+
 # Local-only material (never committed)
 _private/

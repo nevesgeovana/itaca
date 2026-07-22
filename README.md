@@ -18,11 +18,15 @@ and publication-quality plotting.
 
 ## Status
 
-Pre-release. The project is currently at the specification stage: the
-Software Requirements Specification (SRS) is complete and versioned in
-`docs/srs/`, and implementation of milestone M0 (release v0.1.0,
-foundation) has not started. Releases follow the incremental roadmap in
-the SRS Chapter 10: each milestone ships on PyPI with a Zenodo DOI.
+Pre-release. The milestone M0 foundation (release v0.1.0) is
+implemented and test-covered: loading in all modes, inspection and
+diagnostics, structural operations, two-component GUM uncertainty
+propagation with covariance, string-equation derivation, explicit
+combination, exports, and the `.itc` native format with state-hash
+revalidation. The SRS (document 0.1.1) is versioned in `docs/srs/`.
+Releases follow the incremental roadmap in the SRS Chapter 10: each
+milestone ships on PyPI with a Zenodo DOI. See `examples/` for a
+complete synthetic walkthrough.
 
 ## Design record
 

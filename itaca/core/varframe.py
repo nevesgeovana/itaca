@@ -295,6 +295,10 @@ class VarFrame:
         -------
         VarFrame
             A new structured VarFrame; ``self`` is unchanged.
+
+        Examples
+        --------
+        >>> db = itc.load(folder).pivot(dims=["mach", "alpha"])  # doctest: +SKIP
         """
         from itaca.io.pivot import pivot as _pivot
 
@@ -546,6 +550,11 @@ class VarFrame:
             If a key does not match any variable.
         UncertaintyError
             On an invalid component or a malformed relative value.
+
+        Examples
+        --------
+        >>> db = db.set_uncertainty({"FZ": 0.005, "rho": "0.05%"})  # doctest: +SKIP
+        >>> db = db.set_uncertainty({"FZ": 0.01}, component="random")  # doctest: +SKIP
         """
         from itaca.uncertainty.assign import set_uncertainty as _set
 
@@ -581,6 +590,10 @@ class VarFrame:
             If a referenced variable is absent.
         CorrelationMatrixError
             If a coefficient violates ``|r| <= 1``.
+
+        Examples
+        --------
+        >>> db = db.set_correlation({("FX", "FZ"): 0.3})  # doctest: +SKIP
         """
         from itaca.uncertainty.assign import set_correlation as _set
 
@@ -627,6 +640,11 @@ class VarFrame:
         -------
         VarFrame
             A new VarFrame containing ``VAR`` tagged ``+1``.
+
+        Examples
+        --------
+        >>> db = db.compute("q_inf = 0.5 * rho * V**2")  # doctest: +SKIP
+        >>> db = db.compute("CL = FZ / (q_inf * S)", debug=True)  # doctest: +SKIP
         """
         from itaca.ops.compute import compute as _compute
 
@@ -686,6 +704,10 @@ class VarFrame:
             When the inputs are in different operating modes (REQ-12).
         DataError
             On grid, coordinate, or variable-set mismatches.
+
+        Examples
+        --------
+        >>> delta = db_on.combine(db_off, op="diff")  # doctest: +SKIP
         """
         from itaca.core.combine import combine as _combine
 
@@ -818,6 +840,11 @@ class VarFrame:
         -------
         pathlib.Path
             The written file.
+
+        Examples
+        --------
+        >>> db.save("campaign.itc")  # doctest: +SKIP
+        >>> reopened = itc.open("campaign.itc")  # doctest: +SKIP
         """
         from itaca.io.formats.itc import save as _save
 

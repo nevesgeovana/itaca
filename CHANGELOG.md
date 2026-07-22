@@ -8,6 +8,15 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Added
 
+* M0 Phase 6, release hardening: REQ-76 edge-case sweep closed for M0
+  (empty VarFrame load, cross-directory hash reproducibility,
+  auto-detect feedback, symbolic-vs-mcm on one expression); synthetic
+  walkthrough example `examples/wt_campaign.py` with the provenance
+  statement in `examples/README.md` (dict-mode load, two-component
+  uncertainty, correlated pair, GUM propagation, `.itc` round trip);
+  Examples sections on the main VarFrame methods (REQ-79); wheel and
+  sdist build verified; README status updated to the implemented M0.
+
 * M0 Phase 5, export and persistence: `to_csv` with provenance header
   comments and `split_by=` (REQ-70 to REQ-72); `to_json` with
   top-level provenance and history keys and optional uncertainty;

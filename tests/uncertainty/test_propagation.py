@@ -88,8 +88,11 @@ class TestProperties:
         result = db.compute("f = a + b")
         assert result.uncertainty is not None
         expected = ua * np.sqrt(max(0.0, 2.0 + 2.0 * r))
+        # abs tolerance: near r = -1 the variance suffers catastrophic
+        # cancellation (ua^2 * (2 + 2r) -> 0), so machine-epsilon noise
+        # of order eps * ua^2 enters before the square root.
         assert float(result.uncertainty.systematic["f"][0]) == pytest.approx(
-            expected, rel=1e-9, abs=1e-12
+            expected, rel=1e-7, abs=1e-6
         )
 
     @given(_u, st.floats(min_value=0.1, max_value=50.0))
