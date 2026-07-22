@@ -1,0 +1,152 @@
+% =============================================================================
+% Glossary
+% =============================================================================
+
+\section*{Glossary}
+\addcontentsline{toc}{section}{Glossary}
+
+\begin{description}[style=nextline,leftmargin=0pt]
+
+\item[VarFrame]
+The primary N-dimensional data structure in \itc{}. Stores named dimensions
+(coordinate arrays) and named variables (NumPy arrays). Immutable by default.
+Carries Provenance and History metadata.
+
+\item[UncFrame]
+Mirror of a VarFrame storing standard uncertainties for each variable. Created
+automatically when uncertainties are assigned. Indexed identically to its
+parent VarFrame. Structurally a VarFrame of standard uncertainties.
+
+\item[HistoryFrame]
+Mirror of a VarFrame encoding the origin tag of every value in every variable.
+Each entry takes one of three integer values: \code{0} for values loaded
+directly from the source files, \code{+1} for values that were interpolated or
+computed, and \code{-1} for values that were extrapolated. Enables visual and
+programmatic inspection of which parts of a dataset are measured ground truth
+versus model-derived. Reductions follow a worst-case rule: the result tag is
+\code{-1} if any contributor is \code{-1}, else \code{+1} if any is \code{+1},
+else \code{0}.
+
+\item[Provenance]
+The static, immutable record of where the data came from: source files,
+content hashes, user, creation timestamp, \itc{} version, and operating mode.
+Travels with the VarFrame and is preserved in every export format.
+
+\item[History]
+The cumulative, ordered, append-only record of every operation applied to a
+VarFrame since its creation. Each entry has a unique sequential index, the
+operation name and arguments, an optional user comment, a timestamp, and a
+state hash. Distinct from Provenance (origin) by purpose: History describes
+what happened to the data.
+
+\item[Pipeline]
+A serializable subrange of a History, exportable as a \code{.itc\_pipe} file
+and reusable on any compatible VarFrame.
+
+\item[Axis]
+A coordinate-frame object stored in \code{core/axes.py}, carrying a name and a
+$3\times 3$ rotation matrix relative to the canonical AIAA body axis. Custom
+axes (stability, wind, tunnel, propeller-disk) are first-class objects;
+\code{db.rotate(target\_axis)} applies the rotation to detected vector groups
+in the VarFrame and propagates uncertainty using the rotation matrix as the
+Jacobian.
+
+\item[compute]
+The \itc{} operation that derives new variables from string equations, with
+automatic uncertainty propagation when applicable, including correlation
+terms when a covariance matrix has been declared.
+
+\item[interpolate]
+The \itc{} operation that resamples variables onto new coordinate values along
+one or more dimensions, optionally translating the sweep axis (e.g.\
+$\alpha \to C_L$). By default, coordinate values that already exist in the
+target dimension are preserved and not recomputed; pass \code{override=True}
+to force recomputation.
+
+\item[fitmodel / fitvalue]
+Operation pair that replaces a dimension by polynomial coefficient labels of
+the form $\alpha^0, \alpha^1, \dots, \alpha^N$ (\code{fitmodel}) and evaluates
+the resulting polynomial fit at user-specified coordinates (\code{fitvalue}).
+
+\item[squeeze / expand / concat]
+Dimension-shape operations: \code{squeeze} removes unit-cardinality
+dimensions; \code{expand} adds a new dimension by broadcasting;
+\code{itc.concat} concatenates compatible VarFrames along a shared dimension
+with non-overlapping coordinate values.
+
+\item[combine]
+Explicit arithmetic combination of two VarFrames. Replaces overloaded Python
+arithmetic operators to keep every numerical combination traceable. Example:
+\code{db.combine(other, op="mean")} returns a new VarFrame whose variables
+are the elementwise mean of the inputs, with uncertainty propagated under the
+declared correlation structure.
+
+\item[pproc]
+Processor object in \itc{}. Receives a VarFrame and returns an enriched
+VarFrame. Encapsulates a complete analysis workflow including corrections,
+derivations, and uncertainty propagation. Conforms to the \code{Processor}
+typing protocol.
+
+\item[.itceq]
+\itc{} equation file. A TOML-structured text file that defines metadata,
+constants, uncertainties, equations, and corrections for a campaign. Reusable
+across tunnels and rigs. Version-controllable.
+
+\item[.itc]
+\itc{} native binary format. A ZIP archive containing variable arrays
+(\code{.npz}), dimension definitions, uncertainty arrays, history-tag arrays,
+provenance, history, and metadata as JSON. Designed for long-term archival.
+
+\item[.itc\_pipe]
+\itc{} pipeline file. Human-readable serialization of a sequence of operations
+extracted from a VarFrame's History. Reusable across compatible VarFrame
+objects.
+
+\item[.itc\_surr]
+\itc{} surrogate file. Binary serialization of a fitted surrogate model with
+metadata. Optionally embeds the source VarFrame for full self-contained audit
+(off by default).
+
+\item[manifest]
+A tabular export that maps each source file to its dimension coordinate
+values. Generated after loading and before any data manipulation. Acts as the
+primary audit checkpoint between data acquisition and analysis.
+
+\item[diagnostics]
+A structured inspection report for a VarFrame that identifies missing
+combinations, non-finite values, partial variables, and per-variable
+statistical summaries. Prints to terminal and returns an inspectable
+\code{DiagnosticsReport} object.
+
+\item[DataVis]
+The data visualization object in \itc{}, created via \code{itc.datavis()}.
+Holds figure-level style settings and exposes single-plot and multi-plot
+generation backed by matplotlib (default) or plotly (interactive option).
+
+\item[ItcFigure]
+Figure wrapper returned by DataVis, exposing \code{export()},
+\code{add\_legend()}, \code{annotate()}, and a \code{.mpl} escape hatch to
+the underlying \code{matplotlib.Figure}.
+
+\item[datapoint mode]
+An operating state in which a VarFrame has only one synthetic dimension
+named \code{datapoint} indexing rows in acquisition order. Reached by loading
+without specifying \code{dims}. Always recoverable into a structured VarFrame
+via \code{db.pivot()}.
+
+\item[operating mode]
+Either \code{production} (default; Provenance and History are mandatory and
+exports are unrestricted) or \code{draft} (History is recorded only when the
+user requests it explicitly; export requires \code{allow\_draft=True}). Mixing
+modes in binary operations is forbidden: \code{db.promote()} or
+\code{db.demote()} must be called explicitly first.
+
+\item[EUB]
+Engineering Uncertainty Band. The uncertainty band on an engineering decision
+variable (e.g.\ trim deflection, takeoff distance, static margin) propagated
+from input uncertainties through an \code{itc.aerospace} computation. Native
+output of \itc{}'s uncertainty machinery, not a separate analysis mode.
+
+\end{description}
+
+\clearpage

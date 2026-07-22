@@ -1,0 +1,297 @@
+% =============================================================================
+% ITACA Software Requirements Specification
+% Version 0.1.0, Living Document
+% Author: Geovana Neves
+% =============================================================================
+% This document uses the standard `report` class with the same Times-derived
+% fonts (newtx) as AIAA conference and journal templates, plus geometry and
+% spacing close to AIAA defaults. We deliberately do NOT use new-aiaa.cls
+% because that class is article-based and does not support \chapter, which
+% an SRS of this length requires.
+% =============================================================================
+
+\documentclass[10pt,letterpaper,oneside]{report}
+
+% ----- encoding & language ----------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[american]{babel}
+
+% ----- AIAA-style fonts (Times-derived, with AMS math) ------------------------
+\usepackage{newtxtext}
+\usepackage{newtxmath}
+\usepackage{microtype}
+\usepackage{lettrine}
+
+% ----- math & layout ----------------------------------------------------------
+\usepackage{mathtools}
+\usepackage[letterpaper,margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{longtable,tabularx,booktabs,array}
+\usepackage{multirow}
+\usepackage[tableposition=top]{caption}
+\usepackage{float}
+\usepackage{enumitem}
+\setlength\LTleft{0pt}
+
+% ----- code listings ----------------------------------------------------------
+\usepackage{listings}
+\usepackage{xcolor}
+
+% Brand palette: terracotta, amber, ochre, drawn from the ITACA logo
+\definecolor{itacaTangerine}{RGB}{217,119, 30}   % functional / NFR requirements
+\definecolor{itacaDeepRed}  {RGB}{160, 35, 35}   % non-requirements
+\definecolor{itacaOrange}   {RGB}{200, 75, 30}   % design decisions
+\definecolor{itacaAmber}    {RGB}{230,170, 40}   % notes / soft accents
+\definecolor{itacaCharcoal} {RGB}{ 40, 40, 40}   % body text
+\definecolor{itacaGray}     {RGB}{120,120,120}
+\definecolor{itacaCodeBg}   {RGB}{248,246,242}
+\definecolor{itacaCodeKey}  {RGB}{160, 35, 35}
+\definecolor{itacaCodeStr}  {RGB}{ 90,110, 50}
+\definecolor{itacaCodeCom}  {RGB}{120,120,120}
+
+\definecolor{itaca-cream}    {HTML}{F5E5C0}
+\definecolor{itaca-pale}     {HTML}{F3D58A}
+\definecolor{itaca-yellow}   {HTML}{F5C13A}
+\definecolor{itaca-amber}    {HTML}{F0A41A}
+\definecolor{itaca-orange}   {HTML}{ED8418}
+\definecolor{itaca-tangerine}{HTML}{E66318}
+\definecolor{itaca-vermilion}{HTML}{D9421A}
+\definecolor{itaca-red}      {HTML}{C12A1C}
+\definecolor{itaca-crimson}  {HTML}{A41815}
+\definecolor{itaca-deep}     {HTML}{7E0F0E}
+\definecolor{itaca-ink}      {HTML}{1A1A1A}
+\definecolor{itaca-paper}    {HTML}{FFFFFF}
+\definecolor{itaca-grid}     {HTML}{B8B8B8}
+
+
+\lstdefinestyle{itacapy}{
+    backgroundcolor=\color{itacaCodeBg},
+    basicstyle=\ttfamily\footnotesize\color{itacaCharcoal},
+    keywordstyle=\color{itacaCodeKey}\bfseries,
+    commentstyle=\color{itacaCodeCom}\itshape,
+    stringstyle=\color{itacaCodeStr},
+    showstringspaces=false,
+    breaklines=true,
+    columns=fullflexible,
+    keepspaces=true,
+    frame=single,
+    framesep=4pt,
+    framerule=0pt,
+    rulecolor=\color{itacaCodeBg},
+    xleftmargin=6pt,
+    xrightmargin=6pt,
+    aboveskip=8pt,
+    belowskip=8pt,
+    language=Python,
+    literate={->}{{$\rightarrow$}}1
+             {<=}{{$\leq$}}1
+             {>=}{{$\geq$}}1
+             {!=}{{$\neq$}}1,
+}
+\lstset{style=itacapy}
+
+\lstdefinelanguage{toml}{
+    morekeywords={true,false},
+    morecomment=[l]{\#},
+    morestring=[b]",
+    sensitive=true,
+}
+
+% ----- bibliography -----------------------------------------------------------
+\usepackage[numbers,square,sort&compress]{natbib}
+
+% ----- hyperlinks (loaded last among standard packages) -----------------------
+\usepackage[hyphens]{url}
+\usepackage[colorlinks=true,
+            linkcolor=itacaDeepRed,
+            citecolor=itacaOrange,
+            urlcolor=itacaTangerine,
+            pdftitle={ITACA Software Requirements Specification v0.1.0},
+            pdfauthor={Geovana Neves}]{hyperref}
+
+% ----- requirement-style boxes ------------------------------------------------
+\usepackage[most]{tcolorbox}
+
+% Functional / non-functional requirements (tangerine)
+\newtcolorbox{reqbox}[2]{
+    colback=itacaTangerine!6,
+    colframe=itacaTangerine,
+    boxrule=0.6pt,
+    arc=2pt,
+    left=8pt,right=8pt,top=6pt,bottom=6pt,
+    fonttitle=\bfseries,
+    title={#1 \hfill \normalfont\small\itshape #2},
+    breakable,
+}
+
+% Non-requirements (deep red)
+\newtcolorbox{nreqbox}[2]{
+    colback=itacaDeepRed!6,
+    colframe=itacaDeepRed,
+    boxrule=0.6pt,
+    arc=2pt,
+    left=8pt,right=8pt,top=6pt,bottom=6pt,
+    fonttitle=\bfseries,
+    title={#1 \hfill \normalfont\small\itshape #2},
+    breakable,
+}
+
+% Design decisions (orange)
+\newtcolorbox{ddbox}[2]{
+    colback=itacaOrange!6,
+    colframe=itacaOrange,
+    boxrule=0.6pt,
+    arc=2pt,
+    left=8pt,right=8pt,top=6pt,bottom=6pt,
+    fonttitle=\bfseries,
+    title={#1 \hfill \normalfont\small\itshape #2},
+    breakable,
+}
+
+% Notes & callouts (amber, lightweight)
+\newtcolorbox{noteinfo}[1][Note]{
+    colback=itacaAmber!10,
+    colframe=itacaAmber!70!black,
+    boxrule=0.4pt,
+    arc=1pt,
+    left=6pt,right=6pt,top=4pt,bottom=4pt,
+    fonttitle=\bfseries,
+    title={#1},
+    breakable,
+}
+
+% ----- requirement-status badges ----------------------------------------------
+\newcommand{\stable}{\textcolor{itacaCodeStr}{\textsc{[stable]}}}
+\newcommand{\draft}{\textcolor{itacaTangerine}{\textsc{[draft]}}}
+\newcommand{\implemented}{\textcolor{itacaCodeStr}{\textsc{[implemented]}}}
+\newcommand{\pending}{\textcolor{itacaGray}{\textsc{[pending]}}}
+\newcommand{\deprecated}{\textcolor{itacaDeepRed}{\textsc{[deprecated]}}}
+
+% ----- inline tag helpers -----------------------------------------------------
+\newcommand{\reqid}[1]{\textbf{\textcolor{itacaTangerine}{#1}}}
+\newcommand{\nreqid}[1]{\textbf{\textcolor{itacaDeepRed}{#1}}}
+\newcommand{\ddid}[1]{\textbf{\textcolor{itacaOrange}{#1}}}
+\newcommand{\itc}{\textsc{itaca}}
+\newcommand{\code}[1]{\texttt{#1}}
+
+% ----- chapter title styling --------------------------------------------------
+\usepackage[explicit]{titlesec}
+\titleformat{\chapter}[display]
+  {\normalfont\Large\bfseries\color{itacaDeepRed}}
+  {\filright\fontsize{32}{34}\selectfont CHAPTER \thechapter}
+  {0.4em}
+  {\Huge #1}
+\titlespacing*{\chapter}{0pt}{30pt}{20pt}
+
+\begin{document}
+
+% ============================================================================
+% TITLE PAGE
+% ============================================================================
+\begin{titlepage}
+    \centering
+    \begin{tikzpicture}[remember picture, overlay]
+        % Top accent stripe
+        \fill[itaca-deep] (current page.north west) rectangle ([yshift=-1.5cm]current page.north east);
+        \fill[itaca-vermilion] ([yshift=-1.5cm]current page.north west) rectangle ([yshift=-1.7cm]current page.north east);
+        \fill[itaca-orange] ([yshift=-1.7cm]current page.north west) rectangle ([yshift=-1.85cm]current page.north east);
+        \fill[itaca-amber] ([yshift=-1.85cm]current page.north west) rectangle ([yshift=-1.95cm]current page.north east);
+        \fill[itaca-yellow] ([yshift=-1.95cm]current page.north west) rectangle ([yshift=-2.0cm]current page.north east);
+      
+        % Bottom accent stripe (palette)
+        \foreach \c/\i in {%
+            itaca-cream/0, itaca-pale/1, itaca-yellow/2, itaca-amber/3, itaca-orange/4,
+            itaca-tangerine/5, itaca-vermilion/6, itaca-red/7, itaca-crimson/8, itaca-deep/9}{%
+          \fill[\c] ([xshift=\i*2.1cm, yshift=1cm]current page.south west)
+                    rectangle ([xshift=(\i+1)*2.1cm, yshift=1.4cm]current page.south west);
+        }
+      \end{tikzpicture}
+    \vspace*{2cm}
+
+    \includegraphics[width=0.75\textwidth]{../figures/pdf/itaca_logo.pdf}
+
+    \vspace{2.5cm}
+    {\Huge\bfseries Software Requirements Specification\par}
+    \vspace{0.6cm}
+    {\Large\itshape Integrated Toolkit for Aerospace Computation and Analysis\par}
+
+    \vspace{2.5cm}
+    \begin{tabular}{rl}
+        \textit{Document version} & \textbf{0.1.0}\\[2pt]
+        \textit{Status}           & \textbf{Living Document}\\[2pt]
+        \textit{Author}           & \textbf{Geovana Neves}\\[2pt]
+        \textit{Date}             & \textbf{July 21, 2026}\\[2pt]
+        \textit{Revision}         & \textbf{First workspace-tracked version (DLV-008)}\\
+    \end{tabular}
+
+    \vfill
+    \large\textbf{Instituto Tecnol\'ogico de Aeron\'autica} $\,\vert\,$ \textbf{TU Delft}\\
+    {Aeropropulsive Integration \& Wind Tunnel Testing}
+\end{titlepage}
+
+% ============================================================================
+% FRONT MATTER
+% ============================================================================
+\pagenumbering{roman}
+
+% ----- Document identity (workspace requirement, writing skill) --------------
+\section*{Document Identity}
+\addcontentsline{toc}{section}{Document Identity}
+
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Field} & \textbf{Value}\\
+\midrule
+DLV id & DLV-008\\
+Document class & internal-study-note (software requirements specification)\\
+Template and version & none (class has no template yet; precedent DLV-002)\\
+Scope label & [ACADEMIC]\\
+Research question(s) & n/a; engineering requirements document, not a scientific contribution\\
+Purpose & Specify the requirements, architecture, and contribution standards for ITACA as the first version tracked in the research workspace, superseding the OneDrive v0.1.0b sources and incorporating the 2026-07-21 specification review\\
+Status & draft\\
+Deviations from template & n/a (no template exists for this class)\\
+\bottomrule
+\end{tabularx}
+\clearpage
+
+\input{frontmatter/revision_history}
+
+\tableofcontents
+\clearpage
+
+\listoffigures
+\clearpage
+
+\listoftables
+\clearpage
+
+\input{frontmatter/acronyms}
+\input{frontmatter/glossary}
+
+% ============================================================================
+% MAIN MATTER
+% ============================================================================
+\clearpage
+\pagenumbering{arabic}
+
+\input{chapters/01_introduction}
+\input{chapters/02_philosophy}
+\input{chapters/03_scope}
+\input{chapters/04_data_model}
+\input{chapters/05_architecture}
+\input{chapters/06_functional_requirements}
+\input{chapters/07_non_functional_requirements}
+\input{chapters/08_standards_alignment}
+\input{chapters/09_contributing}
+\input{chapters/10_roadmap}
+\input{chapters/11_changelog}
+
+% ============================================================================
+% BIBLIOGRAPHY
+% ============================================================================
+\clearpage
+\bibliographystyle{plainnat}
+\bibliography{sample}
+
+\end{document}

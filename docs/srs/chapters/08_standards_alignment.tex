@@ -1,0 +1,124 @@
+% =============================================================================
+% Chapter 8: Standards Alignment
+% =============================================================================
+
+\chapter{Standards Alignment}
+\label{ch:standards}
+
+\itc{} aligns intentionally with established standards rather than
+reinventing conventions. This chapter maps each \itc{} feature to the
+corresponding clause in the relevant standard, and documents departures
+where they exist.
+
+\section{Uncertainty: GUM JCGM 100:2008}
+
+Table~\ref{tab:gum-mapping} maps the uncertainty machinery in \itc{} to
+the GUM~\citep{gum2008} clauses.
+
+\begin{table}[H]
+\centering
+\caption{Mapping of \itc{} uncertainty features to GUM clauses.}
+\label{tab:gum-mapping}
+\small
+\begin{tabularx}{\textwidth}{@{}lp{3.0cm}X@{}}
+\toprule
+\textbf{\itc{} feature} & \textbf{GUM clause} & \textbf{Notes}\\
+\midrule
+\code{set\_uncertainty}                 & 2.3.1, 4.2  & Standard uncertainty $u(x_i)$ as Type B input.\\
+RPN propagation engine                  & 5.1, 5.2    & Law of Propagation of Uncertainty (LPU) with first-order Taylor and chain rule on the AST.\\
+\code{set\_correlation}                 & 5.2         & Cross-correlation terms $r(x_i, x_j)\,u(x_i)\,u(x_j)\,\partial f/\partial x_i \,\partial f/\partial x_j$ included in the propagation when the correlation matrix is non-zero.\\
+Per-variable uncertainty (UncFrame)     & 4.1, 4.2    & Standard uncertainty per measurand, not per dataset.\\
+Reporting in \code{db.summary}          & 7.1-7.2    & Reports $u$, not expanded uncertainty $U = k\,u$. Coverage factor $k$ is reported only when explicitly requested.\\
+Monte Carlo for discrete-branch models  & GUM S1~\citep{gum2008s1} & Used specifically when an expression contains piecewise definitions or conditional logic that breaks differentiability. Not a default replacement for symbolic propagation, which already handles continuous nonlinearities correctly.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Wind Tunnel Uncertainty: AIAA S-071A-1999}
+
+AIAA S-071A-1999~\citep{aiaaS071A} extends the GUM to wind tunnel work
+with domain-specific guidance on bias and precision uncertainty
+bookkeeping. \itc{} processors implementing wind tunnel corrections
+(\code{WT\_balance\_off}, \code{WT\_balance\_on}, \code{WT\_propeller},
+\code{wt\_corrections}) follow AIAA S-071A-1999 conventions:
+
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item bias uncertainty is recorded at calibration time in the
+    \code{[uncertainties]} section of \code{.itceq} and enters the
+    UncFrame as the systematic component (REQ-99);
+  \item precision uncertainty is computed from the \code{repeat}
+    dimension via \code{pproc.statistics} and enters as the random
+    component;
+  \item the bias and precision distinction is represented natively by the
+    two-component UncFrame (Section~\ref{sec:two-components}), so repeat
+    averaging reduces precision but never bias; the combined standard
+    uncertainty is their RSS, consistent with AIAA S-071A clause~3.5;
+  \item correlations between channels sharing a common calibration are
+    declared via \code{db.set\_correlation}, propagating through every
+    derived coefficient.
+\end{itemize}
+
+\section{Coordinate Systems: AIAA R-004A-1992}
+
+AIAA R-004A-1992~\citep{aiaaR004A} defines the standard atmospheric and
+space flight vehicle coordinate systems. \itc{} adopts the body-axis
+convention as the default, with positive sign conventions:
+
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item $x$ pointing forward, $y$ pointing right, $z$ pointing down;
+  \item moments positive following the right-hand rule about each axis;
+  \item lift and drag in the wind axis system, transformed via
+    $\alpha$, $\beta$ at the processor level.
+\end{itemize}
+
+Custom axes are first-class objects in \itc{}
+(Section~\ref{sec:axes}). User-defined frames carry their rotation
+matrix relative to the canonical AIAA body axis and apply via
+\code{db.rotate(target\_axis)} with full uncertainty propagation. This
+supports common WT bookkeeping workflows without forcing users to
+abandon traceability when transforming data between rig, tunnel, body,
+stability, and wind axes.
+
+\section{In-Flight Thrust: SAE AIR 4065}
+
+The \code{FT\_thrust} processor implements in-flight thrust determination
+following SAE AIR 4065~\citep{saeAIR4065}. The required variables ($F_X$,
+$V$, $\rho$, $S_{\mathrm{ref}}$) and the reduction equations match the
+standard.
+
+\section{Provenance: W3C PROV-DM}
+
+\itc{}'s separation of Provenance (origin, immutable) from History
+(cumulative, append-only) aligns with the W3C PROV-DM~\citep{provdm}
+concepts:
+
+\begin{table}[H]
+\centering
+\caption{Mapping of \itc{} provenance to W3C PROV-DM.}
+\label{tab:provdm-mapping}
+\small
+\begin{tabularx}{\textwidth}{@{}lll@{}}
+\toprule
+\textbf{\itc{} concept} & \textbf{PROV-DM} & \textbf{Mapping}\\
+\midrule
+VarFrame              & Entity         & The data being tracked.\\
+History entry         & Activity       & An operation transforming an entity.\\
+\code{user} field     & Agent          & Person or system performing the activity.\\
+\code{state\_hash}    & Entity version & Identifies a specific entity state.\\
+\code{source\_files}  & Entity (used)  & Inputs to the load activity.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\itc{} v0.1.0 supports native serialization of provenance graphs to
+PROV-N and PROV-JSON via \code{db.export\_provenance(path,
+format="prov-json")} (or \code{format="prov-n"}), enabling
+interoperability with provenance-aware data catalogs without forcing
+PROV serialization in every export path.
+
+\section{Code and Documentation: PEP 8, NumPy Docstring}
+
+\itc{} code follows PEP~8~\citep{pep8}. Public-API docstrings follow the
+NumPy docstring convention with mandatory Parameters, Returns, Raises,
+and Examples sections, enforced by linting rules and reviewed in pull
+requests.

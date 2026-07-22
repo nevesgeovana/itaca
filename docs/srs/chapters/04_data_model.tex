@@ -1,0 +1,473 @@
+% =============================================================================
+% Chapter 4: Data Model
+% =============================================================================
+
+\chapter{Data Model}
+\label{ch:datamodel}
+
+This chapter defines the data structures that the rest of the SRS
+references. It is placed before the requirement chapters because the
+requirements are stated in terms of these structures.
+
+\section{The VarFrame}
+\label{sec:varframe}
+
+A VarFrame is the primary multidimensional data structure in \itc{}. It
+stores the following attributes:
+
+\begin{table}[H]
+\centering
+\caption{VarFrame attributes.}
+\label{tab:varframe-attrs}
+\small
+\begin{tabularx}{\textwidth}{@{}llX@{}}
+\toprule
+\textbf{Attribute} & \textbf{Type} & \textbf{Description}\\
+\midrule
+\code{dims}        & \code{dict[str, Dimension]} &
+Ordered mapping of dimension name to a \code{Dimension} object holding the
+coordinate array, optional unit metadata, and optional non-numeric flag.\\
+\code{vars}        & \code{dict[str, Variable]} &
+Mapping of variable name to a \code{Variable} object wrapping the
+N-dimensional NumPy array, with optional unit and description metadata.
+Every variable array has the same shape, dictated by the dimension order.\\
+\code{uncertainty} & \code{UncFrame \textbar\ None} &
+Mirror structure for standard uncertainties; \code{None} when no
+uncertainties are assigned.\\
+\code{tags}        & \code{HistoryFrame \textbar\ None} &
+Mirror structure tagging each value as original (\code{0}), interpolated /
+computed (\code{+1}), or extrapolated (\code{-1}). Created lazily upon the
+first operation that produces non-original values.\\
+\code{provenance}  & \code{Provenance} &
+Static origin record (source files, hashes, user, creation timestamp,
+\itc{} version, operating mode).\\
+\code{history}     & \code{History} &
+Cumulative, ordered record of every operation applied since creation.\\
+\code{axes}        & \code{AxisRegistry} &
+Coordinate-frame registry containing the canonical AIAA body axis (default)
+and any user-defined custom axes (Section~\ref{sec:axes}).\\
+\code{coords}      & \code{CoordSystem} &
+Spatial coordinate system tag: Cartesian or Polar (affects integration).\\
+\code{correlation} & \code{CorrelationMatrix \textbar\ None} &
+Optional correlation matrix between variables for uncertainty propagation.
+\code{None} means all variables are treated as independent.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Dimension Ordering and Shapes}
+
+The shape of every variable array is determined by the order of \code{dims}.
+If \code{dims = \{"alpha": ..., "mach": ..., "blade": ...\}} then every
+variable array has shape $(N_\alpha, N_M, N_\beta)$. Ordering is preserved
+across all operations.
+
+\subsection{Missing Values}
+
+Missing dimension combinations are represented as \code{np.nan} in the
+variable arrays. \itc{} never uses sentinel values or masked arrays. The
+HistoryFrame distinguishes a value that was never measured (NaN in the
+variable, no entry in \code{tags}) from a value that was interpolated to
+fill a gap (finite in the variable, \code{+1} in \code{tags}).
+
+\subsection{The Dimension Object}
+\label{sec:dimension-object}
+
+Each entry in \code{dims} is a frozen dataclass:
+
+\begin{lstlisting}
+@dataclass(frozen=True)
+class Dimension:
+    name: str                    # e.g. "alpha"
+    coords: np.ndarray           # 1-D coordinate array
+    unit: str | None = None      # "deg", "m", "rpm", None
+    description: str | None = None
+    is_numeric: bool = True      # False for string-valued dims (e.g. blade_type)
+\end{lstlisting}
+
+The \code{unit} field is metadata only and is not used for unit conversion
+unless the user calls \code{utils.units.convert()} explicitly. It is read by
+the plotting system for axis labels and by export formats for header
+annotations.
+
+Non-numeric dimensions (\code{is\_numeric=False}) are permitted, with
+coordinates such as \code{["A", "B"]} for blade-type sweeps. Numerical
+operations on such dimensions (\code{interpolate}, \code{diff},
+\code{fitmodel}, \code{integrate}) raise
+\code{NonNumericDimensionError} immediately, before any computation.
+
+\subsection{The Variable Object}
+\label{sec:variable-object}
+
+Each entry in \code{vars} is a frozen dataclass wrapping the underlying
+array:
+
+\begin{lstlisting}
+@dataclass(frozen=True)
+class Variable:
+    name: str                       # e.g. "CT"
+    values: np.ndarray              # N-D array, shape from VarFrame.dims
+    unit: str | None = None         # "N", "m/s", None
+    description: str | None = None
+    long_name: str | None = None    # used for plot labels: "Thrust coefficient"
+\end{lstlisting}
+
+Mirroring the design of \code{Dimension}, the \code{unit} field on a
+\code{Variable} is metadata only and feeds the unit-conversion utility
+(\code{utils.units.convert}) on demand.
+
+\section{The UncFrame}
+
+An UncFrame is structurally a VarFrame restricted to standard uncertainties:
+same dimensions, same variable names as its parent, with array values
+representing $u(\text{var})$ following GUM JCGM~100:2008 clause~2.3.1.
+
+It is created automatically the first time \code{db.set\_uncertainty(...)}
+is called, and it is updated automatically by every \code{db.compute(...)}
+that involves variables with assigned uncertainty.
+
+\subsection{Two Uncertainty Components}
+\label{sec:two-components}
+
+For each variable, the UncFrame stores up to two arrays: a systematic
+component $u_{\mathrm{sys}}$ and a random component $u_{\mathrm{rand}}$.
+The distinction follows AIAA S-071A-1999~\citep{aiaaS071A}: systematic
+uncertainty originates in calibration and installation biases and is fully
+correlated across the points of a variable; random uncertainty originates
+in measurement scatter and is independent between points.
+\code{db.set\_uncertainty} assigns the systematic component by default and
+accepts \code{component="random"}. The distinction matters in reductions:
+averaging $N$ independent repeats reduces $u_{\mathrm{rand}}$ by
+$1/\sqrt{N}$ but leaves $u_{\mathrm{sys}}$ unchanged. A single-component
+model cannot represent this and silently understates the combined
+uncertainty of averaged results. Both components propagate separately
+through every operation and recombine as
+$u = (u_{\mathrm{sys}}^2 + u_{\mathrm{rand}}^2)^{1/2}$ at reporting time
+(REQ-99).
+
+\itc{} v0.1.0 supports correlated input variables natively. The combined
+standard uncertainty of a derived quantity $f$ is
+\begin{equation}
+u^2(f) = \sum_i \left(\frac{\partial f}{\partial x_i}\right)^2 u^2(x_i)
+       + 2\sum_{i<j} \frac{\partial f}{\partial x_i}
+                     \frac{\partial f}{\partial x_j}
+                     \,r(x_i, x_j)\, u(x_i)\, u(x_j),
+\label{eq:lpu}
+\end{equation}
+where $r(x_i, x_j)$ is the correlation coefficient declared via
+\code{db.set\_correlation(...)}. By default all correlations are zero and
+Equation~\eqref{eq:lpu} reduces to the independence form. Partial derivatives
+are obtained symbolically via chain rule on the RPN expression tree
+(Section~\ref{sec:rpn-engine}).
+
+\begin{noteinfo}[Monte Carlo for discrete-branch models]
+The symbolic propagation in Equation~\eqref{eq:lpu} assumes the derived
+quantity is differentiable with respect to its inputs. Models containing
+discrete branches (piecewise definitions, conditional logic that selects different equations based on input values) break this assumption. For
+such cases \itc{} provides Monte Carlo propagation
+(\code{db.compute(..., method="mcm")}) following GUM
+S1~\citep{gum2008s1}. Continuous nonlinearities are handled correctly by
+the default symbolic propagation and do not require Monte Carlo.
+\end{noteinfo}
+
+\section{The HistoryFrame}
+
+The HistoryFrame tracks the origin of every value in every variable. For
+each variable in the parent VarFrame, it stores an integer array of
+identical shape with values:
+
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item \code{0}: value was loaded directly from a source file (measured
+    ground truth or simulated raw output).
+  \item \code{+1}: value was interpolated, computed, or otherwise derived
+    within the convex hull of the source data.
+  \item \code{-1}: value was extrapolated outside the convex hull of the
+    source data.
+\end{itemize}
+
+Operations that produce derived values are responsible for updating the
+HistoryFrame accordingly. \code{compute} sets \code{+1} for newly created
+variables. \code{interpolate} sets \code{+1} within the original axis range
+and \code{-1} outside. \code{fill} sets \code{+1}. \code{fitvalue} sets
+\code{+1} within the fit range and \code{-1} beyond it. The plotter consumes
+the HistoryFrame to allow visual distinction (filled markers for original,
+hollow markers for interpolated, hollow with cross for extrapolated).
+
+\paragraph{Reductions.}
+Operations that collapse one or more dimensions (\code{average},
+\code{integrate}, \code{statistics}, \code{combine}) follow a worst-case
+rule: the resulting tag is \code{-1} if any contributing point was
+\code{-1}, else \code{+1} if any was \code{+1}, else \code{0}. This
+preserves the conservative meaning of the tag (a reduced result is at most
+as ``original'' as its weakest contributor).
+
+\section{Provenance and History}
+\label{sec:provenance-history}
+
+\itc{} maintains a strict separation between two concepts that are often
+conflated.
+
+\subsection{Provenance: where the data came from}
+
+Provenance is the static, immutable origin record of a VarFrame, established
+at creation time and never modified afterward.
+
+\begin{table}[H]
+\centering
+\caption{Fields of the \code{Provenance} object.}
+\label{tab:provenance-fields}
+\small
+\begin{tabularx}{\textwidth}{@{}llX@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description}\\
+\midrule
+\code{itaca\_version} & \code{str}     & Version of \itc{} that created this VarFrame.\\
+\code{user}           & \code{str}     & \code{user@hostname}, overridable.\\
+\code{created\_at}    & \code{datetime}& ISO 8601 creation timestamp.\\
+\code{source\_files}  & \code{list[Path]}& Paths to input files.\\
+\code{source\_hash}   & \code{str}     & SHA-256 digest of the concatenated source file contents.\\
+\code{mode}           & \code{str}     & \code{"production"} or \code{"draft"}.\\
+\code{version\_tag}   & \code{str}     & User-defined string (e.g.\ \code{"v1.0-raw"}).\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{History: what happened to the data}
+
+History is the ordered, append-only sequence of operations applied to a
+VarFrame since its creation. Each entry has a unique sequential index
+within the VarFrame, starting from 1.
+
+\begin{table}[H]
+\centering
+\caption{Fields of a single History entry.}
+\label{tab:history-fields}
+\small
+\begin{tabularx}{\textwidth}{@{}llX@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description}\\
+\midrule
+\code{index}       & \code{int}      & Sequential index, starting at 1.\\
+\code{operation}   & \code{str}      & Operation name and arguments.\\
+\code{comment}     & \code{str}      & Optional user comment passed via the \code{comment=} keyword to any operation.\\
+\code{timestamp}   & \code{datetime} & When the operation was applied.\\
+\code{state\_hash} & \code{str}      & SHA-256 of the resulting VarFrame state.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+History entries are indexed so that subranges can be exported as a Pipeline
+(e.g.\ \code{db.history.to\_pipeline(start=2, end=7)}). The operations
+between two VarFrame objects can be diffed by comparing their histories.
+
+\subsection{State Hash Scope}
+\label{sec:state-hash}
+
+The reproducibility principle (P-03) is only testable if the state hash has
+a defined scope. The \code{state\_hash} of a VarFrame covers: dimension
+names and coordinate arrays; variable names and value arrays; the ordered
+operation sequence with normalized arguments and comments; and the
+uncertainty, correlation, and origin-tag arrays when present. It excludes
+every volatile field: timestamps, user identity, source file paths, and the
+\itc{} version, all of which live in Provenance (source content is covered
+separately by \code{source\_hash}). Two runs that load the same bytes and
+apply the same operations therefore produce identical state hashes on the
+same platform and NumPy version. Across platforms, bitwise floating-point
+equality is not guaranteed; cross-platform comparisons use
+\code{pproc.compare} with tolerances, never hash equality (REQ-103).
+
+\begin{ddbox}{DD-01}{Why split Provenance from History}
+The split aligns \itc{} with the W3C PROV-DM model~\citep{provdm}, where
+entity (the data), activity (the operation), and agent (the user) are
+distinguishable concepts. It also enables serialization of provenance
+graphs across multiple VarFrame objects, which arise naturally in
+\code{pproc.compare(case\_a=db1, case\_b=db2, reference=db\_ref)} and in
+\code{itc.aerospace} analyses that consume multiple inputs.
+\end{ddbox}
+
+\section{Axes and Custom Coordinate Frames}
+\label{sec:axes}
+
+\itc{} treats coordinate frames as first-class objects rather than implicit
+context. The canonical reference frame is the AIAA body axis system per
+AIAA R-004A-1992~\citep{aiaaR004A}. Additional named frames (stability,
+wind, tunnel, propeller-disk, custom rig) are registered as \code{Axis}
+objects.
+
+\begin{lstlisting}
+@dataclass(frozen=True)
+class Axis:
+    name: str                              # "body", "stability", "wind", ...
+    rotation_matrix: np.ndarray | None     # 3x3, from canonical body axis
+    angles_from: tuple[str, ...] | None = None  # condition-dependent frames
+    parent: "Axis | None" = None           # for chained transforms
+    description: str | None = None
+\end{lstlisting}
+
+A VarFrame carries an \code{AxisRegistry} that maps frame names to
+\code{Axis} objects. The operation \code{db.rotate(target\_axis)}:
+
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item detects vector groups by naming convention: triplets such as
+        \code{(FX, FY, FZ)}, \code{(MX, MY, MZ)}, or any group declared
+        explicitly via \code{db.declare\_vector("name", components=[...])};
+  \item applies the rotation matrix to each detected group;
+  \item propagates uncertainty using the rotation matrix as the Jacobian,
+        which is exact since the rotation is linear, including covariance
+        terms when a correlation matrix is present;
+  \item updates the History with the source and target frames;
+  \item preserves all HistoryFrame tags unchanged (rotation does not change
+        whether a point is original, interpolated, or extrapolated).
+\end{itemize}
+
+This design supports the wind tunnel bookkeeping workflow, where balance
+data routinely transit between rig, tunnel, body, stability, and wind axis
+systems and where each transformation must remain auditable.
+
+\subsection{Condition-Dependent Frames}
+\label{sec:condition-frames}
+
+A constant rotation matrix cannot express the frames that matter most in
+practice: the transformation from body to wind or stability axes depends on
+$\alpha$ and $\beta$, which are dimensions or variables of the VarFrame
+itself, so the rotation varies from grid point to grid point. An
+\code{Axis} therefore admits two definitions: a constant
+\code{rotation\_matrix}, or a parametric definition via
+\code{angles\_from=("alpha", "beta")} with a named angle convention, in
+which case the matrix is evaluated per grid point. The rotation remains
+linear in the vector components at every point, so uncertainty propagation
+stays exact; when the referenced angles themselves carry uncertainty, the
+sensitivity terms $\partial R / \partial \alpha$ enter the propagation by
+the chain rule (REQ-101). The built-in \code{"wind"} and
+\code{"stability"} frames are predefined this way per AIAA
+R-004A-1992~\citep{aiaaR004A}.
+
+\subsection{Moment Reference-Point Transfer}
+\label{sec:moment-transfer}
+
+Rotation alone does not close the balance bookkeeping chain: moments must
+also transfer between reference points, from the balance moment center to
+the model reference point or the aircraft center of gravity. The operation
+\code{db.translate\_moments(to\_point=...)} applies
+$\mathbf{M}' = \mathbf{M} + \mathbf{r} \times \mathbf{F}$ to each declared
+force and moment vector group, where $\mathbf{r}$ is the offset between
+reference points expressed in the current frame. The transfer is linear in
+the force components, so the Jacobian is exact and covariance between force
+and moment channels propagates correctly. The History entry records the
+source point, the target point, and the frame in which the offset was
+expressed (REQ-100).
+
+\section{The .itceq Equation File}
+\label{sec:itceq}
+
+The \code{.itceq} file is the primary mechanism for reusable,
+version-controlled analysis workflows. It is a TOML-structured text file
+with five sections:
+
+\begin{lstlisting}[language=toml]
+[meta]
+name        = "Aircraft balance campaign: power off"
+version     = "1.0"
+author      = "Geovana Neves"
+description = "6-component internal balance, AIAA S-071A-1999 aligned"
+
+[constants]
+S_ref = 0.1963   # m^2, reference wing area
+c_ref = 0.2526   # m, reference chord
+b_ref = 0.800    # m, reference span
+
+[uncertainties]
+FX = 0.005       # N, balance calibration
+FZ = 0.005       # N
+MY = 0.0002      # N.m
+V  = 0.02        # m/s, Pitot probe
+rho = "0.05%"    # relative
+
+[equations]
+q_inf = "0.5 * rho * V**2"
+CL    = "FZ / (q_inf * S_ref)"
+CD    = "FX / (q_inf * S_ref)"
+CM    = "MY / (q_inf * S_ref * c_ref)"
+
+[corrections]
+blockage = "1 + 0.005 * CL**2"
+CL_corr  = "CL * blockage"
+\end{lstlisting}
+
+\subsection{Section Rules}
+
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item \code{[meta]}: required. All sub-fields are optional strings.
+  \item \code{[constants]}: key-value pairs, all numeric. Constants are
+    registered before any equation is evaluated.
+  \item \code{[uncertainties]}: values are float (absolute) or string
+    ending in \code{"\%"} (relative). Per-variable.
+  \item \code{[equations]}: evaluated in dependency order (topologically
+    sorted at parse time when the optional \code{auto\_sort=True} flag is
+    set, with a feedback message reporting the resolved order; otherwise
+    evaluated in file order). Cyclic dependencies raise
+    \code{ItceqCycleError} at parse time.
+  \item \code{[corrections]}: evaluated after \code{[equations]}. May
+    replace existing variables.
+\end{itemize}
+
+\section{The .itc Native Binary Format}
+
+The \code{.itc} format is a ZIP archive containing the files listed in
+Table~\ref{tab:itc-archive}. The format is designed for long-term archival:
+it uses open standards (NumPy \code{.npz} and JSON) and can be inspected
+without \itc{} using any ZIP tool plus \code{numpy.load}.
+
+\begin{table}[H]
+\centering
+\caption{Layout of a \code{.itc} archive.}
+\label{tab:itc-archive}
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{File inside archive} & \textbf{Content}\\
+\midrule
+\code{varframe.npz}      & All variable arrays in NumPy compressed format.\\
+\code{dims.json}         & Dimension names, coordinate arrays, units, descriptions, numeric flags.\\
+\code{vars\_meta.json}   & Variable units, descriptions, long names.\\
+\code{uncframe.npz}      & Uncertainty arrays (absent when no UncFrame).\\
+\code{correlation.json}  & Declared correlation matrix (absent when independent).\\
+\code{historyframe.npz}  & Origin tags per variable (absent when all values are original).\\
+\code{axes.json}         & Registered axes with rotation matrices (absent when only the canonical body axis is present).\\
+\code{provenance.json}   & Origin record (Section~\ref{sec:provenance-history}).\\
+\code{history.json}      & Ordered list of operation entries with indices.\\
+\code{metadata.json}     & \itc{} version, format version, schema validation hash.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{The .itc\_pipe Pipeline Format}
+
+A \code{.itc\_pipe} file is a human-readable serialization (TOML) of a
+sequence of operations extracted from a VarFrame's History. It records:
+
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item the \itc{} version that created it,
+  \item the index range in the source history,
+  \item each operation's name, positional and keyword arguments, and any
+    attached comment,
+  \item a content hash for integrity verification.
+\end{itemize}
+
+A \code{.itc\_pipe} file is intentionally separate from \code{.itc}: a
+pipeline encapsulates how to transform data without containing data itself,
+so it can be shared, reviewed, and version-controlled alongside the source
+code.
+
+\section{The .itc\_surr Surrogate Format}
+
+A \code{.itc\_surr} file is a binary serialization of a fitted surrogate
+model with associated metadata. It is exportable independently of any
+VarFrame, enabling reuse of trained surrogates in performance and EUB
+calculations without reloading the source dataset.
+
+By default the file stores only the model state plus the SHA-256 hash of
+the source VarFrame; passing \code{embed\_source=True} to
+\code{surr.save(...)} additionally embeds the full source VarFrame in the
+archive, yielding a self-contained but larger file. The trade-off is
+chosen explicitly per save.

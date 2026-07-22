@@ -1,0 +1,99 @@
+% =============================================================================
+% Chapter 2: Philosophy and Design Principles
+% =============================================================================
+
+\chapter{Philosophy and Design Principles}
+\label{ch:philosophy}
+
+The requirements in this document are derived from a set of foundational
+principles. These principles constrain every design decision: an option that
+satisfies a requirement but violates a principle is never adopted.
+
+\paragraph{P-01: Data management before analysis.}
+A result is only as trustworthy as the data pipeline that produced it.
+\itc{} enforces structure, traceability, and explicit intent at every step.
+Analysis is downstream of management, never the other way around.
+
+\paragraph{P-02: Provenance and History are mandatory in production.}
+Every VarFrame knows where it came from (Provenance) and what was done to it
+(History). Both records travel with the data and are preserved in every
+export format. Production mode never suppresses either record.
+
+\paragraph{P-03: Reproducibility by design.}
+Loading the same files with the same processor and the same equation file
+must always produce the same result. There is no implicit state, no silent
+default that varies between runs. If the result changes, a hash changes, and
+\itc{} reports it.
+
+\paragraph{P-04: Fail fast and loud.}
+Ambiguity is an error. Missing variables, grid mismatches, unvalidated
+processors, non-monotonic axis-translation targets, mismatched operating
+modes, and non-differentiable functions in uncertainty equations raise
+informative exceptions before any computation occurs. Silent NaN propagation
+and silent fallbacks are unacceptable.
+
+\paragraph{P-05: Test-driven code is non-negotiable.}
+\itc{} handles data that feeds engineering decisions and, ultimately, flight
+vehicles. Every public method is tested before it is implemented. Coverage
+below 90\,\% is a defect, not a metric. Property-based testing is preferred
+for components with mathematical contracts (operators, propagation,
+smoothing, differentiation, axis rotation).
+
+\paragraph{P-06: Immutability by default.}
+Operations on a VarFrame return new objects. The original is never modified.
+This makes reasoning about data pipelines straightforward and eliminates a
+large class of bugs. Structural immutability is enforced mechanically, not by
+convention.
+
+\paragraph{P-07: Minimal API surface.}
+No method is added if it can be composed from existing ones. Every public
+function traces back to a concrete, documented use case. Complexity is the
+enemy of reliability.
+
+\paragraph{P-08: Designed for notebooks.}
+Inspection, summary, and diagnostic methods print rich output to the terminal
+and return inspectable objects. The workflow must feel natural in Jupyter
+without additional boilerplate. No method exists that only prints or only
+returns: every diagnostic surface offers both faces.
+
+\paragraph{P-09: English everywhere.}
+All code, comments, docstrings, variable names, error messages, equation
+files, and documentation must be written in English. American English with
+Z is used consistently (\emph{organize}, \emph{visualization},
+\emph{normalize}). Development conversation may occur in any language; the
+artifacts must not.
+
+\paragraph{P-10: Example-driven development.}
+Every feature is specified as a usage example before implementation begins.
+The implementation serves the example, not the reverse. If a feature cannot
+be demonstrated in a clear usage example, it does not exist.
+
+\paragraph{P-11: Standards alignment is intentional, not coincidental.}
+\itc{} explicitly aligns with established standards: the GUM for
+uncertainty, AIAA for coordinate systems and wind tunnel uncertainty
+assessment, SAE for in-flight thrust determination, W3C PROV-DM for the
+conceptual provenance model. Where \itc{} departs from a standard, the
+departure is documented and justified in
+Chapter~\ref{ch:standards}.
+
+\paragraph{P-12: Sensitivity is a native capability.}
+Sensitivity analysis is not a separate module. It is the direct output of
+combining \code{set\_uncertainty} on input variables with \code{compute} or
+\code{itc.aerospace} computations: the propagated uncertainty on the output
+quantifies its sensitivity to the specified input variation. This is a
+deliberate architectural property, not a coincidence.
+
+\paragraph{P-13: Explicit over implicit numerical combination.}
+Arithmetic combinations of two VarFrames go through \code{db.combine(other,
+op=...)}, not through overloaded Python operators. This forces every
+numerical combination to record its semantics in the History and to declare
+how uncertainties and correlations are handled. Convenience that hides
+numerical assumptions is not convenience; it is a defect.
+
+\paragraph{P-14: Memory is not free.}
+Operations are vectorized via NumPy and avoid unnecessary copies whenever
+correctness allows. Operations that may inflate memory (\code{expand},
+broadcasts, dense pivots from sparse acquisition matrices) document their
+expected memory footprint and offer chunked or sparse-aware alternatives
+where appropriate. Large or sparse datasets are first-class citizens, not
+edge cases.

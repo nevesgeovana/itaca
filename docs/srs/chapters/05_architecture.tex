@@ -1,0 +1,406 @@
+% =============================================================================
+% Chapter 5: Architecture
+% =============================================================================
+
+\chapter{Architecture}
+\label{ch:architecture}
+
+\section{Module Structure}
+
+\itc{} is organized into eight top-level packages, each with a single,
+well-defined responsibility. The dependency graph is strictly layered:
+\code{core} has no intra-project dependencies; everything else builds on
+\code{core}. The \code{aerospace} package builds on \code{pproc}, which
+builds on \code{ops}, \code{io}, and \code{uncertainty}.
+
+\section{Full Module Tree}
+
+\begin{lstlisting}[language=]
+itaca/
++-- core/
+|   +-- varframe.py            # VarFrame -- central structure
+|   +-- uncframe.py            # UncFrame -- uncertainty mirror
+|   +-- historyframe.py        # HistoryFrame -- origin tags (0/+1/-1)
+|   +-- dimension.py           # Dimension dataclass with optional unit
+|   +-- variable.py            # Variable dataclass with optional unit
+|   +-- correlation.py         # CorrelationMatrix declaration & storage
+|   +-- index.py               # dimension and index management
+|   +-- coords.py              # Cartesian and Polar spatial coordinates
+|   +-- axes.py                # Axis, AxisRegistry, rotate, translate_moments
+|   +-- provenance.py          # Provenance: where data came from
+|   +-- history.py             # History: what happened to the data
+|   +-- pipeline.py            # Pipeline: serializable history subrange
+|   +-- combine.py             # db.combine() arithmetic combination
+|   +-- arithmetic.py          # internal arithmetic with covariance
+|   +-- errors.py              # ITACAError hierarchy
+|   `-- version.py             # version tagging
++-- io/
+|   +-- loader.py              # itc.load() -- all input modes
+|   +-- inspector.py           # db.inspect() on any datapoint-mode VarFrame
+|   +-- pivot.py               # db.pivot() on any datapoint-mode VarFrame
+|   +-- manifest.py            # db.manifest()
+|   +-- diagnostics.py         # db.diagnostics() -> DiagnosticsReport
+|   +-- summary.py             # db.summary() -- short, practical
+|   +-- export.py              # to_csv, to_json, to_pandas, to_numpy, save
+|   +-- prov_export.py         # PROV-N and PROV-JSON serialization
+|   `-- formats/
+|       +-- csv.py
+|       +-- json.py
+|       +-- pandas_bridge.py
+|       +-- numpy_bridge.py
+|       `-- itc.py             # native binary .itc format
++-- ops/
+|   +-- select.py              # select() with operators and Frame= keyword
+|   +-- squeeze.py             # squeeze() -- remove unit-cardinality dims
+|   +-- expand.py              # expand() -- ADD a new dimension
+|   +-- concat.py              # itc.concat() -- join VarFrames along a dim
+|   +-- interpolate.py         # interpolate() -- densify or translate axis
+|   +-- fill.py                # fill() -- gap fill via window or global
+|   +-- compute.py             # compute() -- string equation derivation (RPN)
+|   +-- average.py             # average() -- collapse dim by mean
+|   +-- integrate.py           # integrate() -- Cartesian and polar
+|   +-- smooth.py              # smooth() -- savgol, spline, moving_avg
+|   +-- diff.py                # diff() -- moving polynomial derivative
+|   +-- fitmodel.py            # fitmodel() -- replace dim with poly coefs
+|   `-- fitvalue.py            # fitvalue() -- evaluate fit at new x
++-- uncertainty/
+|   +-- expression.py          # ast-based parser, chain-rule differentiation
+|   +-- operators.py           # operators with partial derivatives
+|   +-- propagation.py         # GUM clause 5 LPU with covariance
+|   `-- mcm.py                 # Monte Carlo for discrete-branch models
++-- pproc/
+|   +-- factory.py             # itc.pproc() -- factory function
+|   +-- protocol.py            # Processor typing.Protocol
+|   +-- base.py                # Processor base class
+|   +-- registry.py            # built-in processor registry
+|   +-- statistics.py          # pproc.statistics()
+|   +-- compare.py             # pproc.compare() -- N VarFrames, named inputs
+|   +-- report.py              # pproc.report() -- LaTeX-backed PDF
+|   +-- builtin/
+|   |   +-- cfd_cp.py
+|   |   +-- cfd_disk.py
+|   |   +-- wt_balance_off.py
+|   |   +-- wt_balance_on.py
+|   |   +-- wt_propeller.py
+|   |   +-- wt_corrections.py  # solid_blockage, streamline, buoyancy, ...
+|   |   +-- ft_thrust.py       # SAE AIR 4065
+|   |   +-- cal_balance.py
+|   |   `-- aero_polar.py
+|   `-- equations/
+|       +-- parser.py          # .itceq parser with cycle detection
+|       +-- balance/
+|       +-- propeller/
+|       +-- flight_test/
+|       `-- cfd/
++-- surrogate/
+|   +-- smt_bridge.py          # interface with SMT
+|   `-- models.py              # itc.surrogate() returning (VarFrame, Surrogate)
++-- aerospace/
+|   +-- performance/
+|   |   +-- takeoff.py
+|   |   +-- climb.py
+|   |   `-- envelope.py
+|   +-- stabcontrol/
+|   |   +-- static.py          # static margin, trim + EUB
+|   |   +-- damping.py         # pitch damping derivatives
+|   |   `-- vn_diagram.py
+|   `-- propeller/
+|       +-- bemt.py            # Adkins-Liebeck BEMT
+|       `-- integration.py
++-- plot/
+|   +-- itcfigure.py           # ItcFigure wrapper
+|   +-- datavis.py             # DataVis class -- itc.datavis()
+|   +-- multiplot.py           # multi-figure layout
+|   +-- backends/
+|   |   +-- matplotlib_backend.py  # default backend
+|   |   `-- plotly_backend.py      # optional, interactive
+|   +-- style.py               # AIAA rcParams
+|   +-- cycles.py              # color, marker, linestyle cycles
+|   `-- specialized/
+|       +-- polar.py
+|       +-- cp.py
+|       +-- disk.py
+|       `-- colormap.py
+`-- utils/
+    +-- units.py               # custom unit-conversion table
+    +-- memory.py              # sparse-aware helpers, footprint reporting
+    `-- validation.py          # input validation and error formatting
+\end{lstlisting}
+
+\section{Top-Level API Surface}
+
+Table~\ref{tab:toplevel-api} enumerates every function exposed at the
+\code{itc.} top level, providing a single audit point for the public API.
+
+\begin{table}[H]
+\centering
+\caption{Top-level \itc{} API surface.}
+\label{tab:toplevel-api}
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Function} & \textbf{Purpose}\\
+\midrule
+\code{itc.load(...)}            & Unified loader: folder, dict, NumPy array, pandas DataFrame, single file.\\
+\code{itc.open(path)}           & Read a \code{.itc} archive into a VarFrame.\\
+\code{itc.concat(list, along=)} & Concatenate compatible VarFrames along a dimension.\\
+\code{itc.pproc(name\_or\_path)} & Construct a processor by registered name or \code{.itceq} path.\\
+\code{itc.datavis(...)}         & Construct a DataVis plotting object.\\
+\code{itc.surrogate(...)}       & Fit a surrogate, returning \code{(VarFrame, Surrogate)}.\\
+\code{itc.load\_pipeline(path)} & Read a \code{.itc\_pipe} file.\\
+\code{itc.load\_surrogate(path)}& Read a \code{.itc\_surr} file.\\
+\code{itc.set\_user(name)}      & Override the default \code{user@hostname}.\\
+\code{itc.set\_mode(mode)}      & Set the global default operating mode.\\
+\code{itc.aerospace.*}          & Aerospace analysis subpackage (performance, stabcontrol, propeller).\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Class Hierarchy}
+
+\itc{}'s principal classes follow a small, deliberately flat hierarchy.
+The top-level data classes are \code{VarFrame}, \code{UncFrame}, and
+\code{HistoryFrame}; each is a frozen composition of NumPy arrays plus
+metadata classes (\code{Provenance}, \code{History}, \code{AxisRegistry},
+\code{CorrelationMatrix}). Spatial coordinates split into \code{Cartesian}
+and \code{Polar} via the \code{CoordSystem} abstract base. \code{Axis} is a
+standalone dataclass usable across multiple VarFrames.
+
+The processing layer is built on the \code{Processor} typing protocol; each
+built-in processor (\code{WTPropeller}, \code{CFDDisk}, \code{AeroPolar},
+\code{ItceqProcessor}, etc.) implements the protocol without subclassing a
+common base. RPN operators (\code{Arith}, \code{Trig}, \code{Misc}) are
+isolated, individually testable, and expose \code{evaluate}, \code{d\_da},
+and \code{d\_db} methods for chain-rule differentiation.
+
+\code{itc.aerospace} analyses (\code{TakeoffAnalysis},
+\code{StabilityAnalysis}, \code{BEMTAnalysis}) are top-level callable
+classes. Visualization is rooted at \code{DataVis}, which produces
+\code{ItcFigure} objects. Surrogate models are wrapped in a single
+\code{Surrogate} class with multiple backends.
+
+\section{Key Design Decisions}
+
+\begin{ddbox}{DD-02}{NumPy-only core}
+The \code{core/}, \code{ops/}, and \code{uncertainty/} packages depend
+exclusively on NumPy. No xarray, dask, or pandas imports appear in these
+modules. All other integrations are optional and loaded lazily.
+\end{ddbox}
+
+\begin{ddbox}{DD-03}{VarFrame structural immutability}
+\code{VarFrame} is a frozen dataclass. Operations return new objects.
+In-place mutation is structurally impossible. This enables safe chaining
+and ensures Provenance / History consistency.
+\end{ddbox}
+
+\begin{ddbox}{DD-04}{Processors as a Protocol, not a base class}
+\code{Processor} is a \code{typing.Protocol} (structural subtyping).
+Specialized analyses are callable objects called as \code{pproc(db)},
+keeping data structure and analysis logic separate. Any object satisfying
+the protocol is a valid processor; subclassing \code{Processor} is a
+convenience, not a requirement.
+\end{ddbox}
+
+\begin{ddbox}{DD-05}{UncFrame as structural mirror}
+Uncertainty is stored in a separate \code{UncFrame}, not as extra columns.
+This keeps primary data clean and makes uncertainty presence explicit
+(\code{db.uncertainty} is \code{None} when no uncertainties are assigned).
+\end{ddbox}
+
+\begin{ddbox}{DD-06}{HistoryFrame as separate mirror}
+Origin tags ($0$/$+1$/$-1$) are stored in a separate \code{HistoryFrame},
+not as extra columns or sentinel values within the main arrays. This keeps
+the numerical arrays clean and allows operations to manipulate values and
+tags in parallel without coupling.
+\end{ddbox}
+
+\begin{ddbox}{DD-07}{Operating modes as metadata, not API branch}
+\code{draft} vs.\ \code{production} is a VarFrame attribute, not a
+different class. The same API applies in both modes; only history-recording
+behavior and export guards differ. Mixing modes in a binary operation is
+forbidden and raises \code{OperatingModeMixError}; the user must call
+\code{db.promote(mode="production")} or \code{db.demote(mode="draft")}
+explicitly.
+\end{ddbox}
+
+\begin{ddbox}{DD-08}{Aerospace generates, pproc processes}
+\code{itc.aerospace} modules \emph{generate} VarFrame data from physical
+models (BEMT, performance equations, stability buildups). \code{pproc}
+modules \emph{process} existing VarFrame data. This distinction is
+fundamental to the architecture and enables a single suite of plotting,
+comparison, and uncertainty machinery to apply uniformly to both.
+\end{ddbox}
+
+\begin{ddbox}{DD-09}{Sensitivity analysis as native capability}
+Sensitivity analysis is not a module: it is the direct output of
+combining \code{set\_uncertainty} and (optionally)
+\code{set\_correlation} on input variables with \code{compute} or
+\code{itc.aerospace} computations. The propagated uncertainty on the
+output is the sensitivity measure.
+\end{ddbox}
+
+\begin{ddbox}{DD-10}{Errors as a typed hierarchy}
+All \itc{}-specific exceptions inherit from a base class
+\code{ITACAError}, organized into families: \code{DataError},
+\code{ProcessorError}, \code{ProvenanceError}, \code{UncertaintyError},
+\code{DependencyError}, \code{AxesError}. Users can catch family-level
+exceptions when appropriate; specific subclasses provide actionable error
+messages. The complete enumeration is given in
+Table~\ref{tab:exception-hierarchy}.
+\end{ddbox}
+
+\begin{ddbox}{DD-11}{Custom axes are core, not aerospace}
+\code{Axis} and the rotation operations live in \code{core/axes.py}, not in
+\code{itc.aerospace}. Axis transformations are common across
+experimental, CFD, and engineering workflows (WT bookkeeping routinely moves data between rig, tunnel, body, stability, and wind axes) and the
+machinery must remain available outside the aerospace subpackage. Rotation
+also interacts directly with the uncertainty propagation engine and
+therefore lives next to \code{core/correlation.py}.
+\end{ddbox}
+
+\begin{ddbox}{DD-12}{Combine over operator overloading}
+Arithmetic combinations of VarFrames go through
+\code{db.combine(other, op=...)}, not Python operators. This forces every
+combination to declare its operation explicitly, records the call in
+History, and consults the declared correlation structure. The convenience
+of \code{db1 + db2} is rejected as misleading (NREQ-08).
+\end{ddbox}
+
+\begin{ddbox}{DD-13}{Custom unit conversion, no external dependency}
+Unit metadata on \code{Dimension} and \code{Variable} is optional and
+opt-in. Conversion is implemented in \code{utils/units.py} with a
+hand-curated table of SI and aerospace-engineering units. Pulling in
+\code{pint} or \code{astropy.units} is rejected for v0.x to keep the
+dependency surface minimal and the conversion table fully auditable.
+\end{ddbox}
+
+\begin{ddbox}{DD-14}{Covariance support from the first release}
+The propagation engine always evaluates the full GUM clause-5 formula,
+which reduces to the independence form when the correlation matrix is
+zero. Wind tunnel multi-channel calibrations produce correlated
+uncertainties as the norm, not the exception; deferring covariance would
+ship an engine that systematically underestimates combined uncertainty for
+the dominant use case. The correlation matrix is materialized lazily, so
+users who declare no correlations pay no cost.
+\end{ddbox}
+
+\begin{ddbox}{DD-15}{Monte Carlo restricted to discrete-branch models}
+\code{method="mcm"} exists specifically for expressions containing
+discrete branches, where the linearization behind symbolic propagation
+breaks down. Continuous nonlinearities are handled correctly by the
+symbolic chain rule; switching them to Monte Carlo would be slower without
+being more accurate.
+\end{ddbox}
+
+\begin{ddbox}{DD-16}{Idempotence opt-in, with explicit override}
+Processors declare \code{idempotent: bool}, default \code{False}: a second
+application warns and refuses unless \code{force=True} is passed, and a
+permitted reapplication is always recorded as a distinct History entry.
+Silent no-ops hide bugs; silent re-runs corrupt data (corrections applied
+twice); warn-and-refuse protects against both.
+\end{ddbox}
+
+\begin{ddbox}{DD-17}{\code{.itceq} evaluation order is explicit}
+Equations evaluate in file order by default; topological sorting is
+opt-in via \code{auto\_sort=True} and reports the resolved order as
+feedback. Forcing topological sort by default would make file behavior
+depend on parser tiebreaking rules, a portability risk.
+\end{ddbox}
+
+\begin{ddbox}{DD-18}{Uncertainty semantics are defined per operation}
+Every operation declares its effect on the UncFrame; the normative table
+is REQ-98. All v0.x operations are linear in the variable values
+(selection, interpolation, averaging, integration, smoothing kernels,
+moving polynomial fits, rotation), so propagation through the operation
+weights is exact. An operation with no sound propagation rule must raise
+or warn; silently dropping or silently carrying the UncFrame are both
+forbidden. The rejected alternative, propagation only in \code{compute},
+left every other operation free to corrupt the uncertainty record.
+\end{ddbox}
+
+\begin{ddbox}{DD-19}{Two-component uncertainty}
+The UncFrame separates systematic and random components
+(Section~\ref{sec:two-components}). A single per-variable scalar was
+rejected because reductions cannot then distinguish what shrinks with
+$1/\sqrt{N}$ from what does not: repeat averaging would silently shrink
+calibration bias, understating the combined uncertainty of every averaged
+result, exactly the failure AIAA S-071A-1999 bookkeeping exists to
+prevent.
+\end{ddbox}
+
+\begin{ddbox}{DD-20}{Expression parsing built on the Python ast module}
+\code{db.compute} expressions are parsed with the standard-library
+\code{ast} module and compiled to the \itc{} operator tree; symbolic
+differentiation walks that tree. A hand-written tokenizer and parser was
+rejected: it would be the most defect-prone component of the foundation
+release, and \code{ast} is battle-tested, stdlib-only (the NumPy-only rule
+is untouched), and yields precise syntax errors for free. Operator objects
+keep \code{evaluate}, \code{d\_da}, and \code{d\_db} and remain
+independently testable.
+\end{ddbox}
+
+\begin{ddbox}{DD-21}{Incremental public releases}
+Each roadmap milestone ships as a public release on PyPI with a Zenodo
+DOI, starting with the foundation at \code{v0.1.0}
+(Chapter~\ref{ch:roadmap}). The rejected alternative, a single public
+release only after every milestone is complete, maximizes time to first
+external feedback and concentrates risk for a solo maintainer. What does
+not change per release: TDD discipline, the coverage gate, and green CI.
+\end{ddbox}
+
+\begin{ddbox}{DD-22}{Solver drivers stay outside \itc{}}
+\itc{} is solver-agnostic (NREQ-10). Solver automation packages evolve on
+the release cadence of the solvers they drive and carry version-specific
+command knowledge that does not belong in a data-management core. Drivers
+consume and produce \itc{}-compatible data through \code{itc.load} and the
+export formats; embedding any driver was rejected.
+\end{ddbox}
+
+\section{Exception Hierarchy}
+
+\begin{table}[H]
+\centering
+\caption{The \code{ITACAError} hierarchy. Specific classes inherit from
+family classes; family classes inherit from \code{ITACAError}.}
+\label{tab:exception-hierarchy}
+\small
+\begin{tabularx}{\textwidth}{@{}llX@{}}
+\toprule
+\textbf{Family} & \textbf{Specific class} & \textbf{Raised when}\\
+\midrule
+\code{DataError}        & \code{LoadCoordinateError}        & \code{itc.load} dict-mode tuple length does not match \code{dims}\\
+                        & \code{PivotError}                 & \code{db.pivot} called on already-structured VarFrame without \code{dims}\\
+                        & \code{PivotDuplicateError}        & \code{db.pivot} finds two datapoints with identical coordinates on every requested dimension\\
+                        & \code{DimensionNotFoundError}     & A dimension referenced in an operation is absent\\
+                        & \code{VariableNotFoundError}      & A variable referenced in an equation is absent\\
+                        & \code{NonNumericDimensionError}   & Numerical operation requested on string-valued dimension\\
+                        & \code{SelectionError}             & A coordinate value in \code{select} is not present\\
+                        & \code{AxisTranslationError}       & \code{interpolate} axis-translation target is non-monotonic\\
+                        & \code{ConcatOverlapError}         & \code{itc.concat} inputs have overlapping coordinates along \code{along}\\
+                        & \code{DiffWindowError}            & \code{diff} called with \code{window <= deg}\\
+                        & \code{GridMismatchError}          & \code{pproc.compare} inputs have different grids and no \code{reference}\\
+\addlinespace
+\code{ProcessorError}   & \code{ProcessorNotFoundError}     & Unknown processor name passed to \code{itc.pproc}\\
+                        & \code{ProcessorValidationError}   & A required variable is missing for the processor\\
+                        & \code{ItceqCycleError}            & \code{.itceq} equations contain a cyclic dependency\\
+                        & \code{ItceqParseError}            & Generic \code{.itceq} parse failure\\
+                        & \code{ProcessorIdempotenceWarning}& Processor reapplied to already-processed data\\
+\addlinespace
+\code{ProvenanceError}  & \code{DraftModeExportError}       & \code{db.save} on draft VarFrame without \code{allow\_draft=True}\\
+                        & \code{OperatingModeMixError}      & Binary op mixes \code{draft} and \code{production} VarFrames\\
+                        & \code{HashMismatchError}          & \code{itc.open} detects source-hash drift\\
+                        & \code{PipelineCompatibilityError} & \code{Pipeline.apply} target lacks required variables\\
+\addlinespace
+\code{UncertaintyError} & \code{UncertaintyKeyError}        & \code{set\_uncertainty} key does not match any variable\\
+                        & \code{UncertaintyCompatibilityError} & Non-differentiable function in expression with uncertainty inputs\\
+                        & \code{CorrelationKeyError}        & \code{set\_correlation} references unknown variable\\
+                        & \code{CorrelationMatrixError}     & Provided correlation matrix is not symmetric or violates $|r|\le 1$\\
+\addlinespace
+\code{AxesError}        & \code{AxisNotFoundError}          & \code{db.rotate} target axis is not registered\\
+                        & \code{VectorGroupError}           & \code{db.rotate} cannot resolve a vector group from naming convention\\
+                        & \code{RotationMatrixError}        & Provided matrix is not orthogonal\\
+\addlinespace
+\code{DependencyError}  & \code{MissingDependencyError}     & Optional dependency (matplotlib, plotly, SMT, reportlab) absent\\
+\bottomrule
+\end{tabularx}
+\end{table}

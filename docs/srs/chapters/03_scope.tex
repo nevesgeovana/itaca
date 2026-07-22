@@ -1,0 +1,279 @@
+% =============================================================================
+% Chapter 3: Scope
+% =============================================================================
+
+\chapter{Scope}
+\label{ch:scope}
+
+\section{In Scope}
+
+\itc{} addresses the following problem domain:
+
+\begin{itemize}
+  \item \textbf{Multidimensional experimental data}: wind tunnel
+    campaigns with named physical dimensions (angle of attack, sideslip,
+    Mach number, Reynolds number, RPM, blade pitch, control-surface
+    deflections, horizontal tail incidence, repeat number, etc.) and
+    measured variables (forces, moments, pressures, temperatures).
+
+  \item \textbf{CFD post-processing data} (surface $C_p$ distributions, propeller disk loads in polar coordinates, slipstream characterization) extracted from CFD solvers and organized along named dimensions.
+
+  \item \textbf{Aerospace engineering computations}: performance analyses
+    (takeoff, climb, envelope), flight dynamics (static margin, trim with
+    uncertainty propagation, V-n diagram), and propulsion modeling
+    (BEMT). Results are generated as VarFrame objects so the same
+    data-management, plotting, comparison, and uncertainty machinery
+    applies seamlessly to computed and measured data.
+
+  \item \textbf{Multi-fidelity datasets}: combining wind tunnel and CFD
+    data sources, with explicit fidelity tagging via dimensions and
+    downstream surrogate-modeling support for cross-fidelity reconstruction.
+
+  \item \textbf{Uncertainty quantification}: automatic propagation of
+    measurement and modeling uncertainties through derived quantities via
+    symbolic differentiation of the RPN expression tree (chain rule on the
+    AST), following GUM JCGM~100:2008~\citep{gum2008}, including covariance
+    terms when correlations are declared. Monte Carlo propagation is
+    available specifically for models containing discrete branches (e.g.\
+    conditional logic) where the linearization assumption breaks down.
+
+  \item \textbf{Coordinate system handling}: canonical AIAA body axes by
+    default, plus user-defined custom axes with rotation matrices
+    (stability, wind, tunnel, propeller-disk), with rotation operations
+    that propagate uncertainty correctly.
+
+  \item \textbf{Provenance and History}: immutable records of where the
+    data came from and what was done to it, with content hashing, user
+    identification, and timestamps. Native export to PROV-N and PROV-JSON
+    for interoperability with W3C-compliant data catalogs.
+
+  \item \textbf{Reusable analysis workflows}: encapsulation of complete
+    processing pipelines (corrections, derivations, uncertainty
+    propagation) in named processors (\code{pproc}) and reusable equation
+    files (\code{.itceq}).
+
+  \item \textbf{Statistical analysis of repeated measurements}: collapse
+    of a repeat dimension into mean, standard deviation, and 95\,\%
+    confidence intervals.
+
+  \item \textbf{Dataset comparison}: structured pairwise and N-way
+    comparison of datasets with delta, percentage delta, and
+    sigma-normalized differences using named inputs.
+
+  \item \textbf{Publication-quality plotting}: AIAA-style figures
+    generated declaratively, with semantic axis / color / symbol mapping,
+    single-plot and multi-plot output, and origin-tag aware marker styling.
+
+  \item \textbf{Surrogate modeling}: interface with the SMT
+    library~\citep{smt} for Kriging and other surrogates, with VarFrame
+    input/output and exportable standalone surrogate models.
+
+  \item \textbf{Automated reporting}: LaTeX-backed PDF reports generated
+    from processor results, with diagnostic plots, tabulated summaries,
+    and warnings; the underlying \code{.tex} sources can be retained
+    optionally.
+
+  \item \textbf{Unit metadata and conversion}: optional unit annotations
+    on variables and dimensions, with a custom \itc{}-internal conversion
+    table; no external unit-library dependency.
+\end{itemize}
+
+\section{Out of Scope}
+
+\begin{nreqbox}{NREQ-01}{General-purpose data science}
+\itc{} is not a replacement for pandas, NumPy, or SciPy in general data
+science. It is scoped to structured, named-dimension scientific datasets in
+engineering contexts. Bridges to pandas (\code{to\_pandas}) and NumPy
+(\code{to\_numpy}) are provided for interoperability.
+\end{nreqbox}
+
+\begin{nreqbox}{NREQ-02}{CFD solver or flow visualization}
+\itc{} processes data extracted from CFD solvers. It does not interface with
+solver native formats (e.g.\ OpenFOAM, SU2, Fluent), perform mesh
+operations, or provide 3D flow visualization. It receives post-processed
+scalar fields organized in named arrays.
+\end{nreqbox}
+
+\begin{nreqbox}{NREQ-03}{General-purpose plotting library}
+The \itc{} plot system wraps matplotlib (default) and plotly (optional, for
+interactive figures) for domain-specific convenience. It does not replace
+either backend for general visualization tasks. Custom figures use the
+\code{fig.mpl} escape hatch on the underlying \code{matplotlib.Figure}.
+\end{nreqbox}
+
+\begin{nreqbox}{NREQ-04}{Database or cloud storage backend}
+\itc{} manages data as files on a local filesystem. It provides no database
+connectivity, cloud storage integration, or remote dataset management.
+The \code{.itc} binary format and CSV/JSON exports are the storage
+mechanisms.
+\end{nreqbox}
+
+\begin{nreqbox}{NREQ-05}{Machine learning training pipelines}
+The surrogate interface (\code{itc.surrogate}) is scoped to interpolation
+and approximation of engineering datasets (Kriging, RBF, polynomial, IDW).
+It is not a machine learning framework and does not support classification,
+neural networks, or GPU-accelerated training.
+\end{nreqbox}
+
+\begin{nreqbox}{NREQ-06}{Real-time or streaming data acquisition}
+\itc{} processes data from completed experiments stored in files. It does
+not interface with DAQ hardware, real-time measurement streams, or live
+sensor feeds.
+\end{nreqbox}
+
+\begin{nreqbox}{NREQ-07}{GUI or web application}
+\itc{} is a Python library. It has no graphical user interface or web
+dashboard. It is designed for use in Python scripts and Jupyter notebooks.
+A browser-rendered diagnostic viewer is on the post-v0.1 roadmap, but it is
+a read-only viewer, not an interactive application.
+\end{nreqbox}
+
+\begin{nreqbox}{NREQ-08}{Overloaded Python arithmetic on VarFrames}
+\itc{} does not support \code{db1 + db2}, \code{db1 - db2}, \code{db1 * db2},
+or \code{db1 / db2} via overloaded Python operators. All numerical
+combinations of VarFrames go through \code{db.combine(other, op=...)}, which
+records the operation in History and applies the declared correlation
+structure. This is a deliberate decision (P-13).
+\end{nreqbox}
+
+\begin{nreqbox}{NREQ-09}{External unit-conversion libraries}
+\itc{} does not depend on \code{pint}, \code{astropy.units}, or any other
+external unit library. Unit metadata is optional and conversion is handled
+by a custom internal table in \code{utils/units.py}.
+\end{nreqbox}
+
+\begin{nreqbox}{NREQ-10}{Solver execution and automation}
+\itc{} does not launch, script, or automate any solver, panel code, or
+simulation tool, and it embeds no solver-specific command emitters.
+Dedicated driver packages own that responsibility and remain outside
+\itc{}. Drivers may produce files or arrays that \code{itc.load} consumes,
+and they may adopt \itc{} as their post-processing layer. This boundary
+keeps \itc{} solver-agnostic and keeps every driver's version-compatibility
+problem out of the \itc{} core.
+\end{nreqbox}
+
+\section{Positioning Among Existing Tools}
+\label{sec:positioning}
+
+A public engineering library must state where it sits relative to the
+established scientific Python stack, both to justify its existence and to
+make deliberate non-reuse auditable. Table~\ref{tab:positioning} maps the
+nearest neighbors.
+
+\begin{table}[H]
+\centering
+\caption{Positioning of \itc{} relative to existing tools.}
+\label{tab:positioning}
+\small
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+\textbf{Tool} & \textbf{What it provides} & \textbf{Relation to \itc{}}\\
+\midrule
+xarray~\citep{xarray} &
+Named dimensions and coordinates over NumPy arrays; the closest structural
+relative of the VarFrame. &
+\itc{} adopts the named-dimension data model but not the dependency: the
+core stays NumPy-only (DD-02), and \itc{} adds mandatory provenance,
+operating modes, origin tags, and GUM covariance propagation, which xarray
+does not provide. Its alignment and broadcasting conventions inform the
+\code{concat} and \code{combine} rules.\\
+\addlinespace
+pandas~\citep{pandas} &
+Labeled tabular (2-D) data structures and IO. &
+Different shape of problem: VarFrame is N-dimensional and grid-oriented.
+A lazy bridge is provided in both directions (REQ-05, REQ-70).\\
+\addlinespace
+uncertainties~\citep{uncertaintiespkg} &
+First-order uncertainty propagation with correlations through per-value
+\code{ufloat} objects. &
+Same GUM basis, different mechanics: per-value object wrapping conflicts
+with the vectorized NumPy-only core and with the UncFrame mirror (DD-05).
+\itc{} propagates over whole arrays symbolically on the expression tree.\\
+\addlinespace
+pint~\citep{pint} &
+General unit parsing and conversion. &
+Rejected as a dependency (DD-13, NREQ-09): the hand-curated internal table
+keeps conversions auditable and avoids dtype interactions with NumPy and
+SMT.\\
+\addlinespace
+SMT~\citep{smt} &
+Surrogate modeling toolbox (Kriging, RBF, IDW). &
+Adopted as the optional surrogate backend behind \code{itc.surrogate}
+(REQ-63).\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The differentiator of \itc{} is the combination, not any single feature:
+mandatory provenance and history, operating modes with export guards,
+origin tags, GUM propagation with covariance, and domain processors for
+wind tunnel, CFD, and flight-test workflows. Several tools offer parts of
+this; none offers the combination. Where an existing convention is good,
+\itc{} mirrors it deliberately: named dimensions from xarray, docstring
+standards from NumPy.
+
+\section{Primary Use Cases}
+
+Table~\ref{tab:use-cases} summarizes the primary use cases that drive the
+requirements in this document. UC-01 through UC-06 cover experimental and
+CFD post-processing scenarios; UC-07 through UC-09 cover aerospace
+engineering computations and the multi-fidelity workflow.
+
+\begin{table}[H]
+\centering
+\caption{Primary use cases driving \itc{} requirements.}
+\label{tab:use-cases}
+\small
+\begin{tabularx}{\textwidth}{@{}llX@{}}
+\toprule
+\textbf{ID} & \textbf{Name} & \textbf{Description}\\
+\midrule
+UC-01 & Propeller WT campaign &
+Load N files from a propeller wind tunnel test, each corresponding to a fixed
+$(M, N, \beta)$ combination with $\alpha$ as the sweep variable. Derive
+$C_T$, $C_P$, $\eta$, $T_C$ with uncertainty propagation. Plot performance
+maps. Export.\\
+\addlinespace
+UC-02 & Flat-table pivot &
+Load a single CSV with all datapoints in acquisition order. Inspect column
+statistics. Pivot into a structured VarFrame. Apply the same workflow as
+UC-01.\\
+\addlinespace
+UC-03 & CFD disk post-processing &
+Load propeller disk data in polar coordinates $(r,\theta)$. Compute azimuthal
+averages and disk-integrated in-plane force. Visualize as polar colormap.
+Build a Kriging surrogate.\\
+\addlinespace
+UC-04 & WT balance campaign &
+Load power-off balance data with a custom \code{.itceq} file. Perform
+repeatability analysis over a \code{repeat} dimension. Compare two tunnel
+entries. Generate PDF report.\\
+\addlinespace
+UC-05 & $C_p$ distribution &
+Load surface $C_p$ data indexed by chord-wise position $x/c$, span station,
+$\alpha$, $M$. Plot $C_p$ distributions. Compare with wind tunnel pressure
+tap data.\\
+\addlinespace
+UC-06 & Data version comparison &
+Load two versions of the same dataset (e.g.\ before and after a tunnel
+correction update). Compute delta, delta-\%, and sigma-normalized
+differences. Export a comparison report.\\
+\addlinespace
+UC-07 & Aerospace performance &
+Compute takeoff distance, climb gradient, or operational envelope from
+aerodynamic and propulsion VarFrame inputs. Output is a VarFrame where every
+timestep or flight condition is a datapoint with full computation memory.\\
+\addlinespace
+UC-08 & EUB: trim deflection band &
+Assign wind tunnel balance uncertainties to aerodynamic coefficients,
+including correlations from a common calibration, propagate through static
+stability analysis, and obtain the Engineering Uncertainty Band on
+horizontal tail deflection required for trim.\\
+\addlinespace
+UC-09 & Multi-fidelity dataset &
+Combine WT and CFD data tagged by a fidelity dimension. Optionally fit a
+multi-fidelity surrogate to obtain a unified, denser dataset for downstream
+performance and stability analyses.\\
+\bottomrule
+\end{tabularx}
+\end{table}

@@ -1,0 +1,171 @@
+% =============================================================================
+% Chapter 1: Introduction
+% =============================================================================
+
+\chapter{Introduction}
+\label{ch:introduction}
+
+\section{Purpose of this Document}
+
+This Software Requirements Specification (SRS) defines the requirements,
+scope, architecture, and contribution standards for \itc{}
+(\code{import itaca as itc})~\citep{python}, a Python library for rigorous
+engineering data management, analysis, and computation, with a primary focus
+on aerospace applications.
+
+The document is the authoritative reference for:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item what \itc{} must do (functional requirements);
+  \item what \itc{} must not do or be (non-requirements and out-of-scope items);
+  \item how \itc{} must behave (non-functional requirements);
+  \item how the codebase is structured (architecture and class hierarchy);
+  \item how contributors must work (coding standards, testing, versioning).
+\end{itemize}
+
+\begin{noteinfo}
+This SRS is a living document. As use cases consolidate, requirements are
+added, refined, or deprecated. Every change increments the document version
+and is recorded in the revision history table. Deprecated requirements are
+never deleted: they are kept in place and tagged \deprecated{}.
+\end{noteinfo}
+
+\begin{noteinfo}[Canonical baseline]
+This version is the first tracked in the research workspace and supersedes
+the founding project instructions of May 2026. Where the founding material
+and this document diverge, this document prevails. Canonical terms fixed
+here: the equation file extension is \code{.itceq}; the string derivation
+method is \code{db.compute}; \code{Processor} is a typing protocol;
+correlated uncertainty ships in the first release; the figure wrapper is
+\code{ItcFigure}. The founding material is preserved unchanged as a
+historical record in the project archive.
+\end{noteinfo}
+
+\begin{noteinfo}[On implementation tooling]
+\itc{} is being implemented with assistance from large language model tooling,
+notably Claude Code. Every implementation derived from these requirements goes
+through human double-check by the project author before being accepted. The
+SRS describes the desired behavior; the code is verified against the SRS, and
+the SRS is corrected only when a requirement itself is found to be wrong or
+ambiguous.
+\end{noteinfo}
+
+\section{Context and Motivation}
+
+Experimental and numerical aerospace data (wind tunnel campaigns, propeller performance tests, computational fluid dynamics post-processing, in-flight testing, and conceptual aircraft analyses) share a recurring set of
+challenges that no existing general-purpose tool addresses in a unified,
+rigorous way:
+
+\begin{itemize}
+  \item \textbf{Data is naturally multidimensional.} Results depend on angle
+    of attack, sideslip angle, Mach number, Reynolds number, RPM, blade
+    pitch, control surface deflections, radial position, azimuthal angle,
+    and chord-wise position simultaneously.
+
+  \item \textbf{Campaigns are incomplete by nature.} Not all combinations of
+    dimensions are tested or simulated; missing data must be handled
+    explicitly, not silently.
+
+  \item \textbf{Results feed engineering decisions.} The pipeline from raw
+    measurements to published coefficients to certification-relevant numbers
+    must be fully traceable and reproducible. Traceability is not a feature;
+    it is a prerequisite.
+
+  \item \textbf{Uncertainty quantification is mandatory} for serious
+    experimental work, not optional. It must propagate automatically through
+    every derived quantity following the principles of the
+    GUM~\citep{gum2008}, including covariance terms when input variables are
+    correlated.
+
+  \item \textbf{Workflows repeat across campaigns} with minor variations.
+    Load, correct, derive coefficients, smooth, plot, export: the same
+    skeleton is rewritten ad hoc by every team. It must instead be
+    encapsulated and reusable through versioned equation files and named
+    processors.
+
+  \item \textbf{Engineering computations and experimental data must share a
+    common substrate.} Performance analyses, stability and control sizing,
+    and Blade Element Momentum Theory results must be generated in the same
+    data structure used by experimental measurements, so that the same
+    plotting, comparison, surrogate-modeling, and uncertainty machinery
+    applies seamlessly to both.
+\end{itemize}
+
+\itc{} was conceived to address all of these challenges in a single, coherent
+framework, designed from first principles around the needs of aerospace
+experimental and numerical data analysis. While its design center is
+aerospace, the core data structures and operations are general enough to
+support other engineering and scientific domains where multidimensional
+datasets, traceability, and uncertainty quantification are fundamental.
+
+\section{Document Conventions}
+
+\subsection{Requirement Identifiers}
+
+Functional and non-functional requirements are identified as \reqid{REQ-XX},
+with \code{XX} a zero-padded two-digit number. Non-requirements (explicit
+out-of-scope statements) are identified as \nreqid{NREQ-XX}. Use cases are
+\code{UC-XX} and design decisions are \ddid{DD-XX}. Identifiers are stable: a
+requirement deprecated in a later version keeps its number forever.
+
+Requirements and decisions are color-coded:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item \textcolor{itacaTangerine}{\textbf{Tangerine}}: functional or
+        non-functional requirement (what the system shall do).
+  \item \textcolor{itacaDeepRed}{\textbf{Deep red}}: non-requirement (what
+        the system shall not do or be).
+  \item \textcolor{itacaOrange}{\textbf{Orange}}: design decision (how a
+        requirement is satisfied).
+\end{itemize}
+
+\subsection{Status Tags}
+
+Each requirement carries one of the following status tags:
+
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Tag} & \textbf{Meaning}\\
+\midrule
+\stable      & Requirement is frozen; changes require formal review.\\
+\draft       & Requirement is still being refined.\\
+\implemented & Corresponding code exists, tested, and released.\\
+\pending     & Not yet implemented.\\
+\deprecated  & Superseded but kept for traceability.\\
+\bottomrule
+\end{tabularx}
+
+\section{Definitions, Acronyms, and Abbreviations}
+
+See the Acronyms and Glossary sections at the front of this document.
+
+\section{References and Standards}
+
+This document is informed by the following standards and references:
+
+\begin{itemize}
+  \item BIPM GUM (JCGM~100:2008)~\citep{gum2008}: normative reference for
+    uncertainty propagation in \itc{}.
+  \item BIPM GUM Supplement~1 (JCGM~101:2008)~\citep{gum2008s1}: Monte
+    Carlo method, used in \itc{} for discrete-branch model handling.
+  \item AIAA S-071A-1999 \emph{Assessment of Wind Tunnel Data
+    Uncertainty}~\citep{aiaaS071A}: domain-specific application of the GUM
+    for wind tunnel work.
+  \item AIAA R-004A-1992 \emph{Recommended Practice for Atmospheric and Space
+    Flight Vehicle Coordinate Systems}~\citep{aiaaR004A}: normative
+    reference for axes and sign conventions.
+  \item SAE AIR~4065 \emph{Propeller/Propfan In-Flight Thrust
+    Determination}~\citep{saeAIR4065}: reference for the
+    \code{FT\_thrust} processor.
+  \item Barlow, Rae \& Pope, \emph{Low-Speed Wind Tunnel Testing},
+    3rd~ed.~\citep{barlowRaePope}: reference for wind tunnel correction
+    processors.
+  \item Adkins \& Liebeck, \emph{Design of Optimum
+    Propellers}~\citep{adkinsLiebeck}: reference for the
+    \code{itc.aerospace.propeller} BEMT implementation.
+  \item Python PEP~8 \emph{Style Guide for Python Code}~\citep{pep8}.
+  \item NumPy~\citep{numpy}: the only mandatory scientific dependency in
+    the \itc{} core.
+  \item SMT: Surrogate Modelling Toolbox~\citep{smt}: backend for
+    \code{itc.surrogate}.
+  \item W3C PROV-DM \emph{Provenance Data Model}~\citep{provdm}: conceptual reference for the Provenance / History split, with native
+    PROV-N and PROV-JSON export support in \itc{}.
+\end{itemize}

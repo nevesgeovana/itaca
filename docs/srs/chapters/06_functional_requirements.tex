@@ -1,0 +1,1004 @@
+% =============================================================================
+% Chapter 6: Functional Requirements
+% =============================================================================
+
+\chapter{Functional Requirements}
+\label{ch:functional}
+
+This chapter consolidates the functional requirements of \itc{}, organized
+by topic. Numbering is stable: a deprecated requirement keeps its
+\reqid{REQ-XX} identifier forever and is tagged \deprecated{}.
+
+\section{Data Loading: \code{itc.load()}}
+
+\begin{reqbox}{REQ-01}{\stable}
+\textbf{Unified loading entry point.}\\
+\code{itc.load(source, dims=None, version=None, mode="production",
+user=None, comment=None)} is the single entry point for loading data into
+\itc{}. The \code{source} argument accepts:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item a folder path (loads all compatible files);
+  \item a single file path (loads as a one-source dataset);
+  \item a dictionary mapping coordinate tuples to file paths (most
+    traceable, recommended for production);
+  \item a NumPy array plus a list of variable names;
+  \item a pandas DataFrame.
+\end{itemize}
+When \code{dims} is omitted or set to \code{None}, the result is in
+\emph{datapoint mode}: a single synthetic dimension named
+\code{datapoint} indexes rows in acquisition order and every column
+becomes a variable. A later call to \code{db.pivot(dims=[...])}
+reorganizes the data into a structured VarFrame.
+\end{reqbox}
+
+\begin{reqbox}{REQ-02}{\stable}
+\textbf{Folder load with filename pattern.}\\
+\code{itc.load(folder, pattern=...)} accepts an optional \code{pattern}
+argument that filters files by filename, supporting both Unix-style glob
+strings (\code{"run\_*.csv"}) and Python regular expressions
+(\code{r"run\_m\textbackslash d+\_r\textbackslash d+\_b\textbackslash d+\textbackslash.csv"}).
+\end{reqbox}
+
+\begin{reqbox}{REQ-03}{\stable}
+\textbf{Explicit dictionary loading.}\\
+\code{itc.load(\{coord\_tuple: path, ...\}, dims=[...])} accepts a
+dictionary mapping coordinate tuples to file paths. Coordinate tuples
+correspond positionally to \code{dims}. Tuple-length mismatch with
+\code{dims} raises \code{LoadCoordinateError}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-04}{\stable}
+\textbf{NumPy array loading.}\\
+\code{itc.load(arr, names=[...])} accepts a 2-D NumPy array plus a list
+of column names with the same length as the second axis of \code{arr}.
+The result is a VarFrame in datapoint mode, ready for \code{db.pivot}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-05}{\stable}
+\textbf{Pandas DataFrame loading.}\\
+\code{itc.load(df)} accepts a pandas DataFrame and returns a VarFrame in
+datapoint mode using the column names as variable names. The dependency
+on pandas is lazy.
+\end{reqbox}
+
+\begin{reqbox}{REQ-06}{\stable}
+\textbf{Missing combinations filled with NaN.}\\
+Combinations of dimension coordinates not covered by any input file are
+filled with \code{np.nan}. \itc{} does not raise an error for sparse test
+matrices; the unfilled positions are reported by \code{db.diagnostics()}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-07}{\stable}
+\textbf{Provenance and history at load time.}\\
+At load time \itc{} records: source file paths; SHA-256 of their
+concatenated content; ISO 8601 timestamp; user identity
+(\code{getpass.getuser()+"@"+socket.gethostname()}, overridable via
+\code{itc.set\_user(...)} or \code{user=}); operating mode; \itc{}
+version; and an optional version tag. The load operation is the first
+entry in the History (index 1).
+\end{reqbox}
+
+\section{Operating Modes}
+
+\begin{reqbox}{REQ-08}{\stable}
+\textbf{Two operating modes.}\\
+\itc{} supports two operating modes, declared at load time via
+\code{mode="production"} (default) or \code{mode="draft"}, or globally via
+\code{itc.set\_mode(...)}. The mode is stored in Provenance and is
+visible in \code{print(db)}, \code{db.summary()}, and \code{db.history()}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-09}{\stable}
+\textbf{Production mode: mandatory history.}\\
+In production mode, every operation records itself in History
+automatically. No additional argument is required to enable recording.
+This is the only acceptable mode for analyses producing official results.
+\end{reqbox}
+
+\begin{reqbox}{REQ-10}{\stable}
+\textbf{Draft mode: opt-in history.}\\
+In draft mode, history entries are recorded only when the user explicitly
+passes \code{history=True} to an operation. VarFrame objects created in
+draft mode carry \code{mode="draft"} in their Provenance and are clearly
+identified by \code{print(db)}. Draft mode is intended exclusively for
+initial data exploration.
+\end{reqbox}
+
+\begin{reqbox}{REQ-11}{\stable}
+\textbf{Draft mode: save guard.}\\
+Calling \code{db.save(...)} or any export method on a VarFrame in draft
+mode raises \code{DraftModeExportError} by default. The guard is
+overridable by passing \code{allow\_draft=True}, which forces a deliberate
+second decision and embeds a prominent warning in the output file
+metadata.
+\end{reqbox}
+
+\begin{reqbox}{REQ-12}{\stable}
+\textbf{Strict mode mixing in binary operations.}\\
+When an operation combines two VarFrame objects (\code{db.combine},
+\code{pproc.compare}, etc.), both inputs must share the same operating
+mode. Mixed-mode combinations raise \code{OperatingModeMixError}; the user
+must call \code{db.promote(mode="production")} or
+\code{db.demote(mode="draft")} explicitly before the operation. There is
+no implicit promotion or demotion.
+\end{reqbox}
+
+\begin{noteinfo}[Draft mode is for understanding data, not for results]
+Any analysis whose numbers feed a report, a publication, or an engineering
+decision must run in production mode.
+\end{noteinfo}
+
+\section{Inspection and Diagnostics}
+
+\begin{reqbox}{REQ-13}{\stable}
+\textbf{Inspect a datapoint-mode VarFrame.}\\
+\code{db.inspect(threshold=20)} analyzes each variable in a datapoint-mode
+VarFrame and reports: unique value count, dimension-vs-variable candidacy,
+coverage estimate, and ambiguous variables. Output is printed to the
+terminal. \code{db.inspect()} is a no-op when the VarFrame is already
+structured (multiple dimensions present).
+\end{reqbox}
+
+\begin{reqbox}{REQ-14}{\stable}
+\textbf{Pivot to a structured VarFrame.}\\
+\code{db.pivot(dims=[...], auto\_detect=False)} reorganizes a datapoint-mode
+VarFrame into a structured one. With \code{auto\_detect=True}, additional
+dimension candidates are detected automatically by inspecting unique-value
+counts. Calling \code{db.pivot()} without \code{dims} on an already-structured
+VarFrame raises \code{PivotError}.
+
+When two or more datapoints share identical coordinates on every requested
+dimension, \code{db.pivot} raises \code{PivotDuplicateError}, listing the
+colliding coordinates and suggesting either adding a \code{repeat}
+dimension or deduplicating upstream. Real acquisition tables contain
+untagged repeats as the norm; silently keeping the first or the last row
+would destroy evidence.
+\end{reqbox}
+
+\begin{reqbox}{REQ-15}{\stable}
+\textbf{Manifest export.}\\
+\code{db.manifest(path)} exports a tabular file (CSV or JSON) mapping each
+source file to its dimension coordinate values. When a dimension is swept
+\emph{within} a single source file (i.e.\ multiple values of that dimension
+appear in one file), the manifest records the symbol \code{*} in that
+column for that file, indicating ``swept here, see file''. The manifest is
+the audit checkpoint between data loading and any further manipulation.
+\end{reqbox}
+
+\begin{reqbox}{REQ-16}{\stable}
+\textbf{Summary: short and practical.}\\
+\code{db.summary()} returns a concise object that prints to the terminal a
+one-screen summary: dimensions and their cardinalities; variable list;
+min/max/mean per variable (where finite); RAM footprint of the data and
+metadata; operating mode; current history index. Returns a \code{Summary}
+object with matching attributes. Designed to be the first thing the user
+calls after \code{itc.load(...)}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-17}{\stable}
+\textbf{Diagnostics: print and return.}\\
+\code{db.diagnostics(log=None)} prints a structured report to the terminal
+and returns a \code{DiagnosticsReport} object with attributes
+\code{.missing}, \code{.non\_finite}, \code{.summary}, \code{.partial\_vars},
+\code{.coverage}, \code{.n\_missing}, \code{.warnings}, \code{.to\_csv()},
+\code{.to\_json()}. The optional \code{log=path} argument writes the
+printed output to a \code{.log} file in addition to the terminal.
+\end{reqbox}
+
+\section{Core Operations}
+
+\begin{reqbox}{REQ-18}{\stable}
+\textbf{Immutable operations.}\\
+All operations on a VarFrame return a new VarFrame. No operation modifies
+the original in place. Every returned VarFrame carries the Provenance of
+the original, an updated History that includes the operation and its
+arguments, and an updated state hash.
+\end{reqbox}
+
+\begin{reqbox}{REQ-102}{\stable}
+\textbf{Array-level immutability.}\\
+Structural immutability (DD-03) extends to the arrays themselves: every
+NumPy array stored in a VarFrame, UncFrame, or HistoryFrame is set
+read-only (\code{writeable=False}) at construction, and \code{to\_numpy}
+returns read-only views by default (\code{copy=True} for a writable
+copy). A frozen dataclass alone does not prevent
+\code{db.vars["CT"].values[0] = 99}; the read-only flag does. Tests must
+verify that in-place mutation attempts raise.
+\end{reqbox}
+
+\begin{reqbox}{REQ-103}{\stable}
+\textbf{State-hash scope and reproducibility contract.}\\
+The \code{state\_hash} covers dimension names and coordinates, variable
+names and values, the ordered operation sequence with normalized arguments
+and comments, and the uncertainty, correlation, and origin-tag arrays when
+present. It excludes timestamps, user identity, source paths, and the
+\itc{} version (Section~\ref{sec:state-hash}). Loading the same bytes and
+applying the same operations on the same platform and NumPy version yields
+identical hashes; this is a tested invariant. Cross-platform comparison
+uses \code{pproc.compare} with tolerances, never hash equality.
+\end{reqbox}
+
+\begin{reqbox}{REQ-19}{\stable}
+\textbf{Optional history comment on every operation.}\\
+Every operation accepts an optional keyword argument \code{comment=str}
+which is stored alongside the History entry, allowing the user to attach
+context (e.g.\ \code{"removed bad point at alpha=8.0 from drift in run 42"}).
+The comment is preserved in \code{db.history()}, in pipeline exports, and
+in \code{.itc} archives.
+\end{reqbox}
+
+\begin{reqbox}{REQ-20}{\stable}
+\textbf{Selection with operators and frame target.}\\
+\code{db.select(filters, Frame="VarFrame")} restricts a VarFrame to the
+subset of coordinates matching the given filters. Filter keys are
+\code{dim\_op} strings of the form dimension name suffixed by an optional
+operator (\code{=} default, \code{>}, \code{>=}, \code{<}, \code{<=},
+\code{!=}). Values are scalars or lists.
+
+The optional \code{Frame=} keyword targets the comparison source:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item \code{Frame="VarFrame"} (default): filter against the variable
+    values themselves;
+  \item \code{Frame="HistoryFrame"}: filter against the origin tags,
+    e.g.\ \code{db.select(\{"CT": 0\}, Frame="HistoryFrame")} retains only
+    points where \code{CT} is original;
+  \item \code{Frame="UncFrame"}: filter against the standard uncertainty
+    of a variable, e.g.\ \code{db.select(\{"CT<": 0.005\}, Frame="UncFrame")}.
+\end{itemize}
+
+Dimension-keyed filters subset coordinates and reduce the grid.
+Variable-keyed filters, including every \code{Frame="UncFrame"} and
+\code{Frame="HistoryFrame"} filter, act on the interior of the grid, where
+the matching cells do not in general form a Cartesian sub-grid. They
+therefore mask: the result keeps the full dimensions, non-matching cells
+are set to \code{np.nan}, and origin tags are preserved. Coordinates whose
+entire slice is masked out are dropped. The History entry records the
+filter and the number of masked cells.
+\end{reqbox}
+
+\begin{reqbox}{REQ-21}{\stable}
+\textbf{At a single coordinate.}\\
+\code{db.at(dim=value)} returns a slice at the specified coordinate. The
+specified dimension is removed from the result. Equivalent to
+\code{db.select(\{dim: [value]\}).squeeze()}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-22}{\stable}
+\textbf{Squeeze unit-cardinality dimensions.}\\
+\code{db.squeeze(along=None)} removes dimensions whose cardinality is one.
+If \code{along} is specified, only the named dimension is squeezed (raises
+if its cardinality is not 1). If all dimensions become unit-cardinality,
+the result has a single \code{datapoint} dimension with one entry, holding
+the scalar values.
+\end{reqbox}
+
+\begin{reqbox}{REQ-23}{\stable}
+\textbf{Expand: add a new dimension.}\\
+\code{db.expand(dim\_name, values, axis=None)} adds a new dimension to a
+VarFrame, broadcasting the existing arrays across the new axis. The new
+axis position defaults to the last position. Memory cost is documented in
+the operation's docstring.
+\end{reqbox}
+
+\begin{reqbox}{REQ-24}{\stable}
+\textbf{Concatenate VarFrames along a shared dimension.}\\
+\code{itc.concat(list, along=dim)} concatenates a list of VarFrame objects
+along the given dimension. All inputs must share all other dimensions
+identically (same coordinates, same units); the values along \code{along}
+must be unique across inputs (no overlap, raises
+\code{ConcatOverlapError}). Cardinalities along \code{along} may differ
+across inputs.
+\end{reqbox}
+
+\begin{reqbox}{REQ-25}{\stable}
+\textbf{Interpolate: densify or translate axis.}\\
+\code{db.interpolate(\{dim: new\_coords\}, method="linear", deg=None,
+override=False)} interpolates all variables onto a new grid along the
+specified dimension(s). Methods: \code{"linear"}, \code{"cubic"},
+\code{"nearest"}, \code{"polyfit"} (with \code{deg=}).
+
+By default, when a value in \code{new\_coords} already exists in the
+original dimension, the existing value is preserved (the operation skips
+recomputation at that coordinate). Pass \code{override=True} to force
+recomputation at all target coordinates.
+
+The HistoryFrame is updated: \code{+1} for points within the convex hull of
+the original axis, \code{-1} outside.
+
+Axis translation (replacing a dimension with a variable as the sweep axis) is a special form:
+\begin{lstlisting}
+db_cl = db.interpolate(
+    axisTranslation={"from": "alpha", "to": "CL"},
+    method="linear",
+)
+\end{lstlisting}
+The target variable must be monotonic along the source dimension;
+otherwise \code{AxisTranslationError} is raised before any computation.
+Numerical operations on string-valued dimensions raise
+\code{NonNumericDimensionError}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-26}{\stable}
+\textbf{Fill missing values.}\\
+\code{db.fill(along=dim, method="linear", deg=None, window=None,
+global\_fit=False)} fills \code{np.nan} entries along the specified
+dimension. Methods:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item \code{"linear"}: linear interpolation between neighbors;
+  \item \code{"nearest"}: nearest-neighbor copy;
+  \item \code{"polyfit"}: polynomial fit of degree \code{deg} on a
+    moving window of \code{window} points (default behavior, mirroring
+    \code{diff}); when \code{global\_fit=True}, a single polynomial of
+    degree \code{deg} is fit to the full dimension instead.
+\end{itemize}
+Filled values are tagged \code{+1} in the HistoryFrame.
+\end{reqbox}
+
+\begin{reqbox}{REQ-27}{\stable}
+\textbf{Average along a dimension.}\\
+\code{db.average(along=dim)} collapses one or more dimensions by arithmetic
+mean of non-NaN values. Multiple dimensions may be specified as a list.
+Reduces VarFrame order. HistoryFrame tags follow the worst-case rule.
+\end{reqbox}
+
+\begin{reqbox}{REQ-28}{\stable}
+\textbf{Numerical integration.}\\
+\code{db.integrate(var, over=[dims], coords=None)} integrates one or more
+dimensions numerically. \code{coords="polar"} applies the polar area
+element $r\,\mathrm{d}r\,\mathrm{d}\theta$. The result is a VarFrame of
+reduced order containing the integrated quantity.
+
+Missing values: by default any \code{np.nan} inside the integration domain
+makes the integrated result \code{np.nan} (\code{skipna=False}). This is
+the fail-loud default, because a partial quadrature is silently biased.
+Passing \code{skipna=True} integrates over populated cells only, records
+the choice and the populated fraction in History, and tags the result
+\code{+1}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-29}{\stable}
+\textbf{Smoothing.}\\
+\code{db.smooth(along=dim, method=..., **kwargs)} smooths all variables
+along the specified dimension. Methods: \code{"savgol"} (Savitzky-Golay;
+requires \code{window}, \code{polyorder}), \code{"spline"} (requires
+\code{smoothing}), \code{"moving\_avg"} (requires \code{window}). Smoothed
+values are tagged \code{+1} in the HistoryFrame.
+\end{reqbox}
+
+\begin{reqbox}{REQ-30}{\stable}
+\textbf{Numerical differentiation.}\\
+\code{db.diff(along=dim, window=5, deg=2, nan\_edges=False)} computes the
+numerical derivative of all variables along the specified dimension using
+a moving polynomial fit:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item a window of \code{window} points centered on each point is fitted
+    with a polynomial of degree \code{deg};
+  \item the constraint \code{window > deg} is enforced before any
+    computation; violation raises \code{DiffWindowError};
+  \item the analytical derivative of the fitted polynomial is evaluated at
+    the central point;
+  \item at boundaries where a centered window is unavailable, the window
+    is asymmetric (fewer points on one side), preserving output shape;
+  \item if \code{nan\_edges=True}, asymmetric-window points are set to
+    \code{np.nan}.
+\end{itemize}
+Result is stored in \code{db.d[dim]} as a VarFrame whose variables follow
+the naming convention \code{dVAR\_dalpha}, \code{dVAR\_dmach}, etc.
+\end{reqbox}
+
+\begin{reqbox}{REQ-31}{\stable}
+\textbf{Polynomial fit model.}\\
+\code{db.fitmodel(along=dim, deg=N, comment=None)} fits a polynomial of
+degree $N$ to every variable along the specified dimension and replaces
+that dimension with $N+1$ coordinate entries representing the polynomial
+coefficients. The new dimension keeps the original name suffixed by
+\code{\_coef} as a name and uses coordinate labels of the form
+\code{alpha\^{}0}, \code{alpha\^{}1}, $\dots$, \code{alpha\^{}N}, mirroring
+the variable's exponent in the polynomial fit.
+\end{reqbox}
+
+\begin{reqbox}{REQ-32}{\stable}
+\textbf{Polynomial fit evaluation.}\\
+\code{db.fitvalue(coef\_dims=[...], at=\{dim: array\})} evaluates a
+VarFrame produced by \code{fitmodel} at user-specified coordinates,
+returning a new VarFrame where the coefficient dimensions are replaced by
+the evaluation dimensions. Useful for densifying a fit beyond the original
+sweep range. Values within the original fit range are tagged \code{+1} in
+the HistoryFrame; beyond the range, \code{-1}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-33}{\stable}
+\textbf{Compute: string equation derivation.}\\
+\code{db.compute("VAR = expression", debug=False, where=None, fill=np.nan,
+method="symbolic", comment=None)} derives a new variable from a string
+equation, parsed as RPN, evaluated vectorially over the entire VarFrame,
+and stored as a new variable.
+
+When at least one variable in the right-hand side has an assigned
+uncertainty, the propagation rule of Equation~\eqref{eq:lpu} is applied
+automatically using partial derivatives obtained symbolically via chain
+rule on the RPN expression tree. Correlation terms are included when a
+correlation matrix has been declared via \code{db.set\_correlation(...)}.
+
+The default \code{method="symbolic"} uses the GUM LPU described above.
+Passing \code{method="mcm"} switches to Monte Carlo propagation
+(Section~\ref{sec:uq}); this is the recommended choice for expressions
+containing discrete branches.
+\end{reqbox}
+
+\begin{reqbox}{REQ-34}{\stable}
+\textbf{Compute: debug mode.}\\
+\code{db.compute("VAR = expr", debug=True)} prints a structured debug
+report before applying the equation: parsed RPN token list, identified
+variables and constants, sample numerical evaluation at one representative
+point with all intermediate values, and (when an UncFrame is present) the
+partial derivatives, the correlation contributions, and the resulting
+uncertainty at that point. Designed to help validate equations before
+committing to production runs.
+\end{reqbox}
+
+\begin{reqbox}{REQ-35}{\stable}
+\textbf{Compute: conditional filter.}\\
+\code{db.compute("VAR = expr", where="condition", fill=value)} evaluates
+the equation only at points where \code{condition} is satisfied. Behavior
+at points where the condition is false:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item \code{fill=np.nan} (default): those points become NaN;
+  \item \code{fill=<scalar>}: those points get the provided scalar;
+  \item \code{fill=None}: if \code{VAR} already exists in the
+    VarFrame, those points retain their existing value; if \code{VAR}
+    does not exist, those points become NaN.
+\end{itemize}
+The condition string supports comparisons (\code{>}, \code{<}, \code{>=},
+\code{<=}, \code{==}, \code{!=}) and logical operators (\code{and},
+\code{or}, \code{not}) referencing any variable present in the VarFrame.
+Uncertainty is propagated only for filtered-in points.
+\end{reqbox}
+
+\begin{reqbox}{REQ-36}{\stable}
+\textbf{Compute: NumPy guard.}\\
+When \code{compute} is invoked with no variables carrying uncertainty in
+the expression, every NumPy function is allowed (\code{np.round},
+\code{np.clip}, \code{np.where}, etc.).
+
+When at least one variable in the expression has assigned uncertainty:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item differentiable NumPy functions (\code{np.sin}, \code{np.cos},
+    \code{np.sqrt}, \code{np.log}, \code{np.exp}) are silently normalized
+    to their RPN equivalents and propagated correctly;
+  \item non-differentiable NumPy functions (\code{np.round}, \code{np.clip},
+    \code{np.where}) raise \code{UncertaintyCompatibilityError} with the
+    suggestion to either compute the derived variable before assigning
+    uncertainty, or to switch to \code{method="mcm"}.
+\end{itemize}
+The guard is per-variable: if a \code{compute} expression references only
+variables without assigned uncertainty, no guard is applied even when
+other variables in the same VarFrame carry uncertainty.
+\end{reqbox}
+
+\begin{reqbox}{REQ-37}{\stable}
+\textbf{Combine VarFrames explicitly.}\\
+\code{db.combine(other, op, comment=None)} returns a new VarFrame whose
+variables are the elementwise combination of the inputs under the named
+operation. Supported \code{op} values: \code{"sum"}, \code{"diff"},
+\code{"product"}, \code{"ratio"}, \code{"mean"}, \code{"weighted\_mean"}
+(requires \code{weights=}). Both inputs must share dimensions and
+coordinates. Uncertainty is propagated under the declared correlation
+structure of each input plus an optional cross-input correlation passed
+via \code{cross\_correlation=}. The operation appears in History as
+\code{combine(op="...", with=db\_other.id)}. Python operators
+(\code{+}, \code{-}, \code{*}, \code{/}) on VarFrames are intentionally
+\emph{not} supported (NREQ-08).
+\end{reqbox}
+
+\begin{reqbox}{REQ-38}{\stable}
+\textbf{Rotate to a registered axis.}\\
+\code{db.rotate(target\_axis, vector\_groups=None, comment=None)} returns
+a new VarFrame with detected vector quantities expressed in the target
+axis frame. Vector groups are identified by a default naming convention
+(\code{(FX, FY, FZ)}, \code{(MX, MY, MZ)}) or declared explicitly via
+\code{db.declare\_vector(name, components=[...])}. The rotation matrix
+is applied to each detected group; uncertainty is propagated using the
+rotation matrix as Jacobian, including covariance if a correlation matrix
+is present. Condition-dependent frames
+(Section~\ref{sec:condition-frames}) are evaluated per grid point.
+Unknown target axes raise \code{AxisNotFoundError};
+unresolvable vector groups raise \code{VectorGroupError}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-100}{\stable}
+\textbf{Moment reference-point transfer.}\\
+\code{db.translate\_moments(to\_point, from\_point=None, frame=None,
+comment=None)} transfers every declared moment vector group between
+reference points via
+$\mathbf{M}' = \mathbf{M} + \mathbf{r} \times \mathbf{F}$
+(Section~\ref{sec:moment-transfer}). The offset $\mathbf{r}$ is expressed
+in the stated frame (default: the current frame). The transfer requires a
+resolvable force vector group; otherwise \code{VectorGroupError} is
+raised. The Jacobian is exact; covariance between force and moment
+channels is included when declared. History records source point, target
+point, and frame.
+\end{reqbox}
+
+\begin{reqbox}{REQ-101}{\draft}
+\textbf{Condition-dependent axes.}\\
+An \code{Axis} may be defined either by a constant 3$\times$3 rotation
+matrix or parametrically via \code{angles\_from=("alpha", "beta")} with a
+named angle convention. Parametric frames are evaluated per grid point
+from the referenced dimensions or variables. The built-in \code{"wind"}
+and \code{"stability"} frames follow AIAA R-004A-1992~\citep{aiaaR004A}.
+When a referenced angle carries uncertainty, its chain-rule sensitivity
+$\partial R / \partial \alpha$ enters the propagation. Exactly one of
+\code{rotation\_matrix} and \code{angles\_from} must be provided;
+providing both or neither raises \code{RotationMatrixError}.
+\end{reqbox}
+
+\section{Uncertainty Quantification}
+\label{sec:uq}
+
+\begin{reqbox}{REQ-39}{\stable}
+\textbf{Assign uncertainties.}\\
+\code{db.set\_uncertainty(\{var: value, ...\})} assigns standard
+uncertainties (GUM clause~2.3.1) to measured variables. Values may be
+absolute (float) or relative (string ending in \code{"\%"}). This call
+creates the UncFrame on first use and updates it on subsequent calls.
+Uncertainty is per-variable; keys not matching any variable raise
+\code{UncertaintyKeyError}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-99}{\draft}
+\textbf{Two uncertainty components.}\\
+\code{db.set\_uncertainty(\{...\}, component="systematic")} (default) and
+\code{component="random"} assign the two UncFrame components of
+Section~\ref{sec:two-components}. The systematic component is treated as
+fully correlated across the points of a variable; the random component as
+independent between points. Reductions apply their weights to both
+components, which yields the $1/\sqrt{N}$ gain for the random component
+only. \code{pproc.statistics} additionally estimates a random component
+from the scatter over the collapsed dimension and reports it separately
+from the propagated systematic component, following AIAA
+S-071A-1999~\citep{aiaaS071A}. Every report and export states components
+separately and combined ($u = (u_{\mathrm{sys}}^2 +
+u_{\mathrm{rand}}^2)^{1/2}$).
+\end{reqbox}
+
+\begin{reqbox}{REQ-40}{\stable}
+\textbf{Declare correlations.}\\
+\code{db.set\_correlation(\{(var\_a, var\_b): r\_ab, ...\})} declares
+correlation coefficients between pairs of variables. Default is full
+independence ($r=0$ for all pairs). The correlation matrix is stored
+alongside the UncFrame and is consulted by every uncertainty
+propagation operation. Symmetry and the constraint $|r| \le 1$ are
+validated; violations raise \code{CorrelationMatrixError}. Variables
+referenced but not present in the VarFrame raise
+\code{CorrelationKeyError}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-41}{\stable}
+\textbf{Symbolic propagation via RPN chain rule.}\\
+The default propagation engine implements Equation~\eqref{eq:lpu}
+(GUM clause~5, Law of Propagation of Uncertainty) using partial
+derivatives computed symbolically via chain rule on the RPN expression
+tree. The engine handles arbitrary continuous nonlinearities; the
+linearization assumption is the GUM standard one and is documented in the
+debug output (REQ-34).
+\end{reqbox}
+
+\begin{reqbox}{REQ-42}{\stable}
+\textbf{Monte Carlo propagation for discrete-branch models.}\\
+When an expression contains a discrete branch (conditional logic that
+selects different equations based on input values), symbolic propagation
+is unsound. \code{db.compute(..., method="mcm", n\_samples=10000)} switches
+to Monte Carlo propagation following GUM Supplement~1~\citep{gum2008s1},
+sampling each input from its declared distribution (Gaussian by default,
+correlated according to \code{set\_correlation}). The output uncertainty
+is the sample standard deviation. Continuous nonlinearities do not require
+this method: the symbolic propagation handles them correctly.
+\end{reqbox}
+
+\begin{reqbox}{REQ-43}{\stable}
+\textbf{Sensitivity analysis as native capability.}\\
+The combination of \code{set\_uncertainty} and \code{set\_correlation}
+on input variables (representing manufacturing tolerances, measurement
+errors, or model uncertainties) with \code{compute} or \code{itc.aerospace}
+computations natively yields a sensitivity analysis: the propagated
+uncertainty on the output represents the expected variation due to the
+specified input variability. No separate sensitivity module is required
+(P-12, DD-09).
+\end{reqbox}
+
+\begin{reqbox}{REQ-98}{\draft}
+\textbf{Uncertainty propagation through every operation.}\\
+Every operation declares its effect on the UncFrame (DD-18).
+Table~\ref{tab:unc-ops} is normative. All listed operations are linear in
+the variable values, so propagation through the operation weights is
+exact. No operation silently drops or silently carries an UncFrame.
+
+\begin{table}[H]
+\centering
+\caption{Normative UncFrame semantics per operation.}
+\label{tab:unc-ops}
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Operation} & \textbf{UncFrame effect}\\
+\midrule
+\code{select}, \code{at}, \code{squeeze}, \code{concat}, \code{expand},
+\code{pivot} & Components are subset, concatenated, or broadcast
+unchanged.\\
+\code{interpolate}, \code{fill}, \code{fitvalue} & Propagated through the
+interpolation or fit weights, per point, both components.\\
+\code{average}, \code{integrate}, \code{statistics} & Propagated through
+the reduction weights: random component with independence between points
+(the $1/\sqrt{N}$ gain), systematic component as fully correlated (no
+gain).\\
+\code{smooth}, \code{diff} & Propagated through the kernel or moving-fit
+weights, same component rules as reductions.\\
+\code{rotate}, \code{translate\_moments}, \code{combine}, \code{compute} &
+Exact Jacobian propagation with covariance (REQ-37, REQ-38, REQ-41,
+REQ-100).\\
+\bottomrule
+\end{tabularx}
+\end{table}
+\end{reqbox}
+
+\section{Expression Engine}
+\label{sec:rpn-engine}
+
+\begin{reqbox}{REQ-44}{\stable}
+\textbf{Expression operator coverage.}\\
+Expressions are parsed with the standard-library \code{ast} module and
+compiled to the \itc{} operator tree (DD-20). The engine supports:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item arithmetic: \code{+}, \code{-}, \code{*}, \code{/}, \code{**};
+  \item trigonometric: \code{sin}, \code{cos}, \code{tan}, \code{asin},
+    \code{acos}, \code{atan}, \code{atan2};
+  \item miscellaneous: \code{sqrt}, \code{abs}, \code{log}, \code{log10},
+    \code{exp};
+  \item constants: \code{pi}, \code{e}.
+\end{itemize}
+Each operator implements \code{evaluate()}, \code{d\_da()}, and (where
+applicable) \code{d\_db()}, and is independently testable. Property-based
+tests are required (Chapter~\ref{ch:nonfunctional}).
+\end{reqbox}
+
+\section{Processors: \code{itc.pproc()}}
+
+\begin{reqbox}{REQ-45}{\stable}
+\textbf{Processor protocol.}\\
+Processors are objects satisfying the \code{Processor} typing protocol:
+\begin{lstlisting}
+class Processor(Protocol):
+    name: str
+    version: str
+    def info(self) -> None: ...
+    def validate(self, db: VarFrame) -> None: ...
+    def __call__(
+        self,
+        db: VarFrame,
+        *,
+        report: str | None = None,
+        comment: str | None = None,
+        force: bool = False,
+    ) -> VarFrame: ...
+\end{lstlisting}
+The canonical lifecycle is \code{validate} $\to$ \code{info} $\to$
+\code{apply} $\to$ \code{report}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-46}{\stable}
+\textbf{Processor factory.}\\
+\code{itc.pproc(name\_or\_path, config=\{\})} creates a processor either by
+registered name (e.g.\ \code{"WT\_propeller"}) or by path to a
+\code{.itceq} file. Configuration keys override defaults declared in
+\code{[constants]}. Unknown processor names raise
+\code{ProcessorNotFoundError} listing the registered alternatives.
+\end{reqbox}
+
+\begin{reqbox}{REQ-47}{\stable}
+\textbf{Processor idempotence policy.}\\
+A processor may declare \code{idempotent: bool} as a class attribute
+indicating whether reapplication is meaningful. By default
+(\code{idempotent=False}), \code{pproc(pproc(db))} raises
+\code{ProcessorIdempotenceWarning} and refuses to re-run unless the
+caller passes \code{force=True}. Reapplication, when allowed, always
+emits the warning and records the second application in History as a
+distinct entry. There is no silent no-op.
+\end{reqbox}
+
+\begin{reqbox}{REQ-48}{\stable}
+\textbf{\code{.itceq} file format.}\\
+Processors are loadable from \code{.itceq} files
+(Section~\ref{sec:itceq}). An \code{.itceq} file fully defines a
+reproducible workflow and is version-controlled alongside the data. The
+parser detects cyclic equations and raises \code{ItceqCycleError} at parse
+time, before any computation. By default, equations are evaluated in file
+order; passing \code{auto\_sort=True} to the parser enables topological
+sorting by dependency, in which case the parser reports the resolved
+order to the user as feedback.
+\end{reqbox}
+
+\begin{reqbox}{REQ-49}{\stable}
+\textbf{Statistics over a repeat dimension.}\\
+\code{pproc.statistics(db, along="repeat")} collapses a dimension (by convention named \code{repeat} but any dimension is acceptable) into:
+\code{VAR\_mean}, \code{VAR\_std}, \code{VAR\_ci95}, \code{VAR\_min},
+\code{VAR\_max}, \code{VAR\_N}. The collapsed dimension is absent from
+the output VarFrame.
+\end{reqbox}
+
+\begin{reqbox}{REQ-50}{\stable}
+\textbf{N-way dataset comparison with named inputs.}\\
+\code{pproc.compare(reference=db\_ref, **named\_inputs)} compares an
+arbitrary number of VarFrame objects against a reference. Inputs are
+keyword-only and must be named (e.g.\ \code{case\_a=db\_a},
+\code{case\_b=db\_b}). The output is a VarFrame containing, for each
+input variable and each named non-reference input \code{name\_i}:
+\code{VAR\_ref}, \code{VAR\_name\_i}, \code{VAR\_delta\_name\_i},
+\code{VAR\_delta\_pct\_name\_i}, and (when both inputs have UncFrame)
+\code{VAR\_delta\_sigma\_name\_i}. Mismatched grids without \code{reference}
+raise \code{GridMismatchError}; with \code{reference}, all inputs are
+interpolated onto the reference grid via \code{db.interpolate}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-51}{\stable}
+\textbf{LaTeX-backed PDF report generation.}\\
+\code{pproc.report(db, output=path, title=..., plots=True, tables=True,
+warnings=True, keep\_tex=False)} generates a structured PDF using a
+LaTeX backend. The PDF contains processor metadata, variable summary,
+diagnostic plots, tabulated results, and warnings. Equivalently invokable
+via \code{pproc(db, report=path)}. When \code{keep\_tex=True} is passed,
+the underlying \code{.tex} sources and any auxiliary files are retained
+alongside the output PDF. The dependency on the LaTeX toolchain
+(\code{tectonic} preferred, \code{pdflatex} fallback) is checked lazily.
+\end{reqbox}
+
+\begin{reqbox}{REQ-52}{\stable}
+\textbf{Aerodynamic polar extraction.}\\
+The built-in processor \code{"aero\_polar"} extracts classical aerodynamic
+polar parameters from a VarFrame that uses $C_L$ as its primary axis (via
+\code{interpolate} with \code{axisTranslation} from $\alpha$ if needed):
+
+\begin{tabularx}{\textwidth}{@{}llX@{}}
+\toprule
+\textbf{Output}      & \textbf{Required} & \textbf{Description}\\
+\midrule
+\code{CL0}           & $C_L$               & lift at zero $\alpha$\\
+\code{CLalpha}       & $C_L$               & lift-curve slope $\partial C_L/\partial\alpha$\\
+\code{CLmax}         & $C_L$               & maximum lift coefficient\\
+\code{alpha\_stall}  & $C_L$               & stall angle of attack\\
+\code{CM0}           & $C_M$               & pitching moment at zero lift\\
+\code{CMalpha}       & $C_M$               & pitch stiffness $\partial C_M/\partial\alpha$\\
+\code{CD0}           & $C_D$, $C_L$        & zero-lift drag\\
+\code{k}             & $C_D$, $C_L$        & induced-drag factor in $C_D = C_{D0} + k\,C_L^2$\\
+\code{CL\_trim}      & $C_L$, $C_M$        & $C_L$ at $C_M = 0$\\
+\bottomrule
+\end{tabularx}
+
+All extracted parameters carry propagated uncertainty when the input has
+an UncFrame.
+\end{reqbox}
+
+\section{Pipeline Persistence}
+
+\begin{reqbox}{REQ-53}{\stable}
+\textbf{Indexed history: export by range.}\\
+\code{db.history.to\_pipeline(start=None, end=None)} extracts a contiguous
+range of history entries (by index) as a reusable Pipeline object.
+Defaults to the full history. Examples:
+\code{db.history.to\_pipeline()},
+\code{db.history.to\_pipeline(start=2, end=7)},
+\code{db.history.to\_pipeline(start=10)}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-54}{\stable}
+\textbf{Apply pipeline to a new VarFrame.}\\
+\code{pipeline.apply(db\_new)} applies the recorded sequence to a new
+VarFrame and returns the result. Missing variables raise
+\code{PipelineCompatibilityError}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-55}{\stable}
+\textbf{Pipeline serialization.}\\
+\code{pipeline.save(path)} writes a \code{.itc\_pipe} file.
+\code{itc.load\_pipeline(path)} reads it. The file is human-readable and
+version-controllable.
+\end{reqbox}
+
+\section{Plotting: \code{itc.datavis()}}
+
+\begin{reqbox}{REQ-56}{\stable}
+\textbf{DataVis object.}\\
+\code{p = itc.datavis(backend="matplotlib", colormap=None, markercycle=None,
+linecycle=None, figsize=None)} returns a DataVis object holding
+figure-level style settings. \code{backend} is \code{"matplotlib"}
+(default) or \code{"plotly"} (interactive).
+\end{reqbox}
+
+\begin{reqbox}{REQ-57}{\stable}
+\textbf{Single-plot semantic axis mapping.}\\
+\code{p.plot(db, x=, y=, DataAxis=, ColorAxis=, SymbolAxis=,
+LineStyleAxis=, colorbar=False, ...)} iterates over all unique values of
+\code{DataAxis}, plotting one curve per value. The \code{x} variable may
+co-vary with \code{DataAxis}. Multiple calls overlay curves on the same
+figure. Axis units (from \code{Dimension.unit} and \code{Variable.unit})
+are appended to labels by default.
+\end{reqbox}
+
+\begin{reqbox}{REQ-58}{\stable}
+\textbf{Multi-plot capability.}\\
+\code{p.plot(..., multiplot=True, n\_cols=N)} produces a grid of subplots
+when any of \code{db}, \code{x}, \code{y}, or \code{NFigAxis} is given as
+a list:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item \code{db=[db1, db2, ...]}: one subplot per VarFrame;
+  \item \code{x=[var1, var2, ...]}: one subplot per $x$ variable;
+  \item \code{y=[var1, var2, ...]}: one subplot per $y$ variable;
+  \item \code{NFigAxis="dim"}: one subplot per unique value of the
+    named dimension.
+\end{itemize}
+The number of rows is computed as
+$n_\text{rows} = \lceil n_\text{total} / n_\text{cols}\rceil$; trailing
+empty cells are left blank. Default subplot size is
+$3.5\,\text{in} \times 3\,\text{in}$.
+\end{reqbox}
+
+\begin{reqbox}{REQ-59}{\stable}
+\textbf{Origin-tag visualization.}\\
+When the input VarFrame has a HistoryFrame, DataVis distinguishes the
+origin of plotted points by marker style: filled marker for \code{0}
+(original), hollow marker for \code{+1} (interpolated/computed), hollow
+marker with cross overlay for \code{-1} (extrapolated). Controlled by
+\code{tag\_markers=True/False} (default \code{True}).
+\end{reqbox}
+
+\begin{reqbox}{REQ-60}{\stable}
+\textbf{ItcFigure return object.}\\
+\code{p.get\_figure()} returns an \code{ItcFigure} with
+\code{.export(path, dpi=)}, \code{.add\_legend(loc=)},
+\code{.annotate()}, and \code{.mpl} (escape hatch to the underlying
+\code{matplotlib.Figure} or \code{plotly.graph\_objects.Figure}).
+\end{reqbox}
+
+\begin{reqbox}{REQ-61}{\stable}
+\textbf{AIAA default style.}\\
+The default style follows AIAA publication standards: serif fonts,
+visible grid, white background, inward tick marks, mathtext labels (no
+LaTeX dependency at plot time), figsize $7\,\text{in}\times 5\,\text{in}$
+for single plots.
+\end{reqbox}
+
+\begin{reqbox}{REQ-62}{\stable}
+\textbf{Specialized plot methods.}\\
+DataVis exposes \code{plot\_polar()}, \code{plot\_cp()},
+\code{plot\_disk()}, \code{plot\_colormap()}, and
+\code{plot\_colormap\_overlay()}. All inherit the full option set of
+\code{p.plot()}. Each method documents the AIAA convention it implements
+(e.g.\ inverted $C_p$ axis).
+\end{reqbox}
+
+\section{Surrogate Modeling: \code{itc.surrogate()}}
+
+\begin{reqbox}{REQ-63}{\stable}
+\textbf{Surrogate factory.}\\
+\code{varframe, model = itc.surrogate(db, inputs=[...], output=str,
+model=str, options=\{\})} fits an SMT~\citep{smt} surrogate. The function
+returns a tuple:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item the first element is the fitted VarFrame on the original grid
+    (for inspection and comparison);
+  \item the second element is the standalone \code{Surrogate} object,
+    independently exportable.
+\end{itemize}
+Supported models: \code{"KRG"}, \code{"RBF"}, \code{"IDW"} at minimum.
+\end{reqbox}
+
+\begin{reqbox}{REQ-64}{\stable}
+\textbf{Surrogate predict, validate, and persist.}\\
+A fitted \code{Surrogate} supports:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item \code{.predict(**coords)} returning a VarFrame;
+  \item \code{.cross\_validate(k=)} returning a results object with
+    \code{.rmse} per fold;
+  \item \code{.save(path, embed\_source=False)} writing a
+    \code{.itc\_surr} file (optionally embedding the source VarFrame for
+    self-contained audit);
+  \item \code{itc.load\_surrogate(path)} restoring it.
+\end{itemize}
+\end{reqbox}
+
+\section{Aerospace Framework: \code{itc.aerospace}}
+
+\begin{reqbox}{REQ-65}{\draft}
+\textbf{Aerospace subpackage.}\\
+\code{itc.aerospace} is a subpackage containing engineering analysis
+modules for aeronautical applications. Unlike \code{pproc} processors
+(which process existing data), \code{itc.aerospace} modules implement
+physical models that generate data in VarFrame format. Every result is a
+VarFrame with full Provenance and History, making the entire computation
+auditable.
+\end{reqbox}
+
+\begin{reqbox}{REQ-66}{\draft}
+\textbf{Aerospace: performance.}\\
+\code{itc.aerospace.performance} provides \code{TakeoffAnalysis},
+\code{ClimbAnalysis}, \code{EnvelopeAnalysis}. Each accepts aerodynamic
+and propulsion VarFrame inputs and produces a VarFrame output where every
+timestep or flight condition is a datapoint. The complete computation
+memory (forces, accelerations, velocities, distances) is auditable.
+\end{reqbox}
+
+\begin{reqbox}{REQ-67}{\draft}
+\textbf{Aerospace: stabcontrol and EUB.}\\
+\code{itc.aerospace.stabcontrol} provides static margin computation, trim
+horizontal tail deflection with uncertainty propagation (the EUB on trim
+deflection), pitch-damping derivatives, and V-n diagram generation.
+Uncertainty in wind tunnel inputs (including correlations from a common
+calibration) propagates automatically to uncertainty on required trim
+deflections.
+\end{reqbox}
+
+\begin{reqbox}{REQ-68}{\draft}
+\textbf{Aerospace: propeller BEMT.}\\
+\code{itc.aerospace.propeller.BEMTAnalysis} implements Blade Element
+Momentum Theory following Adkins \& Liebeck~\citep{adkinsLiebeck} with
+Prandtl tip-loss correction. Inputs are blade geometry and airfoil polar
+VarFrame objects. Output is a VarFrame containing radial distributions of
+thrust and torque loading, integrated performance coefficients ($C_T$,
+$C_P$, $\eta$), and (when manufacturing tolerances are assigned as uncertainties on blade geometry parameters) propagated uncertainty on
+all outputs.
+\end{reqbox}
+
+\begin{reqbox}{REQ-69}{\draft}
+\textbf{Auditable computation memory.}\\
+All \code{itc.aerospace} analyses store the full computation memory in
+the output VarFrame. For time-marching analyses, every timestep is a
+datapoint in a time dimension. For iterative analyses (e.g.\ BEMT), every
+radial station and iteration is accessible. The goal is that any output
+number can be traced back to the exact input values and model steps that
+produced it.
+\end{reqbox}
+
+\section{Output and Export}
+
+\begin{reqbox}{REQ-70}{\stable}
+\textbf{Export formats.}\\
+A VarFrame supports export to:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item flat CSV (\code{to\_csv});
+  \item JSON with optional uncertainty (\code{to\_json});
+  \item pandas DataFrame (\code{to\_pandas});
+  \item NumPy array with dimension labels
+    (\code{to\_numpy(return\_dims=True)});
+  \item native \itc{} binary \code{.itc} (\code{save} / \code{itc.open});
+  \item PROV-N and PROV-JSON for the provenance graph
+    (\code{db.export\_provenance(path, format="prov-json")}).
+\end{itemize}
+The \code{.itc} format preserves all metadata, Provenance, History,
+uncertainty, correlation, and origin tags.
+\end{reqbox}
+
+\begin{reqbox}{REQ-71}{\stable}
+\textbf{Provenance and history in all exports.}\\
+Every export embeds metadata derived from Provenance and a human-readable
+summary of History in the output file:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item CSV: header comment lines (\code{\# ITACA export: version: ...});
+  \item JSON: top-level \code{"provenance"} and \code{"history"} keys;
+  \item \code{.itc}: native JSON files inside the archive.
+\end{itemize}
+\end{reqbox}
+
+\begin{reqbox}{REQ-72}{\stable}
+\textbf{Split export by dimension.}\\
+\code{db.to\_csv(dir, split\_by=dim)} writes one CSV file per unique
+value of the specified dimension.
+\end{reqbox}
+
+\begin{reqbox}{REQ-73}{\stable}
+\textbf{Unit conversion utility.}\\
+\code{utils.units.convert(value, from\_unit, to\_unit)} converts numeric
+values between units using \itc{}'s internal conversion table. The table
+is hand-curated, validated against unit tests, and covers SI base units
+plus common aerospace units (deg, rpm, knot, ft, lb, slug, etc.).
+External unit libraries are not used (DD-13, NREQ-09).
+\end{reqbox}

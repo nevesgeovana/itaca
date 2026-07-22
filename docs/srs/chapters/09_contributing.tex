@@ -1,0 +1,503 @@
+% =============================================================================
+% Chapter 9: Contributing Guide
+% =============================================================================
+
+\chapter{Contributing Guide}
+\label{ch:contributing}
+
+\section{Overview}
+
+\itc{} handles data that feeds engineering decisions. Every contribution
+must meet a higher standard than typical open-source software. This
+chapter defines that standard. First-time contributors should read
+Chapters~\ref{ch:philosophy} and~\ref{ch:datamodel} before writing any
+code.
+
+\section{Getting Started}
+
+\subsection{Repository Setup}
+
+\begin{lstlisting}[language=bash]
+# Clone the repository
+git clone https://github.com/nevesgeovana/itaca.git
+cd itaca
+
+# Create a virtual environment
+python -m venv .venv
+source .venv/bin/activate          # Linux / macOS
+# .venv\Scripts\activate           # Windows
+
+# Install in editable mode with all development dependencies
+pip install -e ".[dev]"
+
+# Install pre-commit hooks
+pre-commit install
+
+# Verify the setup
+pytest --cov=itaca --cov-report=term-missing
+ruff check itaca/
+ruff format --check itaca/
+mypy --strict itaca/
+\end{lstlisting}
+
+\subsection{Development Dependencies}
+
+The \code{[dev]} extra installs everything in
+Table~\ref{tab:dependency-versions} marked as \code{dev}, plus the full
+set of optional runtime dependencies needed to test the optional code
+paths.
+
+\section{Workflow}
+
+\subsection{Branch Strategy}
+
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item \code{main}: stable, always passing CI, never commit directly.
+  \item \code{dev}: integration branch for completed features.
+  \item \code{feat/short-description}: feature branches, branched from \code{dev}.
+  \item \code{fix/short-description}: bug-fix branches.
+  \item \code{docs/short-description}: documentation-only changes.
+\end{itemize}
+
+\subsection{The TDD Loop}
+
+Every new public method or feature follows this exact order:
+
+\begin{enumerate}
+  \item \textbf{Write the usage example.} Before writing any code, write
+    how the feature will be called. This becomes both the docstring
+    example and an integration test.
+  \item \textbf{Write the test.} Write \code{pytest} tests that specify
+    the expected behavior, including the relevant edge cases
+    (Table~\ref{tab:required-edge-cases}). Where mathematical contracts
+    apply, write a property-based test using
+    Hypothesis~\citep{hypothesis}. The tests must fail at this point.
+  \item \textbf{Write the implementation.} Write the minimum code needed
+    to make the tests pass.
+  \item \textbf{Refactor.} Clean up the implementation without breaking
+    the tests.
+  \item \textbf{Verify coverage.} Run \code{pytest --cov=itaca} and
+    confirm coverage is $\ge 90\%$ on changed code.
+\end{enumerate}
+
+\paragraph{Worked example: adding \code{db.squeeze()}.}
+
+The following walks through the full loop for a small but real
+operation. It exists in \itc{} as REQ-22; the example reconstructs the
+discipline that produced it.
+
+\textbf{Step 1: usage example, written first.}
+\begin{lstlisting}
+db = itc.load("data/", dims=["alpha", "mach", "blade"])
+db_at = db.at(mach=0.12)            # mach is now cardinality-1
+print(db_at)                         # alpha(N) x mach(1) x blade(M)
+
+db_clean = db_at.squeeze()
+print(db_clean)                      # alpha(N) x blade(M)
+
+# squeeze a specific dim only
+db_explicit = db_at.squeeze(along="mach")
+\end{lstlisting}
+
+\textbf{Step 2: tests written before implementation.}
+\begin{lstlisting}
+# tests/ops/test_squeeze.py
+import numpy as np
+import pytest
+import itaca as itc
+from itaca.core.errors import DimensionNotFoundError
+
+
+def test_squeeze_removes_unit_dim(simple_varframe_unit_mach):
+    db = simple_varframe_unit_mach
+    out = db.squeeze()
+    assert "mach" not in out.dims
+    assert set(out.dims) == set(db.dims) - {"mach"}
+
+
+def test_squeeze_preserves_history(simple_varframe_unit_mach):
+    db = simple_varframe_unit_mach
+    out = db.squeeze(comment="drop singleton mach")
+    last = out.history.entries[-1]
+    assert last.operation.startswith("squeeze")
+    assert last.comment == "drop singleton mach"
+
+
+def test_squeeze_along_specified_dim(simple_varframe_unit_mach):
+    db = simple_varframe_unit_mach
+    out = db.squeeze(along="mach")
+    assert "mach" not in out.dims
+
+
+def test_squeeze_along_non_unit_raises(simple_varframe):
+    db = simple_varframe
+    with pytest.raises(ValueError):
+        db.squeeze(along="alpha")     # alpha cardinality > 1
+
+
+def test_squeeze_unknown_dim_raises(simple_varframe):
+    with pytest.raises(DimensionNotFoundError):
+        simple_varframe.squeeze(along="not_a_dim")
+
+
+def test_squeeze_full_collapse_yields_datapoint(scalar_varframe):
+    out = scalar_varframe.squeeze()
+    assert list(out.dims) == ["datapoint"]
+    assert out.dims["datapoint"].coords.size == 1
+\end{lstlisting}
+
+\textbf{Step 3: minimal implementation.}
+\begin{lstlisting}
+# itaca/ops/squeeze.py
+from __future__ import annotations
+import numpy as np
+from itaca.core.errors import DimensionNotFoundError
+
+
+def squeeze(self, along: str | None = None,
+            comment: str | None = None) -> "VarFrame":
+    if along is not None and along not in self.dims:
+        raise DimensionNotFoundError(
+            f"Dimension '{along}' not found in VarFrame.\n"
+            f"Operation: squeeze(along='{along}')\n"
+            f"Available: {list(self.dims)}\n"
+            f"Fix: pass an existing dimension or omit `along`."
+        )
+
+    targets = [along] if along else [
+        d for d, dim in self.dims.items() if dim.coords.size == 1
+    ]
+    for d in targets:
+        if self.dims[d].coords.size != 1:
+            raise ValueError(
+                f"Dimension '{d}' has cardinality "
+                f"{self.dims[d].coords.size}, cannot squeeze."
+            )
+
+    new_dims  = {d: dim for d, dim in self.dims.items() if d not in targets}
+    new_vars  = {n: v.squeeze(axis=tuple(self._axis(d) for d in targets))
+                 for n, v in self.vars.items()}
+    new_tags  = self.tags.squeeze(targets) if self.tags else None
+    new_unc   = self.uncertainty.squeeze(targets) if self.uncertainty else None
+    new_hist  = self.history.append(
+        operation=f"squeeze(along={targets!r})", comment=comment,
+    )
+    if not new_dims:
+        new_dims = self._datapoint_dim(size=1)
+
+    return self._replace(dims=new_dims, vars=new_vars, tags=new_tags,
+                         uncertainty=new_unc, history=new_hist)
+\end{lstlisting}
+
+\textbf{Step 4: refactor.} Extract the axis-resolution helper into
+\code{core/index.py} so \code{average} and \code{integrate} can reuse it.
+Tests still pass.
+
+\textbf{Step 5: coverage.} \code{pytest --cov=itaca.ops.squeeze}
+reports 100\,\%; the property-based test in
+\code{test\_ops\_properties.py} confirms that
+\code{db.expand(d, [v]).squeeze(along=d)} round-trips for any
+randomly-generated VarFrame.
+
+\begin{noteinfo}[Pull requests without tests are rejected]
+This is a hard rule, regardless of correctness. The TDD loop is the
+project's only mechanism for guaranteeing that the SRS and the code stay
+aligned.
+\end{noteinfo}
+
+\section{Coding Standards}
+
+\subsection{File and Module Structure}
+
+Each module has a single, clearly stated responsibility described in its
+module docstring. Modules longer than 400 lines should be considered for
+splitting.
+
+\begin{lstlisting}
+"""
+itaca.core.varframe
+===================
+
+Defines the VarFrame class: the primary multidimensional data
+structure in ITACA.
+
+All operations on VarFrame are immutable: they return new objects and
+never modify the original. Provenance is preserved; History is appended.
+"""
+from __future__ import annotations
+import numpy as np
+from itaca.core.provenance import Provenance
+from itaca.core.history import History
+\end{lstlisting}
+
+\subsection{Type Hints and Docstrings}
+
+All public functions and classes carry full type hints and NumPy-format
+docstrings. The following is the mandatory template:
+
+\begin{lstlisting}
+def select(self, filters: dict, *,
+           Frame: str = "VarFrame",
+           comment: str | None = None) -> "VarFrame":
+    """
+    Return a VarFrame restricted to the dimension values matching the filters.
+
+    Parameters
+    ----------
+    filters : dict
+        Mapping of ``dim_op -> value`` where ``dim_op`` is the dimension
+        name optionally suffixed by an operator (``=``, ``>``, ``<``,
+        ``>=``, ``<=``, ``!=``). Default operator is ``=``.
+    Frame : {"VarFrame", "HistoryFrame", "UncFrame"}, optional
+        Source against which the comparison is evaluated. Default
+        compares against the variable values.
+    comment : str, optional
+        Optional comment recorded in the History entry.
+
+    Returns
+    -------
+    VarFrame
+        New VarFrame containing only the specified coordinate values.
+        Provenance is preserved; History gains one entry for this operation.
+
+    Raises
+    ------
+    DimensionNotFoundError
+        If any filter key does not match a dimension name.
+    SelectionError
+        If any specified value does not exist in the dimension coordinates.
+
+    Examples
+    --------
+    >>> db_sub = db.select({"alpha": [0, 2, 4], "mach>": 0.15})
+    >>> db_orig = db.select({"CT": 0}, Frame="HistoryFrame")
+    """
+\end{lstlisting}
+
+\subsection{Error Messages}
+
+Every raised exception includes three pieces of information:
+
+\begin{lstlisting}
+# Bad: terse, unhelpful
+raise KeyError(f"Variable not found: {name}")
+
+# Good: variable name, operation, fix suggestion
+raise VariableNotFoundError(
+    f"Variable '{name}' not found in VarFrame.\n"
+    f"Operation: compute('{name} = ...')\n"
+    f"Available variables: {list(self.vars.keys())}\n"
+    f"Fix: check the variable name or load the source data containing it."
+)
+\end{lstlisting}
+
+All \itc{}-specific exceptions inherit from \code{ITACAError}
+(Table~\ref{tab:exception-hierarchy}).
+
+\subsection{History Recording}
+
+Every method that returns a new VarFrame appends an entry to the History
+and updates the HistoryFrame when applicable:
+
+\begin{lstlisting}
+def fill(self, along: str, method: str = "linear",
+         comment: str | None = None, **kwargs) -> "VarFrame":
+    # ... computation ...
+    new_history = self.history.append(
+        operation=f"fill(along='{along}', method='{method}')",
+        kwargs=kwargs,
+        comment=comment,
+    )
+    new_tags = self.tags.mark_filled(filled_mask)        # set +1 where filled
+    return self._replace(vars=new_vars, tags=new_tags, history=new_history)
+\end{lstlisting}
+
+\subsection{NumPy-Only in Core}
+
+The \code{core/}, \code{ops/}, and \code{uncertainty/} packages import
+only from the Python standard library and NumPy. A \code{ruff}
+import-policy rule flags any other import in these packages.
+
+\subsection{Language and Orthography}
+
+All code, comments, docstrings, variable names, error messages, and
+\code{.itceq} files are in English. American English with Z is used
+consistently (\emph{organize}, \emph{visualization}, \emph{normalize}).
+
+\subsection{Example and Test Data}
+
+Every dataset that ships with the repository (examples, test fixtures,
+documentation) is either synthetic or publicly licensed, and its
+provenance is stated where it is used. Employer-origin, proprietary, or
+unreleased experimental data never enter the repository, in any form.
+Contributors publishing artifacts generated with \itc{} should also note
+that exports embed the user identity from \code{getpass} and the machine
+hostname by default; \code{itc.set\_user(...)} sets a publication-safe
+identity.
+
+\section{Commit Messages}
+
+Follow Conventional Commits:
+
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Prefix} & \textbf{Use for}\\
+\midrule
+\code{feat:}     & New feature or public API addition\\
+\code{fix:}      & Bug fix\\
+\code{docs:}     & Documentation only\\
+\code{test:}     & Test addition or modification\\
+\code{refactor:} & Code restructuring without behavior change\\
+\code{perf:}     & Performance improvement\\
+\code{build:}    & Build system or external dependencies\\
+\code{ci:}       & CI configuration\\
+\code{chore:}    & Maintenance tasks (dependency bumps, etc.)\\
+\bottomrule
+\end{tabularx}
+
+\begin{lstlisting}[language=bash]
+feat: add fitmodel() returning polynomial coefficients as new dim
+fix: correct polar integration area element in integrate()
+test: add property-based test for RPN sin/cos derivative identities
+docs: update contributing guide with HistoryFrame update pattern
+refactor: split varframe.py into varframe.py and dimension.py
+\end{lstlisting}
+
+The commit subject line shall not exceed 72 characters. The body
+explains \emph{why}, not what (the diff already shows what).
+
+\section{Pull Request Checklist}
+
+Before opening a pull request, every item in this checklist must be
+verified:
+
+\begin{itemize}[leftmargin=2.5em,label=$\square$]
+  \item Usage example written and added to docstring
+  \item Tests written before implementation
+  \item All new tests pass: \code{pytest}
+  \item Property-based test added if a math contract applies
+  \item Coverage $\ge 90\%$: \code{pytest --cov=itaca}
+  \item Linting passes: \code{ruff check itaca/}
+  \item Formatting correct: \code{ruff format --check itaca/}
+  \item Type-checking passes: \code{mypy --strict itaca/}
+  \item Pre-commit hooks pass: \code{pre-commit run --all-files}
+  \item Type hints present on all public signatures
+  \item Docstring in NumPy format with Examples section
+  \item Every new VarFrame-returning method records History and updates
+        the HistoryFrame when applicable
+  \item No pandas/xarray/dask imports in \code{core/}, \code{ops/}, or
+        \code{uncertainty/}
+  \item All code, comments, and docstrings in American English with Z
+  \item Example and test data synthetic or publicly licensed, provenance stated
+  \item \code{CHANGELOG.md} updated if public API changed
+  \item Commit messages follow Conventional Commits
+\end{itemize}
+
+\section{Adding a New Built-in Processor}
+
+The following walks through adding a hypothetical
+\code{ft\_drag\_polar} processor, end to end. It is structured to mirror
+the TDD loop above.
+
+\paragraph{Step 1: usage example.}
+\begin{lstlisting}
+pproc = itc.pproc("ft_drag_polar", config={"S_ref": 50.0})
+pproc.info()                         # prints: equations, uncertainties, required vars
+pproc.validate(db)                   # raises ProcessorValidationError if vars missing
+db_out = pproc(db, comment="initial polar from FT-2026-A")
+db_out = pproc(db, report="reports/ft_drag.pdf")
+\end{lstlisting}
+
+\paragraph{Step 2: companion \code{.itceq}.} Create
+\code{itaca/pproc/equations/flight\_test/ft\_drag\_polar.itceq} with the
+five sections (Section~\ref{sec:itceq}). Keep \code{[meta]} accurate and
+list every measured-variable uncertainty in
+\code{[uncertainties]}. Equations evaluate in file order by default;
+enable \code{auto\_sort=True} only if needed.
+
+\paragraph{Step 3: processor implementation.}
+\begin{lstlisting}
+# itaca/pproc/builtin/ft_drag_polar.py
+from __future__ import annotations
+from itaca.pproc.base import EquationProcessor
+
+class FTDragPolar(EquationProcessor):
+    name        = "ft_drag_polar"
+    version     = "0.1.0"
+    idempotent  = False
+
+    def __init__(self, config: dict | None = None):
+        super().__init__(
+            equations_file="flight_test/ft_drag_polar.itceq",
+            config=config or {},
+        )
+
+    def info(self) -> None:
+        # Prints the parsed metadata, constants, and equations.
+        super().info()
+
+    def validate(self, db) -> None:
+        super().validate(db)
+        # Additional domain-specific checks go here.
+\end{lstlisting}
+
+\paragraph{Step 4: registry entry.} Append to
+\code{itaca/pproc/registry.py}:
+\begin{lstlisting}
+from itaca.pproc.builtin.ft_drag_polar import FTDragPolar
+PROCESSORS["ft_drag_polar"] = FTDragPolar
+\end{lstlisting}
+
+\paragraph{Step 5: tests.} Create
+\code{tests/pproc/test\_ft\_drag\_polar.py} covering: happy path on a
+synthetic VarFrame fixture; missing required variable raises
+\code{ProcessorValidationError}; custom config overrides defaults;
+History records exactly one entry per application; report generation
+produces a PDF; idempotence guard fires on the second application unless
+\code{force=True}.
+
+\paragraph{Step 6: documentation.} Add a short worked example to
+\code{docs/processors.md} and update the table in
+Section~\ref{ch:functional} listing built-in processors.
+
+\section{Adding a Specialized Plot Method}
+
+\begin{enumerate}[noitemsep,topsep=2pt]
+  \item Create \code{itaca/plot/specialized/my\_plot.py}.
+  \item Implement the method as a function accepting a \code{DataVis}
+    instance as \code{self} (mixin pattern).
+  \item Register it as a method on \code{DataVis} in
+    \code{itaca/plot/datavis.py}.
+  \item Write tests using a real VarFrame fixture: never synthetic
+    random data.
+\end{enumerate}
+
+\section{License and Citation}
+
+\itc{} is released under the MIT License. The license file lives at the
+repository root; every source file is covered by it without per-file
+headers. Contributions are accepted under the same license.
+
+Tagged releases are mirrored on Zenodo with a DOI (REQ-97). The
+repository root carries a \code{CITATION.cff} file so that GitHub and
+Zenodo expose a canonical citation; the file is updated at every release
+together with \code{CHANGELOG.md}. After the first stable release, a
+software paper (JOSS or SoftwareX) is planned as the citable reference
+(Chapter~\ref{ch:roadmap}).
+
+\section{SRS Document Maintenance}
+
+This SRS is version-controlled alongside the code. When adding
+requirements:
+
+\begin{enumerate}[noitemsep,topsep=2pt]
+  \item Assign the next available \reqid{REQ-XX} number (do not reuse
+    deprecated identifiers).
+  \item Set status to \draft{} until the corresponding code is
+    implemented and tested.
+  \item Update the revision history table on the title page.
+  \item Increment the document version following semantic versioning
+    (\code{MINOR} for new requirements, \code{PATCH} for clarifications).
+\end{enumerate}
+
+Never delete a requirement: mark it \deprecated{} and explain why.

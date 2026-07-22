@@ -1,0 +1,263 @@
+% =============================================================================
+% Chapter 7: Non-Functional Requirements
+% =============================================================================
+
+\chapter{Non-Functional Requirements}
+\label{ch:nonfunctional}
+
+\section{Reliability and Testing}
+
+\begin{reqbox}{REQ-74}{\stable}
+\textbf{Test-driven development.}\\
+Every public method has its test written before its implementation. Pull
+requests adding or modifying public API without a corresponding test are
+rejected.
+\end{reqbox}
+
+\begin{reqbox}{REQ-75}{\stable}
+\textbf{Coverage threshold.}\\
+Test coverage measured with \code{pytest-cov} does not fall below 90\,\%
+on the main branch. This is a hard CI gate, not an aspirational target.
+\end{reqbox}
+
+\begin{reqbox}{REQ-76}{\stable}
+\textbf{Required edge-case tests.}\\
+The test suite includes the cases enumerated in
+Table~\ref{tab:required-edge-cases}, organized by family for audit ease.
+\end{reqbox}
+
+\begin{table}[H]
+\centering
+\caption{Required edge-case tests, grouped by area.}
+\label{tab:required-edge-cases}
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Area} & \textbf{Edge case}\\
+\midrule
+Load        & Empty VarFrame; single source file; dict-mode coordinate-tuple length mismatch; pandas DataFrame with non-string column names; NumPy array with mismatched \code{names}.\\
+Pivot       & Datapoint mode with no subsequent pivot; \code{pivot()} on already-structured VarFrame; \code{auto\_detect=True} on ambiguous candidates; duplicate coordinates on every requested dimension raise \code{PivotDuplicateError}.\\
+Diagnostics & 100\,\%-coverage VarFrame; all-NaN slice; single-point dimension.\\
+Compute     & Invalid RPN expression (syntax error, undefined variable); cyclic \code{.itceq} equations caught at parse time; non-differentiable NumPy with uncertainty guard (per-variable); \code{where} with \code{fill=None} on non-existent variable; \code{compute} with both symbolic and Monte Carlo methods on the same expression.\\
+Ops         & \code{diff} with \code{window <= deg}; \code{interpolate} with non-monotonic axis-translation target; \code{interpolate} with \code{override=False} on existing coordinate; \code{expand} with duplicate existing dimension name; \code{itc.concat} with overlapping \code{along} values; \code{fitvalue} evaluation outside the original fit range producing \code{-1} tags; \code{combine} with mismatched grids; numerical operation on non-numeric dimension.\\
+Compare     & Grid mismatch in \code{compare} without reference; multiple named inputs with overlapping deltas.\\
+Integrate   & \code{np.nan} inside the integration domain with \code{skipna=False} (result NaN) and \code{skipna=True} (populated cells only, History records the fraction).\\
+Immutability & In-place mutation of any stored array raises; \code{to\_numpy} returns a read-only view by default.\\
+Reproducibility & Two identical load-and-operate runs yield identical state hashes; hashes are invariant to timestamps and user identity.\\
+History     & Hash mismatch on reload; pipeline applied to incompatible VarFrame; comment preserved through \code{.itc} round-trip.\\
+Modes       & Draft-mode export blocked without flag; mixed-mode binary operation rejected; \code{db.promote} / \code{db.demote} round trip preserves data.\\
+Uncertainty & Mismatched uncertainty keys; correlation matrix non-symmetric; correlation matrix with $|r| > 1$; declared correlation between non-existent variables; repeat averaging reduces the random component by $1/\sqrt{N}$ and leaves the systematic component unchanged.\\
+Axes        & \code{rotate} with unregistered axis; vector group cannot be resolved; non-orthogonal rotation matrix rejected; uncertainty propagated through rotation matches direct LPU.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{reqbox}{REQ-77}{\stable}
+\textbf{Property-based tests for math kernels.}\\
+Property-based tests using Hypothesis~\citep{hypothesis} are required for:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item all RPN operators (verifying analytical partial-derivative
+    identities on randomized inputs);
+  \item the propagation engine (verifying additivity of variances under
+    independent inputs, correctness under known correlated inputs, and
+    dimensional consistency);
+  \item the \code{diff} kernel (verifying exact recovery of polynomials
+    of degree $\le \code{deg}$);
+  \item the rotation engine (verifying that
+    $R^\top R = I$ is preserved, and that uncertainty propagated through
+    rotation matches direct LPU computation).
+\end{itemize}
+\end{reqbox}
+
+\section{Code Quality}
+
+\begin{reqbox}{REQ-78}{\stable}
+\textbf{Type hints.}\\
+All public functions and methods carry full Python type hints.
+\code{mypy --strict} is run in CI on the public API.
+\end{reqbox}
+
+\begin{reqbox}{REQ-79}{\stable}
+\textbf{Docstrings.}\\
+All public functions and classes carry NumPy-format docstrings with
+Parameters, Returns, Raises, and at least one Examples section.
+\end{reqbox}
+
+\begin{reqbox}{REQ-80}{\stable}
+\textbf{Linting and formatting.}\\
+All code passes \code{ruff check} linting and \code{ruff format}
+formatting. One tool covers both concerns. CI runs both checks on every
+push and rejects non-conforming code.
+\end{reqbox}
+
+\begin{reqbox}{REQ-81}{\stable}
+\textbf{Error messages.}\\
+All exception messages include three pieces of information: the variable
+or object involved; the operation attempted; and a suggested fix. Errors
+derive from the \code{ITACAError} hierarchy
+(Table~\ref{tab:exception-hierarchy}).
+\end{reqbox}
+
+\section{Architecture and Dependencies}
+
+\begin{reqbox}{REQ-82}{\stable}
+\textbf{NumPy-only core.}\\
+The \code{core/}, \code{ops/}, and \code{uncertainty/} packages depend
+only on NumPy. No xarray, dask, or pandas imports appear in these
+modules. CI enforces this with a \code{ruff} import-policy rule.
+\end{reqbox}
+
+\begin{reqbox}{REQ-83}{\stable}
+\textbf{Pinned dependency version ranges.}\\
+\itc{} declares explicit version ranges for every dependency in
+\code{pyproject.toml}. Table~\ref{tab:dependency-versions} lists the
+minimum tested version, the upper bound, and whether the dependency is
+required, optional, or development-only. CI runs the full test suite
+against the minimum and the latest compatible versions.
+\end{reqbox}
+
+\begin{table}[H]
+\centering
+\caption{Dependency version policy for \itc{} v0.1.0. Bounds are
+expressed as PEP 440 specifiers.}
+\label{tab:dependency-versions}
+\small
+\begin{tabularx}{\textwidth}{@{}llXl@{}}
+\toprule
+\textbf{Dependency} & \textbf{Role} & \textbf{Used for} & \textbf{Range}\\
+\midrule
+\code{numpy}        & required  & Core arrays, RPN, propagation, ops          & \code{>=1.26,<3.0}\\
+\code{python}       & required  & Language baseline                            & \code{>=3.10,<3.14}\\
+\code{matplotlib}   & optional  & Default plotting backend                     & \code{>=3.8,<4.0}\\
+\code{plotly}       & optional  & Interactive plotting backend                 & \code{>=5.20,<6.0}\\
+\code{pandas}       & optional  & DataFrame bridge                             & \code{>=2.1,<3.0}\\
+\code{smt}          & optional  & Surrogate modeling                           & \code{>=2.5,<3.0}\\
+\code{tectonic}     & optional  & LaTeX-backed PDF reports (preferred)         & system\\
+\code{pdflatex}     & optional  & LaTeX-backed PDF reports (fallback)          & system\\
+\code{pytest}       & dev       & Test runner                                  & \code{>=8.0,<9.0}\\
+\code{pytest-cov}   & dev       & Coverage gate                                & \code{>=5.0,<6.0}\\
+\code{hypothesis}   & dev       & Property-based testing                       & \code{>=6.100,<7.0}\\
+\code{ruff}         & dev       & Linting and formatting                       & \code{>=0.5,<1.0}\\
+\code{mypy}         & dev       & Static type checking                         & \code{>=1.10,<2.0}\\
+\code{pre-commit}   & dev       & Local CI mirror                              & \code{>=3.7,<5.0}\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{reqbox}{REQ-84}{\stable}
+\textbf{Optional dependency management.}\\
+Optional dependencies (matplotlib, plotly, SMT, pandas, the LaTeX
+toolchain) are imported lazily and checked at the point of use. A missing
+optional dependency raises \code{MissingDependencyError} with an
+actionable installation instruction (e.g.\
+\code{pip install itaca[plot]}).
+\end{reqbox}
+
+\begin{reqbox}{REQ-85}{\stable}
+\textbf{API parameter order.}\\
+Canonical parameter order: \emph{(what, where, how)}: the variable or
+object first, then location or dimension, then method or options.
+Optional parameters beyond the first positional argument are
+keyword-only.
+\end{reqbox}
+
+\begin{reqbox}{REQ-86}{\stable}
+\textbf{English everywhere.}\\
+All code, comments, docstrings, variable names, error messages,
+\code{.itceq} files, and documentation are in English without exception.
+\end{reqbox}
+
+\begin{reqbox}{REQ-87}{\stable}
+\textbf{American English with Z.}\\
+\itc{} uses American English orthography consistently: \emph{organize}
+(not organise), \emph{visualization} (not visualisation),
+\emph{normalize} (not normalise). This reduces inconsistency and matches
+the dominant convention in scientific Python documentation.
+\end{reqbox}
+
+\section{Performance and Memory}
+
+\begin{reqbox}{REQ-88}{\stable}
+\textbf{Vectorized operations.}\\
+All operations on VarFrame arrays are vectorized via NumPy. Python loops
+over array elements are not acceptable in performance-critical paths
+(\code{compute}, propagation, \code{diff}, \code{smooth},
+\code{interpolate}, \code{rotate}).
+\end{reqbox}
+
+\begin{reqbox}{REQ-89}{\stable}
+\textbf{Memory transparency.}\\
+\code{db.summary()} reports the in-memory footprint of a VarFrame.
+Operations that potentially trigger large allocations (e.g.\ \code{expand}
+broadcasting to a high-cardinality new dimension, dense pivot of a sparse
+acquisition matrix) document the resulting size in their docstring and
+print a warning when the projected allocation exceeds 1\,GB.
+\end{reqbox}
+
+\begin{reqbox}{REQ-90}{\stable}
+\textbf{Sparse-aware handling of large datasets.}\\
+For VarFrame instances whose coverage drops below a configurable
+threshold (default 25\,\%), \itc{} provides sparse-aware variants of the
+heavy operations (\code{compute}, \code{interpolate}, \code{integrate})
+that operate only on populated cells. The sparse mode is opt-in via
+\code{db.use\_sparse=True}; correctness must match the dense path
+exactly, validated by paired tests. A common backing store (the underlying NumPy arrays plus a finite-mask) is used; \itc{} does not
+introduce a separate sparse VarFrame type.
+\end{reqbox}
+
+\begin{reqbox}{REQ-91}{\stable}
+\textbf{Lazy materialization of derived structures.}\\
+The HistoryFrame, UncFrame, and CorrelationMatrix are materialized only
+when first needed. A VarFrame loaded from raw data carries no UncFrame
+until \code{set\_uncertainty} is called; no HistoryFrame until an
+operation produces non-original values; no correlation matrix until
+\code{set\_correlation} is called. This keeps the memory footprint of
+exploratory workflows minimal.
+\end{reqbox}
+
+\section{Versioning and Release}
+
+\begin{reqbox}{REQ-92}{\stable}
+\textbf{Semantic versioning.}\\
+\itc{} follows semantic versioning (\code{MAJOR.MINOR.PATCH}). Initial
+public release is \code{0.1.0}. Breaking API changes increment
+\code{MAJOR}; new backward-compatible features increment \code{MINOR};
+bug fixes increment \code{PATCH}.
+\end{reqbox}
+
+\begin{reqbox}{REQ-93}{\stable}
+\textbf{Conventional commits.}\\
+All commit messages follow Conventional Commits. Allowed prefixes:
+\code{feat:}, \code{fix:}, \code{docs:}, \code{test:}, \code{refactor:},
+\code{chore:}, \code{perf:}, \code{build:}, \code{ci:}. CI rejects
+non-conforming commits.
+\end{reqbox}
+
+\begin{reqbox}{REQ-94}{\stable}
+\textbf{Changelog.}\\
+\code{CHANGELOG.md} is updated with every version bump, following the
+Keep a Changelog format~\citep{keepachangelog} (Added, Changed,
+Deprecated, Removed, Fixed, Security).
+\end{reqbox}
+
+\begin{reqbox}{REQ-95}{\stable}
+\textbf{Continuous integration.}\\
+GitHub Actions runs on every push: \code{ruff check},
+\code{ruff format --check}, \code{mypy --strict} (public API),
+\code{pytest}, and the coverage gate (threshold 90\,\%). All checks must
+pass before a pull request may be merged.
+\end{reqbox}
+
+\begin{reqbox}{REQ-96}{\stable}
+\textbf{Pre-commit hooks aligned with CI.}\\
+A \code{.pre-commit-config.yaml} mirrors the CI checks (\code{ruff check},
+\code{ruff format --check}, \code{mypy}, fast \code{pytest -x}), running
+locally on every commit. The local pre-commit configuration is a hard
+requirement of the contribution workflow.
+\end{reqbox}
+
+\begin{reqbox}{REQ-97}{\draft}
+\textbf{Citable releases.}\\
+Tagged releases on GitHub are mirrored on Zenodo, generating a DOI for
+each release. \itc{} is academically citable from \code{0.1.0}.
+\end{reqbox}

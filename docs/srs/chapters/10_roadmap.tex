@@ -1,0 +1,173 @@
+% =============================================================================
+% Chapter 10: Implementation Roadmap
+% =============================================================================
+
+\chapter{Implementation Roadmap}
+\label{ch:roadmap}
+
+This chapter maps the \itc{} requirements to a phased implementation
+plan. Releases are incremental (DD-21): every milestone ships as a public
+release on PyPI with a Zenodo DOI. The mapping is M0 to \code{v0.1.0},
+M1 to \code{v0.2.0}, M2 to \code{v0.3.0}, and M3 to \code{v0.4.0}.
+Milestones are ordered by foundational dependency; later milestones build
+on earlier ones. The goal of each milestone is a usable, tested, and
+documented release, not a feature dump.
+
+\begin{noteinfo}
+The roadmap is a living plan. Milestone boundaries may shift as use cases
+are validated against real data. What does not shift: TDD discipline, the
+90\,\% coverage gate, and green CI as the gate of every release. Before
+the first public release, three additional gates apply: the MIT license
+file and \code{CITATION.cff} at the repository root
+(Chapter~\ref{ch:contributing}), the example-data provenance scrub, and
+registration of the PyPI name \code{itaca} (verified free on 2026-07-21).
+\end{noteinfo}
+
+\section{Milestone M0: Foundation (release v0.1.0)}
+
+\textbf{Goal:} a working, tested core that can load, inspect, compute,
+propagate two-component uncertainty (with covariance), and export. No
+processors, no plots, no axis machinery yet. The skeleton everything else
+builds on, released early to start the feedback loop.
+
+\begin{table}[H]
+\centering
+\caption{M0 deliverables.}
+\label{tab:phase-m0}
+\small
+\begin{tabularx}{\textwidth}{@{}lXl@{}}
+\toprule
+\textbf{Requirements} & \textbf{Feature} & \textbf{Module}\\
+\midrule
+REQ-01 \dots\ REQ-07 & \code{itc.load()}: folder, dict, NumPy, pandas, single-file; datapoint mode; provenance and history at load time & \code{io/loader.py}\\
+REQ-13, REQ-14 & \code{db.inspect()}, \code{db.pivot()} as VarFrame methods & \code{io/inspector.py}, \code{io/pivot.py}\\
+REQ-16 & \code{db.summary()} & \code{io/summary.py}\\
+REQ-15, REQ-17 & \code{db.manifest()}, \code{db.diagnostics(log=)} & \code{io/manifest.py}, \code{io/diagnostics.py}\\
+REQ-08 \dots\ REQ-12 & Operating modes; draft save guard; strict mode mixing & \code{core/provenance.py}\\
+REQ-20 \dots\ REQ-22 & \code{select} (with operators and \code{Frame=}), \code{at}, \code{squeeze} & \code{ops/}\\
+REQ-26 & \code{fill} via window or global polyfit & \code{ops/fill.py}\\
+REQ-37 & \code{db.combine()} explicit arithmetic & \code{core/combine.py}\\
+REQ-39, REQ-40, REQ-41, REQ-43, REQ-44 & \code{set\_uncertainty}, \code{set\_correlation}, UncFrame, expression engine (ast-based), GUM LPU with covariance & \code{uncertainty/}\\
+REQ-98, REQ-99 & Two-component uncertainty; propagation semantics for every M0 operation & \code{uncertainty/}, \code{ops/}\\
+REQ-33 \dots\ REQ-36 & \code{compute} with debug, \code{where}/\code{fill}, NumPy guard, symbolic method & \code{ops/compute.py}\\
+REQ-70 \dots\ REQ-72 & \code{to\_csv}, \code{to\_json}, \code{to\_pandas}, \code{to\_numpy}, \code{save}, \code{itc.open}, split\_by & \code{io/export.py}\\
+REQ-73 & Custom unit conversion utility & \code{utils/units.py}\\
+REQ-102, REQ-103 & Array-level immutability; state-hash reproducibility invariant & \code{core/}\\
+\addlinespace
+n/a & \code{itc.set\_user}, \code{itc.set\_mode}, version tagging, full test suite, pre-commit, CI pipeline, Zenodo registration & \code{core/}\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Milestone M1: Analysis Core (release v0.2.0)}
+
+\textbf{Goal:} differentiation, smoothing, averaging, integration, the
+axis and moment-transfer machinery, pipeline persistence, first
+processors, and the core plot system. The state at which \itc{} becomes
+useful for real campaign analysis.
+
+\begin{table}[H]
+\centering
+\caption{M1 deliverables.}
+\label{tab:phase-m1}
+\small
+\begin{tabularx}{\textwidth}{@{}lXl@{}}
+\toprule
+\textbf{Requirements} & \textbf{Feature} & \textbf{Module}\\
+\midrule
+REQ-23 \dots\ REQ-25 & \code{expand} (add dim), \code{itc.concat}, \code{interpolate} (densify and axis translation, \code{override} flag), HistoryFrame updates & \code{ops/}, \code{core/historyframe.py}\\
+REQ-27 \dots\ REQ-29 & \code{average}, \code{integrate} (Cartesian and polar), \code{smooth} & \code{ops/}\\
+REQ-30 & \code{diff}: moving-window polynomial; \code{db.d[dim]}; \code{nan\_edges} & \code{ops/diff.py}\\
+REQ-31, REQ-32 & \code{fitmodel}, \code{fitvalue} & \code{ops/fitmodel.py}, \code{ops/fitvalue.py}\\
+REQ-38, REQ-100, REQ-101 & \code{Axis}, \code{db.rotate()} with uncertainty propagation, \code{db.translate\_moments()}, condition-dependent frames & \code{core/axes.py}\\
+REQ-53 \dots\ REQ-55 & Indexed history; Pipeline; \code{.itc\_pipe} I/O & \code{core/pipeline.py}\\
+REQ-45 \dots\ REQ-48 & Processor protocol, factory, \code{.itceq} parser with cycle detection and optional topological sort & \code{pproc/}\\
+n/a & Built-in processors: \code{WT\_propeller}, \code{WT\_balance\_off} with companion \code{.itceq} files & \code{pproc/builtin/}\\
+REQ-49, REQ-50 & \code{pproc.statistics}, \code{pproc.compare} (N-way, named inputs) & \code{pproc/}\\
+REQ-56, REQ-57, REQ-60, REQ-61 & \code{itc.datavis()}, \code{DataVis}, \code{ItcFigure}, AIAA style, matplotlib backend & \code{plot/}\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Milestone M2: Full IO and Reporting (release v0.3.0)}
+
+\textbf{Goal:} complete the processor library, LaTeX-backed PDF
+reports, multi-plot, specialized plots, the surrogate-modeling interface
+with standalone exportable models, and the plotly backend. Covers all
+primary use cases UC-01 through UC-06.
+
+\begin{table}[H]
+\centering
+\caption{M2 deliverables.}
+\label{tab:phase-m2}
+\small
+\begin{tabularx}{\textwidth}{@{}lXl@{}}
+\toprule
+\textbf{Requirements} & \textbf{Feature} & \textbf{Module}\\
+\midrule
+n/a & Remaining processors: \code{WT\_balance\_on}, \code{CFD\_cp}, \code{CFD\_disk}, \code{FT\_thrust}, \code{CAL\_balance}, \code{wt\_corrections} & \code{pproc/builtin/}\\
+REQ-52 & \code{aero\_polar}: $C_{L0}$, $C_{L\alpha}$, $C_{L\max}$, $\alpha_{\mathrm{stall}}$, $C_{M0}$, $C_{M\alpha}$, $C_{D0}$, $k$, $C_{L\,\mathrm{trim}}$ & \code{pproc/builtin/aero\_polar.py}\\
+REQ-51 & \code{pproc.report()} LaTeX-backed PDF generation with \code{keep\_tex} flag & \code{pproc/report.py}\\
+REQ-58, REQ-59 & Multi-plot, origin-tag visualization & \code{plot/multiplot.py}\\
+REQ-62 & Specialized plots: \code{plot\_polar}, \code{plot\_cp}, \code{plot\_disk}, \code{plot\_colormap}, overlay & \code{plot/specialized/}\\
+n/a & Plotly backend (interactive HTML output) & \code{plot/backends/plotly\_backend.py}\\
+REQ-63, REQ-64 & \code{itc.surrogate()} returning \code{(VarFrame, model)} tuple, \code{.itc\_surr} with optional source embedding, predict, cross-validate, save/load & \code{surrogate/}\\
+REQ-42 & Monte Carlo propagation for discrete-branch models & \code{uncertainty/mcm.py}\\
+REQ-70 & PROV-N and PROV-JSON provenance export & \code{io/prov\_export.py}\\
+REQ-43 & Sensitivity analysis worked examples: blade tolerances $\to \eta$ band, WT errors $\to$ trim deflection band (EUB) & \code{docs/examples/}\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Milestone M3: Aerospace Framework (release v0.4.0)}
+
+\textbf{Goal:} implement \code{itc.aerospace}: fully auditable
+engineering computations. This transforms \itc{} from a data-management
+tool into a traceable engineering framework for aerospace analysis.
+Covers UC-07 and UC-08; UC-09 (multi-fidelity) is partially supported
+here and completed post-release.
+
+\begin{table}[H]
+\centering
+\caption{M3 deliverables.}
+\label{tab:phase-m3}
+\small
+\begin{tabularx}{\textwidth}{@{}lXl@{}}
+\toprule
+\textbf{Requirements} & \textbf{Feature} & \textbf{Module}\\
+\midrule
+REQ-67 & \code{itc.aerospace.stabcontrol}: static margin, trim HT deflection + uncertainty (EUB), pitch damping, V-n diagram & \code{aerospace/stabcontrol/}\\
+REQ-66 & \code{itc.aerospace.performance}: \code{TakeoffAnalysis}, \code{ClimbAnalysis}, \code{EnvelopeAnalysis}: full computation memory as auditable VarFrame & \code{aerospace/performance/}\\
+REQ-68, REQ-69 & \code{itc.aerospace.propeller}: BEMT (Adkins-Liebeck) with uncertainty propagation from blade-geometry tolerances & \code{aerospace/propeller/}\\
+n/a & Aeropropulsive integration connecting BEMT output to stability and performance analyses & \code{aerospace/integration/}\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Post-v0.1 Roadmap}
+
+The features in Table~\ref{tab:postrelease-roadmap} are explicitly
+deferred to releases after \code{v0.1.0}. They are listed here so that
+contributors can plan around them and so that the post-release scope is
+not silently absorbed into the current release.
+
+\begin{table}[H]
+\centering
+\caption{Post-release planned features.}
+\label{tab:postrelease-roadmap}
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Feature} & \textbf{Description}\\
+\midrule
+Model code auditability  & Hash and version the physical model code (e.g.\ BEMT equations) so changes in model implementation are detectable in the Provenance.\\
+Catalogue system         & Session-level catalogue (\code{itc.catalog}) tracking all saved VarFrame objects, enabling version comparison, lineage graphs, and dataset discovery.\\
+Multi-fidelity surrogates & Co-Kriging and other multi-fidelity surrogates combining wind tunnel and CFD data (UC-09 completion).\\
+DAQ acquisition interface & Direct interface with DAQ file formats, enabling seamless load from raw acquisition files without manual conversion.\\
+Collaborative annotation & Structured comments attachable to VarFrame objects, preserved in \code{.itc}, enabling team annotation workflows.\\
+Web diagnostic viewer    & \code{itc.serve()} rendering \code{DiagnosticsReport} and history as an interactive HTML dashboard (read-only).\\
+Interactive notebook plots & Matplotlib widget-based interactive plots (\code{ipympl}/\code{matplotlib.widgets}) integrated with DataVis for use in Jupyter notebooks.\\
+Software paper & JOSS or SoftwareX submission after the API stabilizes, establishing the canonical academic citation alongside the per-release Zenodo DOIs (REQ-97).\\
+\bottomrule
+\end{tabularx}
+\end{table}

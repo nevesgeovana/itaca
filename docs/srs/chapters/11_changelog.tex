@@ -1,0 +1,41 @@
+% =============================================================================
+% Chapter 11: Changelog
+% =============================================================================
+
+\chapter{Changelog}
+\label{ch:changelog}
+
+This changelog follows the Keep a Changelog format~\citep{keepachangelog}.
+Versions are listed in reverse chronological order. This chapter tracks the
+\emph{document} baseline; library releases carry their own
+\code{CHANGELOG.md} in the repository (REQ-94). From the next document
+version onward, every entry lists the requirement(s) and design decision(s)
+it adds or modifies.
+
+\section*{Document 0.1.0, 2026-07-21, First Workspace-Tracked Version}
+
+This version establishes the full requirement and design baseline of
+\itc{} and starts requirement-evolution monitoring in the research
+workspace. It consolidates the founding v0.1.0b draft with the 2026-07-21
+specification review.
+
+\paragraph{Added.} Functional requirements REQ-01 through REQ-73 and
+REQ-98 through REQ-103; non-functional requirements REQ-74 through REQ-97;
+non-requirements NREQ-01 through NREQ-10; design decisions DD-01 through
+DD-22. The \code{.itc}, \code{.itceq}, \code{.itc\_pipe}, and
+\code{.itc\_surr} file formats. The positioning statement among existing
+tools (Section~\ref{sec:positioning}). The MIT license and citation policy
+(Chapter~\ref{ch:contributing}). The incremental release roadmap mapping
+milestones M0 through M3 to public releases \code{v0.1.0} through
+\code{v0.4.0} (Chapter~\ref{ch:roadmap}).
+
+\paragraph{Changed relative to the founding draft.} Two-component
+uncertainty replaces the single-component UncFrame (REQ-99, DD-19);
+uncertainty semantics are now normative for every operation (REQ-98,
+DD-18); the axis system gains condition-dependent frames and moment
+reference-point transfer (REQ-100, REQ-101); array-level immutability and
+the state-hash scope are now requirements (REQ-102, REQ-103); expression
+parsing is specified on the standard-library \code{ast} module (DD-20);
+\code{ruff format} replaces \code{black}; the Python upper bound moves to
+\code{<3.14}; the single-release plan is superseded by incremental
+releases (DD-21).
