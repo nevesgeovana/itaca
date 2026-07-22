@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import cast
 
+import numpy as np
+
 from itaca.core.coords import Cartesian, CoordSystem
 from itaca.core.correlation import CorrelationMatrix
 from itaca.core.dimension import Dimension
@@ -314,6 +316,7 @@ class VarFrame:
         variables: Mapping[str, Variable] | None = None,
         uncertainty: object = _UNSET,
         tags: object = _UNSET,
+        correlation: object = _UNSET,
     ) -> VarFrame:
         """Return a new VarFrame with content replaced and recorded.
 
@@ -329,6 +332,11 @@ class VarFrame:
             else cast("UncFrame | None", uncertainty)
         )
         new_tags = self.tags if tags is _UNSET else cast("HistoryFrame | None", tags)
+        new_correlation = (
+            self.correlation
+            if correlation is _UNSET
+            else cast("CorrelationMatrix | None", correlation)
+        )
         record = self.mode == "production" or history
         new_history = self.history
         if record:
@@ -341,7 +349,7 @@ class VarFrame:
                 variables=new_vars,
                 operations=operations,
                 uncertainty=new_unc,
-                correlation=self.correlation,
+                correlation=new_correlation,
                 tags=new_tags,
             )
             new_history = self.history.append(
@@ -353,6 +361,7 @@ class VarFrame:
             vars=dict(new_vars),
             uncertainty=new_unc,
             tags=new_tags,
+            correlation=new_correlation,
             history=new_history,
         )
 
@@ -497,6 +506,194 @@ class VarFrame:
             deg=deg,
             window=window,
             global_fit=global_fit,
+            history=history,
+            comment=comment,
+        )
+
+    def set_uncertainty(
+        self,
+        spec: Mapping[str, float | str],
+        *,
+        component: str = "systematic",
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Assign standard uncertainties to variables (REQ-39, REQ-99).
+
+        Parameters
+        ----------
+        spec : mapping of str to float or str
+            Per-variable standard uncertainty: a float is absolute, a
+            string ending in ``"%"`` is relative to the values.
+        component : str, optional
+            ``"systematic"`` (default; fully correlated across points)
+            or ``"random"`` (independent between points), per AIAA
+            S-071A-1999 (DD-19).
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame with the UncFrame created or updated.
+
+        Raises
+        ------
+        UncertaintyKeyError
+            If a key does not match any variable.
+        UncertaintyError
+            On an invalid component or a malformed relative value.
+        """
+        from itaca.uncertainty.assign import set_uncertainty as _set
+
+        return _set(self, spec, component=component, history=history, comment=comment)
+
+    def set_correlation(
+        self,
+        spec: Mapping[tuple[str, str], float],
+        *,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Declare correlation coefficients between variables (REQ-40).
+
+        Parameters
+        ----------
+        spec : mapping of (str, str) to float
+            Pairwise coefficients; later declarations override earlier
+            ones for the same pair.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame with the correlation structure updated.
+
+        Raises
+        ------
+        CorrelationKeyError
+            If a referenced variable is absent.
+        CorrelationMatrixError
+            If a coefficient violates ``|r| <= 1``.
+        """
+        from itaca.uncertainty.assign import set_correlation as _set
+
+        return _set(self, spec, history=history, comment=comment)
+
+    def compute(
+        self,
+        equation: str,
+        *,
+        debug: bool = False,
+        where: str | None = None,
+        fill: float | None = np.nan,
+        method: str = "symbolic",
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Derive a new variable from a string equation (REQ-33).
+
+        Propagation of both uncertainty components is automatic when
+        any expression variable carries uncertainty (REQ-41), with
+        correlation terms from ``set_correlation`` (DD-14).
+
+        Parameters
+        ----------
+        equation : str
+            ``"VAR = expression"`` over the REQ-44 operator set.
+        debug : bool, optional
+            Print the parsed tokens, identified variables, a sample
+            evaluation, and the partials before applying (REQ-34).
+        where : str or None, optional
+            Condition string; the equation applies only where it holds
+            (REQ-35).
+        fill : float or None, optional
+            Value at filtered-out points: NaN (default), a scalar, or
+            ``None`` to retain existing values of ``VAR``.
+        method : str, optional
+            ``"symbolic"`` (default). ``"mcm"`` ships in v0.3.0.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame containing ``VAR`` tagged ``+1``.
+        """
+        from itaca.ops.compute import compute as _compute
+
+        return _compute(
+            self,
+            equation,
+            debug=debug,
+            where=where,
+            fill=fill,
+            method=method,
+            history=history,
+            comment=comment,
+        )
+
+    def combine(
+        self,
+        other: VarFrame,
+        *,
+        op: str,
+        weights: tuple[float, float] | None = None,
+        cross_correlation: float = 0.0,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Combine two VarFrames under a named operation (REQ-37).
+
+        Python operators (``+ - * /``) are intentionally unsupported
+        (DD-12, NREQ-08).
+
+        Parameters
+        ----------
+        other : VarFrame
+            Right-hand input; must share mode, dimensions, coordinates,
+            and variable names.
+        op : str
+            ``"sum"``, ``"diff"``, ``"product"``, ``"ratio"``,
+            ``"mean"``, or ``"weighted_mean"`` (requires ``weights``).
+        weights : tuple of (float, float) or None, optional
+            Weights for ``"weighted_mean"``.
+        cross_correlation : float, optional
+            Correlation between corresponding variables of the two
+            inputs, 0 by default.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame; origin tags follow the worst-case rule
+            (OQ-10).
+
+        Raises
+        ------
+        OperatingModeMixError
+            When the inputs are in different operating modes (REQ-12).
+        DataError
+            On grid, coordinate, or variable-set mismatches.
+        """
+        from itaca.core.combine import combine as _combine
+
+        return _combine(
+            self,
+            other,
+            op=op,
+            weights=weights,
+            cross_correlation=cross_correlation,
             history=history,
             comment=comment,
         )

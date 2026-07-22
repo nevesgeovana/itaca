@@ -8,6 +8,20 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Added
 
+* M0 Phase 4, uncertainty and compute engine: expression operators
+  with analytical partials, each Hypothesis-verified against finite
+  differences (REQ-44, REQ-77, DD-20); ast-based parser with precise
+  syntax errors, np.* normalization, and the per-variable
+  non-differentiable guard (REQ-36); `db.set_uncertainty` with
+  absolute and percent values and the two REQ-99 components (REQ-39);
+  `db.set_correlation` with merge-and-override semantics (REQ-40);
+  GUM clause-5 LPU with covariance, components propagated separately
+  (REQ-41, DD-14, DD-19); `db.compute` with `debug=`, `where=`/`fill=`
+  semantics, and `+1` origin tags (REQ-33 to REQ-35); `db.combine`
+  with exact Jacobians, `cross_correlation=`, strict mode mixing, and
+  worst-case tag reduction (REQ-37, REQ-12, OQ-10). Monte Carlo
+  (`method="mcm"`) fails loud until v0.3.0 (REQ-42, DD-21).
+
 * M0 Phase 3, structural operations: `db.select` with operator-suffixed
   keys, `Frame=` targeting (values, uncertainty, origin tags), masking
   semantics with fully-masked coordinate slices dropped and the masked
