@@ -8,6 +8,11 @@ authors:
 license: MIT
 version: 0.1.0
 date-released: 2026-07-22
+doi: 10.5281/zenodo.21482649
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.21482648
+    description: Concept DOI, resolving to the latest version.
 repository-code: "https://github.com/nevesgeovana/itaca"
 abstract: >-
   Python library for rigorous engineering data management, analysis, and

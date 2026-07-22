@@ -1,5 +1,9 @@
 # ITACA
 
+[![PyPI](https://img.shields.io/pypi/v/itaca)](https://pypi.org/project/itaca/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21482648.svg)](https://doi.org/10.5281/zenodo.21482648)
+[![CI](https://github.com/nevesgeovana/itaca/actions/workflows/ci.yml/badge.svg)](https://github.com/nevesgeovana/itaca/actions/workflows/ci.yml)
+
 **Integrated Toolkit for Aerospace Computation and Analysis**
 
 *From data to wisdom.*
@@ -53,9 +57,13 @@ complete synthetic walkthrough.
 
 ## License and citation
 
-MIT License (see `LICENSE`). Citation metadata lives in `CITATION.cff`;
-tagged releases will be mirrored on Zenodo with a DOI. A software paper
-(JOSS or SoftwareX) is planned after the API stabilizes.
+MIT License (see `LICENSE`). Citation metadata lives in `CITATION.cff`.
+Tagged releases are mirrored on Zenodo: cite the concept DOI
+[10.5281/zenodo.21482648](https://doi.org/10.5281/zenodo.21482648) for
+the latest version, or the per-release DOI (v0.1.0:
+[10.5281/zenodo.21482649](https://doi.org/10.5281/zenodo.21482649)). A
+software paper (JOSS or SoftwareX) is planned after the API
+stabilizes.
 
 ## Author
 
