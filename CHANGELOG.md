@@ -8,6 +8,23 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Added
 
+* M0 Phase 1, core data model: frozen `Dimension`, `Variable`, and
+  `VarFrame` with construction-time shape and naming validation (SRS
+  4.1, DD-03) and read-only arrays throughout (REQ-102); `Provenance`
+  with operating modes, `itc.set_user`, `itc.set_mode`, and explicit
+  `promote`/`demote` recorded in History (REQ-07 to REQ-12);
+  append-only `History` with contiguous-index enforcement and the
+  canonical SHA-256 state hash excluding volatile fields (REQ-103,
+  SRS 4.4); two-component `UncFrame` with RSS combination (DD-19,
+  REQ-99 storage layer); `HistoryFrame` origin tags (SRS 4.3, DD-06);
+  `CorrelationMatrix` storage with symmetry and bounds validation
+  (REQ-40 storage layer); `Cartesian` and `Polar` tags. Property-based
+  tests (Hypothesis) cover the state-hash contract; a house-style
+  guard test enforces the no em/en dash rule repository-wide.
+* Recording, registry, and logging conventions adopted from
+  pyflightstream, documented in `docs/PYFLIGHTSTREAM_ADOPTIONS.md`
+  with SRS conflicts resolved in the SRS's favor.
+
 * M0 Phase 0, project infrastructure: package skeleton (`core/`, `io/`,
   `ops/`, `uncertainty/`, `utils/`) importable as `import itaca as itc`
   with `__version__` single-sourced in `core/version.py` (REQ-92); the
