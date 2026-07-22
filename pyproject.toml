@@ -88,6 +88,12 @@ convention = "numpy"
 strict = true
 files = ["itaca"]
 
+[[tool.mypy.overrides]]
+# pandas is an optional, lazily imported bridge (REQ-84); its stubs
+# are not a dependency.
+module = ["pandas", "pandas.*"]
+ignore_missing_imports = true
+
 # -----------------------------------------------------------------------------
 # pytest and coverage: 90 percent hard gate (REQ-75, REQ-95)
 # -----------------------------------------------------------------------------

@@ -8,6 +8,23 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Added
 
+* M0 Phase 5, export and persistence: `to_csv` with provenance header
+  comments and `split_by=` (REQ-70 to REQ-72); `to_json` with
+  top-level provenance and history keys and optional uncertainty;
+  `to_pandas` (lazy, MissingDependencyError when absent, REQ-84);
+  `to_numpy` returning read-only views by default (REQ-102); the
+  `.itc` native ZIP archive with atomic writes, a versioned schema
+  string, and `db.save`/`itc.open` revalidating the state hash on
+  read (`HashMismatchError` on drift, REQ-103); the draft-mode export
+  guard with `allow_draft=True` embedding a prominent warning
+  (REQ-11, OQ-22); `utils.units.convert` with the hand-curated SI and
+  aerospace table, every entry unit-tested (REQ-73, DD-13).
+
+### Changed
+
+* SRS document 0.1.1: REQ-98 and REQ-99 promoted to stable at the M0
+  Phase 4 checkpoint; OQ-19 to OQ-23 folded into the text.
+
 * M0 Phase 4, uncertainty and compute engine: expression operators
   with analytical partials, each Hypothesis-verified against finite
   differences (REQ-44, REQ-77, DD-20); ast-based parser with precise

@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import MappingProxyType
 from typing import cast
 
@@ -697,6 +698,130 @@ class VarFrame:
             history=history,
             comment=comment,
         )
+
+    def to_csv(
+        self,
+        path: str | Path,
+        *,
+        split_by: str | None = None,
+        allow_draft: bool = False,
+    ) -> object:
+        """Export to flat CSV with a provenance header (REQ-70 to REQ-72).
+
+        Parameters
+        ----------
+        path : path
+            Target file, or target directory when ``split_by`` is
+            given (one file per coordinate, REQ-72).
+        split_by : str or None, optional
+            Dimension to split the export by.
+        allow_draft : bool, optional
+            Override the draft-mode guard, embedding a prominent
+            warning in the header (REQ-11).
+
+        Returns
+        -------
+        pathlib.Path or list of pathlib.Path
+            The written file(s).
+        """
+        from itaca.io.export import to_csv as _to_csv
+
+        return _to_csv(self, path, split_by=split_by, allow_draft=allow_draft)
+
+    def to_json(self, path: str | Path, *, allow_draft: bool = False) -> object:
+        """Export to JSON with provenance and history keys (REQ-70, REQ-71).
+
+        Parameters
+        ----------
+        path : path
+            Target file.
+        allow_draft : bool, optional
+            Override the draft-mode guard (REQ-11).
+
+        Returns
+        -------
+        pathlib.Path
+            The written file.
+        """
+        from itaca.io.export import to_json as _to_json
+
+        return _to_json(self, path, allow_draft=allow_draft)
+
+    def to_pandas(self, *, allow_draft: bool = False) -> object:
+        """Export to a flat pandas DataFrame (REQ-70; lazy dependency).
+
+        Parameters
+        ----------
+        allow_draft : bool, optional
+            Override the draft-mode guard (REQ-11).
+
+        Returns
+        -------
+        pandas.DataFrame
+            Dimension columns followed by variable columns.
+
+        Raises
+        ------
+        MissingDependencyError
+            When pandas is not installed (REQ-84).
+        """
+        from itaca.io.export import to_pandas as _to_pandas
+
+        return _to_pandas(self, allow_draft=allow_draft)
+
+    def to_numpy(
+        self,
+        *,
+        return_dims: bool = False,
+        copy: bool = False,
+        allow_draft: bool = False,
+    ) -> object:
+        """Export the variable arrays (REQ-70; read-only views, REQ-102).
+
+        Parameters
+        ----------
+        return_dims : bool, optional
+            Also return the coordinate arrays per dimension.
+        copy : bool, optional
+            Return writable copies instead of read-only views.
+        allow_draft : bool, optional
+            Override the draft-mode guard (REQ-11).
+
+        Returns
+        -------
+        dict or tuple
+            ``{var: array}``, plus ``{dim: coords}`` when
+            ``return_dims`` is True.
+        """
+        from itaca.io.export import to_numpy as _to_numpy
+
+        return _to_numpy(
+            self, return_dims=return_dims, copy=copy, allow_draft=allow_draft
+        )
+
+    def save(self, path: str | Path, *, allow_draft: bool = False) -> object:
+        """Write the VarFrame to a .itc archive (REQ-70, REQ-11).
+
+        The archive preserves all metadata, Provenance, History,
+        uncertainty, correlation, and origin tags; ``itc.open``
+        revalidates the state hash on read (REQ-103).
+
+        Parameters
+        ----------
+        path : path
+            Target ``.itc`` file; the write is atomic.
+        allow_draft : bool, optional
+            Override the draft-mode guard, embedding a prominent
+            warning in the archive metadata (REQ-11).
+
+        Returns
+        -------
+        pathlib.Path
+            The written file.
+        """
+        from itaca.io.formats.itc import save as _save
+
+        return _save(self, path, allow_draft=allow_draft)
 
     def inspect(self, threshold: int = 20) -> None:
         """Print a dimension-vs-variable candidacy report (REQ-13).
