@@ -1,0 +1,56 @@
+# Release workflow (DD-21 incremental releases; M1 plan Phase B0).
+# Publishes to PyPI through trusted publishing (OIDC): no API token is
+# stored in the repository. Requires the matching publisher configured
+# on PyPI (project itaca, owner nevesgeovana, repository itaca,
+# workflow release.yml, environment pypi) and a GitHub environment
+# named pypi. Triggered by version tags only; the tag is cut after the
+# release gates of the execution plan are green.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          twine check dist/*
+      - name: Verify tag matches the package version
+        run: |
+          VERSION=$(python -c "import pathlib, re; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('itaca/core/version.py').read_text()).group(1))")
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "Tag v$TAG does not match itaca.core.version __version__ $VERSION" >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/itaca/
+    permissions:
+      # OIDC trusted publishing: the workflow exchanges a short-lived
+      # identity token with PyPI instead of a stored secret.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
