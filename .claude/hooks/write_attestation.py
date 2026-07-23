@@ -7,14 +7,16 @@ Usage:
 
 <passes> is a comma-separated list of the reviewer passes that actually
 ran (architect,qa,vv,tech-writer,api-designer). The attestation stamps
-the current HEAD; the git-push gate (role_review_gate.py) allows the
-push only while the stamped head equals the commit being pushed.
+HEAD together with every commit not yet on a remote, which is the range
+the next push would make new; the git-push gate (role_review_gate.py)
+allows the push only while that list covers every commit in scope,
+including the ref being pushed.
 
 Run this ONLY after the specialist agents have actually run and their
 findings are fixed or registered. Stamping without running the agents
 defeats the protocol this file exists to enforce. The ``passes`` field
 is an audit annotation, not an enforced gate input: the gate checks
-only that an attestation covers the pushed commit, so the honesty of
+only that an attestation covers the pushed range, so the honesty of
 the passes list rests on the operator, not the mechanism.
 
 The record's timestamp is the HEAD commit's committer date
@@ -65,6 +67,14 @@ def main() -> int:
     if not head:
         print("could not resolve HEAD", file=sys.stderr)
         return 1
+    # The commits this attestation covers: everything reachable from HEAD
+    # that is not yet on any remote, which is exactly what the next push
+    # would make newly available. Stamping only HEAD let unpushed
+    # ancestors ship unreviewed: the gate compares this list against the
+    # range the push actually moves. ITACA's own role review found that
+    # defect in the v1 gate, and ITACA ran the unfixed gate until now.
+    listed = _git(root, "rev-list", head, "--not", "--remotes")
+    commits = [c for c in listed.splitlines() if c] or [head]
     # Stamp the HEAD commit's committer date (%cI): deterministic, no
     # wall-clock dependency.
     when = _git(root, "show", "-s", "--format=%cI", head)
@@ -79,7 +89,7 @@ def main() -> int:
     except (json.JSONDecodeError, ValueError, OSError):
         att = {}
 
-    entry: dict[str, object] = {"head": head}
+    entry: dict[str, object] = {"head": head, "commits": commits}
     if when:
         entry["commit_date"] = when
     if passes:
@@ -89,9 +99,17 @@ def main() -> int:
     att_path.parent.mkdir(parents=True, exist_ok=True)
     att_path.write_text(json.dumps(att, indent=2) + "\n", encoding="utf-8")
     print(
-        f"{kind} attestation written for {head[:12]}"
+        f"{kind} attestation written for {head[:12]}, covering "
+        f"{len(commits)} unpushed commit(s)"
         + (f" (passes: {', '.join(passes)})" if passes else "")
     )
+    if len(commits) > 1:
+        print(
+            "  NOTE: more than one commit is unpushed, so the review had to "
+            "cover the whole range, not just the tip. If it did not, "
+            "re-review before pushing.",
+            file=sys.stderr,
+        )
     return 0
 
 

@@ -84,13 +84,44 @@ specialist agents): "role-review" means invoking the `role-review`
 skill so the real reviewer agents run, never a hand-written
 paraphrase. A `git push` PreToolUse hook
 (`.claude/hooks/role_review_gate.py`) blocks every push until an
-attestation stamped by the skill names the exact commit being pushed;
-a milestone-release tag (`vX.Y.Z` or `--tags`) additionally requires
-the release attestation (full-scope review of the release diff). The
-attestation is written by `.claude/hooks/write_attestation.py` as the
-skill's closing step, in `.claude/.role_review_attestation.json`
-(local, gitignored). A commit made after attesting re-arms the gate:
-an unreviewed commit never ships.
+attestation stamped by the skill covers every commit the push makes
+new, computed as `git rev-list <target> --not --remotes` plus the ref
+being pushed, always. The ref stays in scope even when the range is
+empty: the ordinary release order (branch first, then tag) leaves the
+tagged commit already on the remote, and set containment over an empty
+range is vacuously true, so checking the range alone once let an
+unattested tag clear the gate. A milestone-release tag (`vX.Y.Z` or
+`--tags`) additionally requires the release attestation (full-scope
+review of the release diff). The attestation is written by
+`.claude/hooks/write_attestation.py` as the skill's closing step, in
+`.claude/.role_review_attestation.json` (local, gitignored). A commit
+made after attesting re-arms the gate: an unreviewed commit never
+ships. `tests/test_push_gate.py` and `tests/test_review_gate.py` pin
+this behavior; do not weaken the gate without a test that fails first.
+
+Write the attestation and the push as separate commands. The hook
+inspects the whole command string, so a combined command is seen as a
+push and denied before the attestation runs.
+
+## Incidents (adopted 2026-07-23)
+
+A defect is fixed at its **structural cause on its first occurrence**,
+not on its second. The fix is not complete until it carries a guard
+that makes recurrence impossible and the evidence that the guard
+blocks the original failure when re-run. Documentation is not a guard:
+a note, a comment, or a line in this file records a guard, and if the
+only enforcement is that someone reads and complies, the failure
+recurs. A guard nobody tried to break is a guess, so mutate the code
+it protects and show the guard fails.
+
+Incidents are recorded in the shared ledger with the sister
+repository, located by the `ITACA_INCIDENT_LEDGER` environment
+variable, never by a literal path in a versioned file. The
+`incident-analyst` agent (charter in `.claude/agents/`) writes the
+record: symptom, proximate cause, structural cause, guard, guard
+evidence, cross-repository impact. Whether an incident blocks a push
+is Geovana's call, and the push gate denies while one is open. No new
+work ships on top of a defect whose structural cause is still unfixed.
 
 ## What Claude should do here
 

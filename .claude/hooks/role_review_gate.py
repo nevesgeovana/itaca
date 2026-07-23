@@ -41,6 +41,7 @@ and .gitignore; a rename must touch all three.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -48,6 +49,13 @@ import sys
 from pathlib import Path
 
 ATTESTATION = ".claude/.role_review_attestation.json"
+# The shared incident ledger is located by environment variable, never by
+# a literal path in a committed file: a hard-coded personal path would
+# publish a local layout and deny every push from any other clone, with a
+# remedy the reader cannot perform. Unset means the check does not apply;
+# set but unreadable blocks.
+LEDGER_ENV = "ITACA_INCIDENT_LEDGER"
+CHECKER_NAME = "check_incidents.py"
 # A version tag argument: v followed by a digit, then version-ish
 # characters (covers v0.3.0 and pre-releases like v0.3.0rc1, matching
 # the release workflow's `v*` publish trigger). Anchored to the whole
@@ -205,6 +213,64 @@ def _git(root: Path, *args: str) -> str:
         return ""
 
 
+def _pushed_commits(root: Path, target: str) -> list[str]:
+    """List the commits this push would make newly available on the remote.
+
+    ``git rev-list <target> --not --remotes`` is everything reachable
+    from the target that no remote-tracking ref already has. That is the
+    real range a push moves, and it needs no refspec parsing, so
+    ``git push``, ``git push origin main`` and a tag push are all handled
+    the same way. Empty means the remote already has everything.
+    """
+    listed = _git(root, "rev-list", target, "--not", "--remotes")
+    return [c for c in listed.splitlines() if c]
+
+
+def _blocking_incidents(repo_name: str) -> tuple[bool, str, str]:
+    """Ask the configured ledger whether an open incident blocks this repo.
+
+    Returns ``(blocked, kind, detail)``. ``kind`` separates the two
+    failure classes because their remedies are opposite: ``"incident"``
+    is a real open blocking incident, ``"unreachable"`` is a ledger that
+    is configured but could not be consulted.
+    """
+    configured = os.environ.get(LEDGER_ENV, "").strip()
+    if not configured:
+        return False, "", ""
+    checker = Path(configured)
+    if checker.is_dir():
+        checker = checker / CHECKER_NAME
+    if not checker.is_file():
+        return (
+            True,
+            "unreachable",
+            f"{LEDGER_ENV} points at {configured}, where {CHECKER_NAME} is "
+            "not readable",
+        )
+    try:
+        done = subprocess.run(
+            [sys.executable, str(checker), repo_name],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        return (
+            True,
+            "unreachable",
+            f"the checker could not run ({type(error).__name__}: {error})",
+        )
+    if done.returncode == 0:
+        return False, "", ""
+    detail = (
+        done.stdout.strip()
+        or done.stderr.strip()
+        or "the checker reported a blocking state"
+    )
+    return True, "unreachable" if "UNREADABLE" in detail else "incident", detail
+
+
 def _is_release_push(args_after_push: list[str], root: Path) -> tuple[bool, str | None]:
     """Classify a push as release-grade from the refs it names.
 
@@ -280,32 +346,85 @@ def main() -> None:
         except (json.JSONDecodeError, ValueError, OSError):
             att = {}
 
-        review = att.get("review") or {}
-        if review.get("head") != target:
+        # An open blocking incident stops every push, before the review
+        # question is even asked: no new work ships on top of a defect
+        # whose structural cause is still unfixed. The repository identity
+        # comes from the checkout, never a literal, so a copy that forgot
+        # to edit it cannot query the wrong repository, get a clean
+        # answer, and allow.
+        repo_name = root.name
+        blocked, kind, detail = _blocking_incidents(repo_name)
+        if blocked and kind == "unreachable":
             _decide(
                 "deny",
-                "ROLE-REVIEW GATE: no role-review attestation for the "
-                f"commit being pushed ({target[:12]}). Run the role-review "
-                "skill (the specialist agents: architect, QA, V&V, tech "
-                "writer, API designer as applicable) over the pushed range, "
-                "fix or register every finding, and let the skill write the "
-                "attestation. Do NOT paraphrase the review as manual "
-                "checks. If you amended or rebased since attesting, the "
-                "commit changed: re-review the new range and re-attest. "
-                "Then push.",
+                "INCIDENT GATE: the incident ledger is configured but could not be "
+                f"consulted:\n{detail}\n"
+                f"Resync or repair it, or correct {LEDGER_ENV}, then push. The gate "
+                "blocks rather than assume nothing is wrong; if an incident file is "
+                "named as unreadable, repair its header block (id, status, blocking, "
+                "repos, and blocking_reason when blocking is false).",
+            )
+        if blocked:
+            _decide(
+                "deny",
+                "INCIDENT GATE: the shared incident ledger has an open incident that "
+                f"blocks a push from {repo_name}:\n{detail}\n"
+                "Run the incident-analyst agent, fix the incident at its structural "
+                "cause, give it a guard and the evidence that the guard blocks the "
+                "original failure when re-run, and set its status to fixed. Marking it "
+                "non-blocking to get past this gate is the failure this "
+                "protocol exists to prevent.",
+            )
+
+        # The attestation must cover EVERY commit the push makes new, not
+        # just the tip: checking the tip alone let unpushed ancestors ship
+        # unreviewed. ITACA's own role review found that defect.
+        pushed = _pushed_commits(root, target)
+        # The ref being pushed is ALWAYS in scope, even when it moves zero
+        # new commits. Set containment over an empty range is vacuously
+        # true, and the ordinary release order (branch first, then tag)
+        # leaves the tagged commit already on the remote: checking only the
+        # range let an unattested tag through. A guard whose assertion can
+        # be discharged by having nothing to assert about is not a guard.
+        in_scope = list(dict.fromkeys([*pushed, target]))
+        review = att.get("review") or {}
+        covered = set(
+            review.get("commits") or ([review["head"]] if review.get("head") else [])
+        )
+        missing = [c for c in in_scope if c not in covered]
+        if missing:
+            listed = ", ".join(c[:12] for c in missing[:8])
+            more = f" and {len(missing) - 8} more" if len(missing) > 8 else ""
+            _decide(
+                "deny",
+                f"ROLE-REVIEW GATE: {len(missing)} of the {len(in_scope)} commit(s) in "
+                f"scope for this push are not covered by any role-review attestation: "
+                f"{listed}{more}. Run the role-review skill (the specialist agents: "
+                "architect, QA, V&V, tech writer, API designer as applicable) over the "
+                "WHOLE pushed range, not only the tip, fix or register every finding, "
+                "and let the skill write the attestation. Do NOT paraphrase the review "
+                "as manual checks. If you amended or rebased since attesting, the "
+                "commits changed: re-review and re-attest. Then push.",
             )
 
         if is_release:
             release = att.get("release") or {}
-            if release.get("head") != target:
+            rel_covered = set(
+                release.get("commits")
+                or ([release["head"]] if release.get("head") else [])
+            )
+            rel_missing = [c for c in in_scope if c not in rel_covered]
+            if rel_missing:
                 _decide(
                     "deny",
-                    "RELEASE GATE: this is a release-grade push (a version "
-                    "tag or --tags) but there is no release attestation "
-                    f"for {target[:12]}. Run the release skill end to end "
-                    "(full-scope audit plus the role-review sweep of every "
-                    "item), which writes the release attestation, before "
-                    "tagging or pushing the release.",
+                    "RELEASE GATE: this is a release-grade push (a version tag or "
+                    "--tags) but the release attestation does not cover "
+                    f"{len(rel_missing)} of the {len(in_scope)} commit(s) being "
+                    "released, including the tagged commit itself when the branch was "
+                    "pushed first. Run the release skill end to end (full-scope audit "
+                    "plus the role-review sweep of every item), which writes the "
+                    "release attestation over the whole range, before tagging or "
+                    "pushing the release.",
                 )
 
         # Attestation covers the pushed commit: let the normal permission
