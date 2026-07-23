@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+from itaca.core.axes import Axis, AxisRegistry
 from itaca.core.coords import Cartesian, CoordSystem
 from itaca.core.correlation import CorrelationMatrix
 from itaca.core.dimension import Dimension
@@ -25,6 +26,7 @@ from itaca.core.errors import (
     ProvenanceError,
     UncertaintyError,
     UncertaintyKeyError,
+    VectorGroupError,
 )
 from itaca.core.history import History, compute_state_hash
 from itaca.core.historyframe import HistoryFrame
@@ -96,6 +98,7 @@ class VarFrame:
     tags: HistoryFrame | None = None
     coords: CoordSystem = field(default_factory=Cartesian)
     correlation: CorrelationMatrix | None = None
+    axes: AxisRegistry = field(default_factory=AxisRegistry)
 
     def __post_init__(self) -> None:
         dims = MappingProxyType(dict(self.dims))
@@ -187,6 +190,7 @@ class VarFrame:
             uncertainty=self.uncertainty,
             correlation=self.correlation,
             tags=self.tags,
+            axes=self.axes,
         )
 
     def promote(
@@ -327,6 +331,7 @@ class VarFrame:
         uncertainty: object = _UNSET,
         tags: object = _UNSET,
         correlation: object = _UNSET,
+        axes: object = _UNSET,
     ) -> VarFrame:
         """Return a new VarFrame with content replaced and recorded.
 
@@ -347,6 +352,7 @@ class VarFrame:
             if correlation is _UNSET
             else cast("CorrelationMatrix | None", correlation)
         )
+        new_axes = self.axes if axes is _UNSET else cast("AxisRegistry", axes)
         record = self.mode == "production" or history
         new_history = self.history
         if record:
@@ -361,6 +367,7 @@ class VarFrame:
                 uncertainty=new_unc,
                 correlation=new_correlation,
                 tags=new_tags,
+                axes=new_axes,
             )
             new_history = self.history.append(
                 operation=operation, state_hash=state_hash, comment=comment
@@ -372,6 +379,7 @@ class VarFrame:
             uncertainty=new_unc,
             tags=new_tags,
             correlation=new_correlation,
+            axes=new_axes,
             history=new_history,
         )
 
@@ -1116,6 +1124,121 @@ class VarFrame:
             global_fit=global_fit,
             history=history,
             comment=comment,
+        )
+
+    def register_axis(
+        self, axis: Axis, *, history: bool = False, comment: str | None = None
+    ) -> VarFrame:
+        """Register a coordinate frame on the VarFrame (REQ-38).
+
+        Parameters
+        ----------
+        axis : Axis
+            The frame to register; its name must be distinct from any
+            already registered frame.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame with the frame registered. The registry is
+            part of the state hash (REQ-103), so registering a frame
+            changes it.
+
+        Raises
+        ------
+        RotationMatrixError
+            A frame of the same name is already registered.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> from itaca.core.axes import Axis
+        >>> arr = np.column_stack([[0.0, 1.0], [1.0, 2.0]])
+        >>> db = itc.load(arr, names=["alpha", "CT"]).pivot(dims=["alpha"])
+        >>> out = db.register_axis(Axis(name="rig", rotation_matrix=np.eye(3)))
+        >>> out.axes.resolve("rig").name
+        'rig'
+        """
+        return self._derive(
+            operation=f"register_axis(name='{axis.name}')",
+            comment=comment,
+            history=history,
+            axes=self.axes.with_axis(axis),
+        )
+
+    def declare_vector(
+        self,
+        name: str,
+        components: Sequence[str],
+        frame: str = "body",
+        *,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Declare a named vector group and its source frame (REQ-38, REQ-107).
+
+        Parameters
+        ----------
+        name : str
+            Group name.
+        components : sequence of str
+            Exactly three component variable names (x, y, z), each
+            present in the VarFrame.
+        frame : str, optional
+            The frame the components are currently expressed in;
+            defaults to the canonical body axis (REQ-107). Must be a
+            registered or built-in frame.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame with the group declared; part of the state
+            hash (REQ-103).
+
+        Raises
+        ------
+        VectorGroupError
+            Not exactly three components, or a component is absent.
+        AxisNotFoundError
+            ``frame`` is not registered.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> rows = [[0.0, 1.0, 2.0, 3.0]]
+        >>> db = itc.load(np.array(rows), names=["a", "FX", "FY", "FZ"]).pivot(
+        ...     dims=["a"]
+        ... )
+        >>> out = db.declare_vector("force", ["FX", "FY", "FZ"])
+        >>> out.axes.group_frame("force")
+        'body'
+        """
+        missing = [c for c in components if c not in self.vars]
+        if missing:
+            raise VectorGroupError(
+                f"components {missing}",
+                f"declare_vector('{name}') names variables absent from the frame",
+                f"declare only present variables: {list(self.vars)} (REQ-38)",
+            )
+        new_axes = self.axes.with_vector_group(name, components, frame)
+        return self._derive(
+            operation=(
+                f"declare_vector(name='{name}', components={list(components)}, "
+                f"frame='{frame}')"
+            ),
+            comment=comment,
+            history=history,
+            axes=new_axes,
         )
 
     def set_uncertainty(

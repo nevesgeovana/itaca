@@ -58,6 +58,15 @@ Table~\ref{tab:exception-hierarchy}); and \code{fill}'s positional
 \code{method} argument is deprecated toward keyword-only for
 consistency with the M1 kernel operations (REQ-26).
 
+\paragraph{Added (B2).} Functional requirement REQ-107 (per-group
+source frames and multi-frame data), draft. Design decision DD-26
+(\code{scipy} as a dev-only direction-cosine test oracle, never a
+runtime dependency) in Chapter~\ref{ch:architecture}. The axis
+registry and vector-group declarations join the state hash
+(REQ-103). The built-in wind and stability frames follow the AIAA
+R-004A Etkin direction-cosine convention, SME-accepted at the B2
+checkpoint.
+
 \section*{Document 0.1.1, 2026-07-21, M0 Uncertainty-Semantics Validation}
 
 Issued at the M0 Phase 4 checkpoint, with the implementation and its

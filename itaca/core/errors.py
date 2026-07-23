@@ -32,11 +32,11 @@ __all__ = [
     "ProvenanceError",
     "RotationMatrixError",
     "SelectionError",
-    "VectorGroupError",
     "UncertaintyCompatibilityError",
     "UncertaintyError",
     "UncertaintyKeyError",
     "VariableNotFoundError",
+    "VectorGroupError",
     "format_error_message",
 ]
 

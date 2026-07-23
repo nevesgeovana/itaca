@@ -556,6 +556,22 @@ $\partial R / \partial \alpha$ enters the propagation. Exactly one of
 providing both or neither raises \code{RotationMatrixError}.
 \end{reqbox}
 
+\begin{reqbox}{REQ-107}{\draft}
+\textbf{Per-group source frames and multi-frame data.}\\
+Loaded data may already carry vector quantities in more than one
+coordinate frame (for example rig-frame balance channels alongside
+tunnel-frame reference vectors). \code{db.declare\_vector(name,
+components=[...], frame=...)} therefore binds each vector group to the
+frame its components are currently expressed in; the frame defaults to
+the canonical body axis when omitted. \code{db.rotate(target\_axis)}
+transforms each declared group from its own source frame to the
+target, composing through the canonical body axis, so groups in
+different source frames are handled correctly in a single call. A
+group whose source frame is not registered raises
+\code{AxisNotFoundError}. The source frame of every group is recorded
+in History and is part of the VarFrame state hash (REQ-103).
+\end{reqbox}
+
 \section{Uncertainty Quantification}
 \label{sec:uq}
 

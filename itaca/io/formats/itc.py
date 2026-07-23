@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from itaca.core.axes import Axis, AxisRegistry
 from itaca.core.correlation import CorrelationMatrix
 from itaca.core.dimension import Dimension
 from itaca.core.errors import DataError, HashMismatchError
@@ -45,6 +46,31 @@ def _npz_bytes(arrays: dict[str, NDArray[Any]]) -> bytes:
 def _read_npz(archive: zipfile.ZipFile, name: str) -> dict[str, NDArray[Any]]:
     with np.load(io.BytesIO(archive.read(name))) as loaded:
         return {key: loaded[key] for key in loaded.files}
+
+
+def _axes_from_payload(payload: dict[str, Any] | None) -> AxisRegistry:
+    """Reconstruct the axis registry from its .itc JSON member."""
+    registry = AxisRegistry()
+    if payload is None:
+        return registry
+    for entry in payload["axes"]:
+        matrix = entry["rotation_matrix"]
+        registry = registry.with_axis(
+            Axis(
+                name=entry["name"],
+                rotation_matrix=(np.asarray(matrix) if matrix is not None else None),
+                angles_from=(
+                    tuple(entry["angles_from"])
+                    if entry["angles_from"] is not None
+                    else None
+                ),
+                convention=entry["convention"],
+                description=entry["description"],
+            )
+        )
+    for name, comps, frame in payload["vector_groups"]:
+        registry = registry.with_vector_group(name, comps, frame)
+    return registry
 
 
 def save(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Path:
@@ -136,6 +162,33 @@ def save(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Path:
         members["correlation.json"] = json.dumps(
             [[a, b, r] for (a, b), r in db.correlation.pairs.items()]
         ).encode()
+    if not db.axes.is_empty():
+        members["axes.json"] = json.dumps(
+            {
+                "axes": [
+                    {
+                        "name": axis.name,
+                        "rotation_matrix": (
+                            axis.rotation_matrix.tolist()
+                            if axis.rotation_matrix is not None
+                            else None
+                        ),
+                        "angles_from": (
+                            list(axis.angles_from)
+                            if axis.angles_from is not None
+                            else None
+                        ),
+                        "convention": axis.convention,
+                        "description": axis.description,
+                    }
+                    for axis in db.axes.axes.values()
+                ],
+                "vector_groups": [
+                    [name, list(comps), db.axes.group_frame(name)]
+                    for name, comps in db.axes.vector_groups.items()
+                ],
+            }
+        ).encode()
     if db.tags is not None:
         members["historyframe.npz"] = _npz_bytes(dict(db.tags.tags))
     temporary = target.with_suffix(target.suffix + ".tmp")
@@ -190,6 +243,9 @@ def open_itc(path: str | Path) -> VarFrame:
                 if "correlation.json" in names
                 else None
             )
+            axes_payload = (
+                json.loads(archive.read("axes.json")) if "axes.json" in names else None
+            )
             tag_arrays = (
                 _read_npz(archive, "historyframe.npz")
                 if "historyframe.npz" in names
@@ -241,6 +297,7 @@ def open_itc(path: str | Path) -> VarFrame:
         else None
     )
     tags = HistoryFrame(tags=tag_arrays) if tag_arrays is not None else None
+    axes = _axes_from_payload(axes_payload)
     provenance = Provenance(
         itaca_version=provenance_payload["itaca_version"],
         user=provenance_payload["user"],
@@ -281,6 +338,7 @@ def open_itc(path: str | Path) -> VarFrame:
         uncertainty=uncertainty,
         tags=tags,
         correlation=correlation,
+        axes=axes,
     )
     if db.state_hash != metadata["state_hash"]:
         raise HashMismatchError(

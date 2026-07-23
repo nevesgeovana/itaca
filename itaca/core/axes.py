@@ -9,17 +9,17 @@ convention, in which case the matrix is evaluated per grid point
 the chain rule.
 
 The built-in ``"wind"`` and ``"stability"`` frames follow AIAA
-R-004A-1992. The exact sign convention of the direction-cosine
-matrices is the standard Etkin body-to-wind form and is pending
-Geovana's SME acceptance (numerical-analyst and domain-expert seats),
-like the wind-tunnel processors of the stretch lane.
+R-004A-1992 in the standard Etkin body-to-wind form
+(``v_target = L @ v_body``; stability ``Ry(alpha)``, wind
+``Rz(-beta) @ Ry(alpha)``), SME-accepted by Geovana at the M1 Phase B2
+checkpoint (2026-07-23) and cross-validated against scipy (DD-26).
 
 This module is NumPy-only (DD-02).
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
@@ -274,6 +274,14 @@ def wind_axis() -> Axis:
     )
 
 
+# The frames every registry knows without explicit registration.
+_BUILTINS: dict[str, Callable[[], Axis]] = {
+    "body": body_axis,
+    "stability": stability_axis,
+    "wind": wind_axis,
+}
+
+
 @dataclass(frozen=True)
 class AxisRegistry:
     """Immutable registry of named frames and vector-group declarations.
@@ -291,11 +299,15 @@ class AxisRegistry:
 
     axes: Mapping[str, Axis] = field(default_factory=dict)
     vector_groups: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    group_frames: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "axes", MappingProxyType(dict(self.axes)))
         object.__setattr__(
             self, "vector_groups", MappingProxyType(dict(self.vector_groups))
+        )
+        object.__setattr__(
+            self, "group_frames", MappingProxyType(dict(self.group_frames))
         )
 
     @classmethod
@@ -319,16 +331,33 @@ class AxisRegistry:
                 "choose a distinct axis name, or resolve the existing one",
             )
         return AxisRegistry(
-            axes={**self.axes, axis.name: axis}, vector_groups=self.vector_groups
+            axes={**self.axes, axis.name: axis},
+            vector_groups=self.vector_groups,
+            group_frames=self.group_frames,
         )
 
-    def with_vector_group(self, name: str, components: Sequence[str]) -> AxisRegistry:
+    def with_vector_group(
+        self, name: str, components: Sequence[str], frame: str = "body"
+    ) -> AxisRegistry:
         """Return a new registry declaring a named component triplet.
+
+        Parameters
+        ----------
+        name : str
+            Group name.
+        components : sequence of str
+            Exactly three component variable names (x, y, z).
+        frame : str, optional
+            The frame the components are currently expressed in;
+            defaults to the canonical body axis (REQ-107). It must be a
+            registered frame.
 
         Raises
         ------
         VectorGroupError
             The group does not have exactly three components.
+        AxisNotFoundError
+            ``frame`` is not registered.
         """
         comps = tuple(components)
         if len(comps) != 3:
@@ -337,17 +366,56 @@ class AxisRegistry:
                 f"declared with {len(comps)} components, not three",
                 "a vector group is a triplet (x, y, z) (REQ-38)",
             )
+        if frame != "body":
+            self.resolve(frame)
         return AxisRegistry(
             axes=self.axes,
             vector_groups={**self.vector_groups, name: comps},
+            group_frames={**self.group_frames, name: frame},
         )
 
+    def group_frame(self, name: str) -> str:
+        """Return the source frame declared for a vector group (REQ-107)."""
+        return self.group_frames.get(name, "body")
+
+    def is_empty(self) -> bool:
+        """Return True when nothing user-defined is stored (built-ins aside)."""
+        return not self.axes and not self.vector_groups
+
+    def canonical_tokens(self) -> list[str]:
+        """Deterministic tokens for the state hash (REQ-103).
+
+        An empty registry yields no tokens, so a VarFrame that never
+        registers a custom frame keeps the state hash it had before the
+        axis registry existed.
+        """
+        tokens: list[str] = []
+        for name in sorted(self.axes):
+            axis = self.axes[name]
+            if axis.rotation_matrix is not None:
+                tokens.append(f"axis|{name}|M|{axis.rotation_matrix.tobytes().hex()}")
+            else:
+                tokens.append(f"axis|{name}|P|{axis.convention}|{axis.angles_from}")
+        for name in sorted(self.vector_groups):
+            comps = self.vector_groups[name]
+            tokens.append(f"vg|{name}|{comps}|{self.group_frame(name)}")
+        return tokens
+
     def resolve(self, name: str) -> Axis:
-        """Return the registered frame, or raise ``AxisNotFoundError``."""
-        if name not in self.axes:
-            raise AxisNotFoundError(
-                f"axis '{name}'",
-                "rotate referenced an unregistered frame",
-                f"register it first, or use one of {sorted(self.axes)} (REQ-38)",
-            )
-        return self.axes[name]
+        """Return the registered frame, or raise ``AxisNotFoundError``.
+
+        The built-in body, stability, and wind frames resolve without
+        explicit registration, so an empty registry (the VarFrame
+        default) still knows them and contributes nothing to the state
+        hash until the user registers custom frames.
+        """
+        if name in self.axes:
+            return self.axes[name]
+        if name in _BUILTINS:
+            return _BUILTINS[name]()
+        known = sorted({*self.axes, *_BUILTINS})
+        raise AxisNotFoundError(
+            f"axis '{name}'",
+            "rotate referenced an unregistered frame",
+            f"register it first, or use one of {known} (REQ-38)",
+        )

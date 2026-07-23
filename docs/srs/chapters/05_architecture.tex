@@ -395,6 +395,21 @@ the NumPy-only rule bars third-party runtime dependencies in
 \code{uncertainty/}.
 \end{ddbox}
 
+\begin{ddbox}{DD-26}{scipy as a dev-only geometry test oracle}
+The rotation machinery (REQ-38, REQ-101) builds direction-cosine
+matrices from the general formulation, composing elementary rotations
+in pure NumPy so that \code{core/} keeps the NumPy-only rule and
+\itc{} owns the analytical sensitivities \code{dR/dangle} that the
+condition-dependent chain-rule propagation needs. \code{scipy} (BSD)
+joins the dev dependency group purely as an oracle: a test tier
+cross-validates the direction-cosine matrices against
+\code{scipy.spatial.transform.Rotation}. It is never a runtime
+dependency and is never imported by library code, mirroring DD-25.
+Adopting \code{scipy} as the runtime rotation engine was rejected: it
+would breach the NumPy-only rule, pull in a heavy runtime dependency,
+and still not supply the derivative terms.
+\end{ddbox}
+
 \section{Exception Hierarchy}
 
 \begin{table}[H]

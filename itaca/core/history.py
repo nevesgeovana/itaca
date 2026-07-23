@@ -23,6 +23,7 @@ from itaca.core.errors import ProvenanceError
 from itaca.core.variable import Variable
 
 if TYPE_CHECKING:
+    from itaca.core.axes import AxisRegistry
     from itaca.core.correlation import CorrelationMatrix
     from itaca.core.historyframe import HistoryFrame
     from itaca.core.uncframe import UncFrame
@@ -159,6 +160,7 @@ def compute_state_hash(
     uncertainty: UncFrame | None = None,
     correlation: CorrelationMatrix | None = None,
     tags: HistoryFrame | None = None,
+    axes: AxisRegistry | None = None,
 ) -> str:
     """Compute the canonical VarFrame state hash (REQ-103).
 
@@ -251,4 +253,10 @@ def compute_state_hash(
             digest.update(name.encode())
             digest.update(_SEP)
             _update_with_array(digest, tags.tags[name])
+    if axes is not None:
+        for token in axes.canonical_tokens():
+            digest.update(b"axes")
+            digest.update(_SEP)
+            digest.update(token.encode())
+            digest.update(_SEP)
     return digest.hexdigest()
