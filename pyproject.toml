@@ -39,7 +39,19 @@ dev = [
     "pytest>=8.0,<9.0",
     "pytest-cov>=5.0,<6.0",
     "hypothesis>=6.100,<7.0",
-    "ruff>=0.5,<1.0",
+    # Exact pin, bumped deliberately: ruff is the one tool whose version
+    # is declared twice, because ruff-pre-commit builds an isolated hook
+    # environment, while the mypy and pytest hooks are language: system
+    # and inherit whatever this extra installed. A range here let CI and
+    # the hook run different rule sets (REQ-96). To bump: move this pin
+    # and the ruff rev in .pre-commit-config.yaml, which carries a
+    # leading v (rev: vX.Y.Z), in one commit; reinstall with
+    # pip install -e ".[dev]" so this environment moves too (pre-commit
+    # rebuilds its own hook environment); then run ruff check . and
+    # ruff format --check . over the repo and fix what the new rules
+    # surface.
+    # tests/test_tooling_config.py fails if the two ever drift apart.
+    "ruff==0.15.22",
     "mypy>=1.10,<2.0",
     "pre-commit>=3.7,<5.0",
     # Dev-only test oracle for the direction-cosine geometry (DD-26);
@@ -61,6 +73,13 @@ version = { attr = "itaca.core.version.__version__" }
 [tool.ruff]
 line-length = 88
 target-version = "py310"
+# Forward-looking: Markdown formatting is preview-only in the pinned
+# ruff, so this excludes nothing today. It keeps the formatter's scope
+# stable when that graduates, since .md files here are prose and
+# illustrative samples, not sources the formatter owns. Revisit if
+# Markdown code blocks are ever collected as doctests, which nothing
+# in this repository does today.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "TID", "RUF", "D"]

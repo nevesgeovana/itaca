@@ -1,10 +1,14 @@
 # Local CI mirror (REQ-96): ruff check, ruff format, mypy, fast pytest.
 # Install once with: pre-commit install
+#
+# Keep the ruff rev below equal to the ruff pin in the pyproject [dev]
+# extra; the bump procedure is documented there.
+# tests/test_tooling_config.py fails if they drift apart.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.5.7
+    rev: v0.15.22
     hooks:
-      - id: ruff
+      - id: ruff-check
       - id: ruff-format
   - repo: local
     hooks:

@@ -106,6 +106,26 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 * `db.fill(along, method)` with `method` passed positionally; pass
   `method=` as a keyword instead.
 
+### Fixed
+
+* ruff is pinned to one exact version in the `[dev]` extra and the
+  ruff-pre-commit `rev` is locked to the same version, so the ruff half
+  of the pre-commit mirror now runs the identical linter and formatter
+  as the CI lint job (REQ-80, REQ-96). The previous range spec let CI
+  install a much newer ruff than the pinned hook ran, so commits passed
+  locally and failed in CI. The hook id moved from the deprecated alias
+  `ruff` to `ruff-check` at the same time.
+  `tests/test_tooling_config.py` guards the match, that the CI job still
+  runs both ruff commands, that both hooks stay declared without
+  narrowing keys, that the installed ruff agrees with them, and that the
+  Markdown exclusion stays in place. mypy and pytest still resolve from
+  ranges and run from the local environment, so those two can still
+  drift. Preventively: Markdown formatting is preview-only at the pinned
+  ruff, so `[tool.ruff] extend-exclude = ["*.md"]` changes nothing
+  today; it keeps the formatter's scope stable if that graduates, since
+  `.md` files here are prose and illustrative samples. Internal tooling
+  only; no packaged surface changes.
+
 ## [0.1.0] - 2026-07-22
 
 Milestone M0, the foundation release (SRS Chapter 10, DD-21).
