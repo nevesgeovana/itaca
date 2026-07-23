@@ -1,6 +1,7 @@
 """Reusable pipelines: record a processing sequence, replay it.
 
-REQ-53 to REQ-55, SRS 4.5, and DD-28. A ``Pipeline`` is a contiguous
+REQ-53 to REQ-55, the ``.itc_pipe`` section of SRS Chapter 4, and
+DD-28. A ``Pipeline`` is a contiguous
 range of History entries lifted into a reusable object. It replays by
 re-dispatching structured steps, not by re-parsing the History display
 strings: each replayable operation records a :class:`PipelineStep` (the
@@ -8,10 +9,10 @@ VarFrame method to call, its keyword arguments, and the History
 comment) as it derives, so a pipeline reconstructs the exact calls
 rather than the human-facing text.
 
-The ``.itc_pipe`` file is human-readable JSON carrying everything SRS
-4.5 requires: the ITACA version that created it, the index range in the
-source history, each operation's call with its keyword arguments and
-attached comment (REQ-19), and a content hash for integrity
+The ``.itc_pipe`` file is human-readable JSON carrying everything that
+section requires: the ITACA version that created it, the index range in
+the source history, each operation's call with its keyword arguments
+and attached comment (REQ-19), and a content hash for integrity
 verification. DD-28 records why the encoding is JSON rather than the
 TOML the SRS originally named: no Python version ships a standard
 library TOML writer, TOML has no null type (and ``compute(fill=None)``
@@ -33,7 +34,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from itaca.core.errors import DataError, HashMismatchError, PipelineCompatibilityError
-from itaca.core.version import __version__
 
 if TYPE_CHECKING:
     from itaca.core.varframe import VarFrame
@@ -119,15 +119,16 @@ def _rehydrate(call: str, kwargs: Mapping[str, Any]) -> dict[str, Any]:
     return dict(kwargs)
 
 
-def to_jsonable(value: Any) -> Any:
-    """Normalize a replay argument into a JSON-native value.
+def _to_jsonable(value: Any) -> Any:
+    """Normalize a replay argument toward a JSON-native value.
 
     NumPy arrays and scalars become lists and Python numbers, and tuples
-    become lists, so every recorded step serializes into a
-    ``.itc_pipe`` file. A value that cannot be represented raises rather
-    than being written as a non-standard token: JSON has no NaN or
-    infinity in RFC 8259, and a silently unreadable recipe would defeat
-    the human-readable, version-controllable promise of REQ-55.
+    become lists. This is a normalizer, not a validator: a value it
+    cannot interpret passes through untouched, and whether the result is
+    representable is decided at save time by
+    :func:`_reject_unserializable`. Validating here would make a
+    serialization rule reject an operation the user never intended to
+    persist (``compute(fill=inf)`` is legal under REQ-35).
 
     Parameters
     ----------
@@ -137,46 +138,63 @@ def to_jsonable(value: Any) -> Any:
     Returns
     -------
     object
-        A JSON-native equivalent.
-
-    Raises
-    ------
-    DataError
-        The value is not finite or has no JSON representation.
+        A JSON-native equivalent where one exists.
 
     Examples
     --------
-    >>> to_jsonable(np.float64(2.5))
+    >>> _to_jsonable(np.float64(2.5))
     2.5
-    >>> to_jsonable((1, 2))
+    >>> _to_jsonable((1, 2))
     [1, 2]
     """
     if isinstance(value, np.ndarray):
-        return [to_jsonable(item) for item in value.tolist()]
+        return [_to_jsonable(item) for item in value.tolist()]
     if isinstance(value, np.generic):
-        return to_jsonable(value.item())
-    if isinstance(value, bool) or value is None or isinstance(value, (str, int)):
-        return value
-    if isinstance(value, float):
-        if not np.isfinite(value):
-            raise DataError(
-                f"replay argument {value!r}",
-                "a pipeline step recorded a non-finite number, which RFC 8259 "
-                "JSON cannot represent",
-                "pass a finite value; the .itc_pipe file must stay readable by "
-                "any JSON tool (REQ-55)",
-            )
-        return value
+        return _to_jsonable(value.item())
     if isinstance(value, (list, tuple)):
-        return [to_jsonable(item) for item in value]
+        return [_to_jsonable(item) for item in value]
     if isinstance(value, Mapping):
-        return {str(key): to_jsonable(item) for key, item in value.items()}
-    raise DataError(
-        f"replay argument of type {type(value).__name__}",
-        "a pipeline step recorded a value with no JSON representation",
-        "record only strings, numbers, booleans, None, lists, and mappings "
-        "in a replayable operation (REQ-55)",
-    )
+        return {str(key): _to_jsonable(item) for key, item in value.items()}
+    return value
+
+
+def _freeze(value: Any) -> Any:
+    """Return a deeply immutable view of a normalized replay argument.
+
+    A shallow ``MappingProxyType`` still lets a caller reach through a
+    nested list or mapping and rewrite recorded provenance in place, so
+    the freeze has to go all the way down.
+    """
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze(item) for item in value)
+    return value
+
+
+def _thaw(value: Any) -> Any:
+    """Invert :func:`_freeze` for JSON output and for replay dispatch."""
+    if isinstance(value, Mapping):
+        return {key: _thaw(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw(item) for item in value]
+    return value
+
+
+def _reject_unserializable(position: int, step: PipelineStep) -> None:
+    """Raise a three-part error for a step that cannot be written."""
+    for name, value in step.kwargs.items():
+        try:
+            json.dumps(_thaw(value), allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise DataError(
+                f"step {position} ({step.call}) argument '{name}'",
+                "the recorded value has no RFC 8259 JSON representation, so "
+                f"the pipeline cannot be written ({exc})",
+                "pass a finite number or a JSON-native value for that "
+                "argument; the .itc_pipe file must stay readable by any JSON "
+                "tool (REQ-55)",
+            ) from exc
 
 
 @dataclass(frozen=True)
@@ -210,24 +228,31 @@ class PipelineStep:
     comment: str | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "kwargs", MappingProxyType(dict(self.kwargs)))
+        object.__setattr__(self, "kwargs", _freeze(dict(self.kwargs)))
 
     def __hash__(self) -> int:
-        return hash((self.call, self.comment, self.canonical()))
+        return hash((self.call, self.comment, self._canonical()))
 
-    def canonical(self) -> str:
-        """Return the canonical JSON text of this step's arguments."""
-        return json.dumps(dict(self.kwargs), sort_keys=True, allow_nan=False)
+    def _canonical(self) -> str:
+        """Canonical JSON text of this step's arguments, for hashing."""
+        return json.dumps(
+            _thaw(self.kwargs), sort_keys=True, default=repr, allow_nan=True
+        )
 
-    def payload(self) -> dict[str, Any]:
+    def _summary(self) -> str:
+        """One-line argument summary for a bounded repr."""
+        text = self._canonical()
+        return text if len(text) <= 60 else text[:57] + "..."
+
+    def _payload(self) -> dict[str, Any]:
         """Return the JSON-native record written to a ``.itc_pipe`` file."""
         return {
             "call": self.call,
             "comment": self.comment,
-            "kwargs": dict(self.kwargs),
+            "kwargs": _thaw(self.kwargs),
         }
 
-    def replay(self, db: VarFrame) -> VarFrame:
+    def replay(self, db: VarFrame, *, history: bool = False) -> VarFrame:
         """Apply this step to ``db`` and return the derived VarFrame.
 
         Parameters
@@ -253,12 +278,30 @@ class PipelineStep:
                 "may only name replayable operations (REQ-54)",
             )
         bound = getattr(db, self.call)
-        return bound(  # type: ignore[no-any-return]
-            **_rehydrate(self.call, self.kwargs), comment=self.comment
-        )
+        try:
+            arguments = _rehydrate(self.call, _thaw(self.kwargs))
+        except (TypeError, KeyError, ValueError, AttributeError) as exc:
+            raise PipelineCompatibilityError(
+                f"pipeline step {self.call!r}",
+                f"its recorded arguments are malformed ({type(exc).__name__}: {exc})",
+                "the .itc_pipe file was hand-edited or written by a different "
+                "ITACA version; re-extract the pipeline (REQ-54)",
+            ) from exc
+        try:
+            return bound(  # type: ignore[no-any-return]
+                **arguments, comment=self.comment, history=history
+            )
+        except (TypeError, KeyError, ValueError, AttributeError) as exc:
+            raise PipelineCompatibilityError(
+                f"pipeline step {self.call!r}",
+                f"its recorded arguments do not match the operation "
+                f"signature ({type(exc).__name__}: {exc})",
+                "the recipe was written by a different ITACA version; "
+                "re-extract it against this one (REQ-54)",
+            ) from exc
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Pipeline:
     """A reusable, ordered sequence of replayable operations (REQ-53).
 
@@ -272,7 +315,7 @@ class Pipeline:
         The recorded operations, in order.
     history_start, history_end : int, optional
         The 1-based inclusive index range in the source history that
-        this pipeline was lifted from (SRS 4.5).
+        this pipeline was lifted from (SRS Chapter 4, the .itc_pipe section).
     itaca_version : str, optional
         The ITACA version that created the pipeline.
 
@@ -291,9 +334,9 @@ class Pipeline:
     """
 
     steps: tuple[PipelineStep, ...]
-    history_start: int = 1
-    history_end: int = 0
-    itaca_version: str = __version__
+    history_start: int | None = None
+    history_end: int | None = None
+    itaca_version: str | None = None
 
     def __len__(self) -> int:
         return len(self.steps)
@@ -302,19 +345,25 @@ class Pipeline:
         return iter(self.steps)
 
     def __repr__(self) -> str:
-        lines = [
-            f"Pipeline({len(self.steps)} steps, "
-            f"history {self.history_start}..{self.history_end})"
-        ]
+        count = len(self.steps)
+        plural = "" if count == 1 else "s"
+        if self.history_start is None or self.history_end is None:
+            span = "not lifted from a history"
+        else:
+            span = f"history {self.history_start}..{self.history_end}"
+        lines = [f"Pipeline({count} step{plural}, {span})"]
         lines.extend(
-            f"  [{n}] {s.call}({s.canonical()})"
+            f"  [{n}] {s.call}({s._summary()})"
             + (f"  # {s.comment}" if s.comment else "")
             for n, s in enumerate(self.steps, start=1)
         )
         return "\n".join(lines)
 
+    @property
     def content_hash(self) -> str:
-        """SHA-256 over the canonical pipeline content (SRS 4.5).
+        """SHA-256 over the canonical pipeline content.
+
+        Required by the ``.itc_pipe`` section of SRS Chapter 4.
 
         Covers the schema, the creating version, the source index range,
         and every step, so a file edited after generation is detected on
@@ -326,7 +375,7 @@ class Pipeline:
                 "itaca_version": self.itaca_version,
                 "history_start": self.history_start,
                 "history_end": self.history_end,
-                "steps": [step.payload() for step in self.steps],
+                "steps": [step._payload() for step in self.steps],
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -334,7 +383,7 @@ class Pipeline:
         )
         return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-    def apply(self, db: VarFrame) -> VarFrame:
+    def apply(self, db: VarFrame, *, history: bool = False) -> VarFrame:
         """Replay the recorded sequence onto ``db`` (REQ-54).
 
         Parameters
@@ -372,7 +421,7 @@ class Pipeline:
         result = db
         for position, step in enumerate(self.steps, start=1):
             try:
-                result = step.replay(result)
+                result = step.replay(result, history=history)
             except PipelineCompatibilityError:
                 raise
             except ITACAError as exc:
@@ -385,7 +434,7 @@ class Pipeline:
         return result
 
     def save(self, path: str | os.PathLike[str]) -> Path:
-        """Write the pipeline to a ``.itc_pipe`` file (REQ-55, SRS 4.5).
+        """Write the pipeline to a ``.itc_pipe`` file (REQ-55, SRS Chapter 4).
 
         The file is human-readable JSON recording the creating version,
         the source index range, every call with its arguments and
@@ -408,13 +457,15 @@ class Pipeline:
             A recorded argument has no JSON representation.
         """
         target = Path(path)
+        for position, step in enumerate(self.steps, start=1):
+            _reject_unserializable(position, step)
         payload = {
             "schema": PIPELINE_SCHEMA,
             "itaca_version": self.itaca_version,
             "history_start": self.history_start,
             "history_end": self.history_end,
-            "content_hash": self.content_hash(),
-            "steps": [step.payload() for step in self.steps],
+            "content_hash": self.content_hash,
+            "steps": [step._payload() for step in self.steps],
         }
         text = json.dumps(payload, indent=2, allow_nan=False) + "\n"
         tmp = target.with_name(target.name + ".tmp")
@@ -526,20 +577,36 @@ def load_pipeline(path: str | os.PathLike[str]) -> Pipeline:
         steps.append(
             PipelineStep(call=call, kwargs=kwargs, comment=entry.get("comment"))
         )
+    for field_name in ("history_start", "history_end", "itaca_version"):
+        _require(
+            field_name in payload,
+            source,
+            f"read a payload with no {field_name!r}",
+            "pass a file written by Pipeline.save; the provenance fields are "
+            "recorded, never invented at read time",
+        )
     pipeline = Pipeline(
         steps=tuple(steps),
-        history_start=payload.get("history_start", 1),
-        history_end=payload.get("history_end", len(steps)),
-        itaca_version=payload.get("itaca_version", __version__),
+        history_start=payload["history_start"],
+        history_end=payload["history_end"],
+        itaca_version=payload["itaca_version"],
     )
     recorded = payload.get("content_hash")
-    if recorded is not None and recorded != pipeline.content_hash():
+    _require(
+        isinstance(recorded, str),
+        source,
+        "read a payload with no 'content_hash', so its integrity cannot be verified",
+        "pass a file written by Pipeline.save; the hash is mandatory so that "
+        "deleting it cannot silently disable verification (SRS Chapter 4, the "
+        ".itc_pipe section)",
+    )
+    if recorded != pipeline.content_hash:
         raise HashMismatchError(
             f"file '{source}'",
             "the .itc_pipe content hash does not match its payload, so the "
             "file was modified after it was written",
             "re-save the pipeline with Pipeline.save, or restore the original "
             "file; the hash exists so an edited recipe cannot replay silently "
-            "(SRS 4.5)",
+            "(SRS Chapter 4, the .itc_pipe section)",
         )
     return pipeline

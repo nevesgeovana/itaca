@@ -32,7 +32,7 @@ from itaca.core.pipeline import (
     REPLAYABLE_CALLS,
     Pipeline,
     PipelineStep,
-    to_jsonable,
+    _to_jsonable,
 )
 from itaca.core.varframe import VarFrame
 
@@ -44,15 +44,41 @@ def _frame(seed: int = 0) -> VarFrame:
     rng = np.random.default_rng(seed)
     x = np.arange(0.0, 10.0, 1.0)
     y = 2.0 * x + 1.0 + rng.normal(0.0, 0.01, x.size)
-    z = x**2 + 1.0
+    z = x**2 + 1.0 + float(seed)
     arr = np.column_stack([x, y, z])
     return itc.load(arr, names=["x", "y", "z"]).pivot(dims=["x"])
 
 
-def _force_frame() -> VarFrame:
-    """A bare frame carrying force components."""
-    rows = np.array([[0.0, 1.0, 2.0, 3.0], [10.0, 1.5, 2.5, 3.5]])
-    return itc.load(rows, names=["alpha", "FX", "FY", "FZ"]).pivot(dims=["alpha"])
+def _force_frame(extra_group: bool = False) -> VarFrame:
+    """A frame carrying force and moment components.
+
+    Vector groups are auto-detected from the naming convention, so
+    ``extra_group`` adds a third convention-named triple that the plain
+    frame does not have. Replaying onto it discriminates a step that
+    recorded the source-resolved group list instead of the caller's
+    argument: the caller's ``None`` must re-resolve on the target and
+    pick the extra group up.
+    """
+    names = ["alpha", "FX", "FY", "FZ", "MX", "MY", "MZ"]
+    columns = [
+        [0.0, 10.0],
+        [1.0, 1.5],
+        [2.0, 2.5],
+        [3.0, 3.5],
+        [0.4, 0.7],
+        [0.5, 0.8],
+        [0.6, 0.9],
+    ]
+    if extra_group:
+        names += ["VX", "VY", "VZ"]
+        columns += [[5.0, 5.5], [6.0, 6.5], [7.0, 7.5]]
+    rows = np.column_stack([np.asarray(c, dtype=float) for c in columns])
+    db = itc.load(rows, names=names).pivot(dims=["alpha"])
+    if extra_group:
+        # Only (FX,FY,FZ) and (MX,MY,MZ) are auto-detected, so a third
+        # group has to be declared for the target to differ.
+        db = db.declare_vector("velocity", ["VX", "VY", "VZ"])
+    return db
 
 
 def _tilt() -> Axis:
@@ -238,7 +264,7 @@ def test_replay_rejects_a_call_outside_the_allowlist() -> None:
 
 
 # ---------------------------------------------------------------------------
-# REQ-55 and SRS 4.5: serialization
+# REQ-55 and the .itc_pipe section of SRS Chapter 4: serialization
 # ---------------------------------------------------------------------------
 
 
@@ -253,7 +279,7 @@ def test_save_and_load_round_trip(tmp_path: Path) -> None:
 
 
 def test_the_saved_file_carries_every_srs_field(tmp_path: Path) -> None:
-    """SRS 4.5: version, index range, call with args and comment, hash."""
+    """Every field the .itc_pipe section of SRS Chapter 4 requires."""
     db = _frame().smooth(along="x", method="moving_avg", window=3, comment="drift fix")
     path = db.history.to_pipeline().save(tmp_path / "recipe.itc_pipe")
     text = path.read_text(encoding="utf-8")
@@ -456,7 +482,7 @@ def test_pipeline_step_is_frozen() -> None:
 def test_pipeline_repr_lists_its_steps() -> None:
     processed = _frame().compute("w = y + z", comment="ratio")
     text = repr(processed.history.to_pipeline())
-    assert "Pipeline(1 steps" in text
+    assert "Pipeline(1 step," in text
     assert "compute" in text
     assert "ratio" in text
 
@@ -465,8 +491,11 @@ def test_steps_serialize_numpy_values_as_json_natives() -> None:
     processed = _frame().expand("mach", np.array([0.2, 0.4]))
     step = processed.history.entries[-1].step
     assert step is not None
-    json.dumps(step.payload())  # must not raise
-    assert step.kwargs["values"] == [0.2, 0.4]
+    payload = step._payload()
+    json.dumps(payload)  # must not raise
+    # Frozen deeply in the record, JSON-native lists on the way out.
+    assert step.kwargs["values"] == (0.2, 0.4)
+    assert payload["kwargs"]["values"] == [0.2, 0.4]
 
 
 def test_every_replayable_call_is_a_varframe_method() -> None:
@@ -489,20 +518,110 @@ def test_every_replayable_call_is_a_varframe_method() -> None:
     ],
 )
 def test_to_jsonable_normalizes(value: object, expected: object) -> None:
-    assert to_jsonable(value) == expected
+    assert _to_jsonable(value) == expected
 
 
-@pytest.mark.parametrize("value", [float("nan"), float("inf"), np.float64("nan")])
-def test_to_jsonable_refuses_non_finite_numbers(value: object) -> None:
-    """RFC 8259 has no NaN; a recipe must stay readable by any tool."""
-    with pytest.raises(DataError, match="non-finite"):
-        to_jsonable(value)
-
-
-def test_to_jsonable_refuses_values_with_no_json_form() -> None:
-    with pytest.raises(DataError, match="no JSON representation"):
-        to_jsonable({1, 2, 3})
+def test_a_non_finite_argument_is_refused_at_save_not_at_record_time(
+    tmp_path: Path,
+) -> None:
+    """REQ-35 admits any scalar fill; only persisting it can fail."""
+    processed = _frame().compute("w = y * 2", where="y > 5", fill=float("inf"))
+    pipeline = processed.history.to_pipeline()
+    with pytest.raises(DataError, match="no RFC 8259 JSON representation"):
+        pipeline.save(tmp_path / "recipe.itc_pipe")
 
 
 def test_to_jsonable_normalizes_nested_numpy() -> None:
-    assert to_jsonable({"a": [np.int64(1), (np.float64(2.0),)]}) == {"a": [1, [2.0]]}
+    assert _to_jsonable({"a": [np.int64(1), (np.float64(2.0),)]}) == {"a": [1, [2.0]]}
+
+
+# ---------------------------------------------------------------------------
+# Integrity: the reproduced tamper paths stay closed
+# ---------------------------------------------------------------------------
+
+
+def test_a_recipe_without_a_content_hash_is_refused(tmp_path: Path) -> None:
+    """Deleting the hash must not silently opt out of verification."""
+    pipeline = _frame().compute("w = y + z").history.to_pipeline()
+    path = pipeline.save(tmp_path / "recipe.itc_pipe")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["steps"][0]["kwargs"]["equation"] = "w = y * 1000"
+    del payload["content_hash"]
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(DataError, match="integrity cannot be verified"):
+        itc.load_pipeline(path)
+
+
+def test_the_content_hash_is_formatting_independent(tmp_path: Path) -> None:
+    """It must detect edits, not reformatting."""
+    pipeline = _frame().compute("w = y + z").history.to_pipeline()
+    path = pipeline.save(tmp_path / "recipe.itc_pipe")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps(payload, indent=8, sort_keys=True), encoding="utf-8")
+    assert len(itc.load_pipeline(path)) == 1
+
+
+@pytest.mark.parametrize(
+    ("call", "kwargs"),
+    [
+        ("set_correlation", {"spec": [[1, 2]]}),
+        ("register_axis", {"axis": {"name": "a"}}),
+        ("smooth", {"bogus": 1}),
+        ("compute", {"equation": "w = y + z", "nope": 2}),
+    ],
+)
+def test_malformed_step_kwargs_stay_inside_the_error_hierarchy(
+    call: str, kwargs: dict[str, object]
+) -> None:
+    """A hand-edited recipe must not raise a bare TypeError or KeyError."""
+    pipeline = Pipeline(steps=(PipelineStep(call=call, kwargs=kwargs),))
+    with pytest.raises(PipelineCompatibilityError):
+        pipeline.apply(_frame())
+
+
+@pytest.mark.parametrize("path_keys", [["mapping", "x"], ["filters", "x"]])
+def test_nested_replay_arguments_cannot_be_mutated(path_keys: list[str]) -> None:
+    """A shallow freeze would leave recorded provenance writable."""
+    db = _frame()
+    processed = (
+        db.interpolate({"x": [1.0, 2.0]})
+        if path_keys[0] == "mapping"
+        else db.select({"x": [1.0, 2.0]})
+    )
+    step = processed.history.entries[-1].step
+    assert step is not None
+    nested = step.kwargs[path_keys[0]][path_keys[1]]
+    with pytest.raises(AttributeError):
+        nested.append(99.0)  # type: ignore[union-attr]
+
+
+def test_the_axes_journey_replays_onto_a_frame_with_different_groups() -> None:
+    """Cross-frame replay for rotate, which records a caller argument.
+
+    The recipe records ``vector_groups=None``, meaning "resolve on
+    whatever frame this runs against". Recording the source-resolved
+    list instead would rotate the wrong subset here, since the target
+    carries a third vector group the source does not.
+    """
+    source = _force_frame().register_axis(_tilt())
+    source = source.declare_vector("force", ["FX", "FY", "FZ"]).rotate("tilt")
+    recipe = source.history.to_pipeline()
+    target = _force_frame(extra_group=True)
+    expected = (
+        target.register_axis(_tilt())
+        .declare_vector("force", ["FX", "FY", "FZ"])
+        .rotate("tilt")
+    )
+    replayed = recipe.apply(target)
+    # The extra group must have been rotated too.
+    assert not np.allclose(replayed.vars["VX"].values, target.vars["VX"].values)
+    assert replayed.state_hash == expected.state_hash
+
+
+def test_translate_moments_replays_on_a_different_frame() -> None:
+    source = _force_frame().translate_moments(to_point=[1.0, 0.0, 0.0])
+    recipe = source.history.to_pipeline()
+    target = _force_frame(extra_group=True)
+    assert recipe.apply(target).state_hash == (
+        target.translate_moments(to_point=[1.0, 0.0, 0.0]).state_hash
+    )

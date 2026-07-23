@@ -240,10 +240,13 @@ class History:
                 "frame reopened from an older .itc archive carries no replay "
                 "steps (REQ-10, REQ-53)",
             )
+        from itaca.core.version import __version__
+
         return Pipeline(
             steps=tuple(steps),
             history_start=lo,
             history_end=hi,
+            itaca_version=__version__,
         )
 
     @property

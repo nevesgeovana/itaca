@@ -52,7 +52,7 @@ ATTESTATION = ".claude/.role_review_attestation.json"
 # characters (covers v0.3.0 and pre-releases like v0.3.0rc1, matching
 # the release workflow's `v*` publish trigger). Anchored to the whole
 # token, so a branch name like fix/v1.2.3-regression does not match.
-VERSION_TAG_TOKEN = re.compile(r"^v\d[\w.\-]*$")
+VERSION_TAG_TOKEN = re.compile(r"^(?:refs/tags/)?v\d[\w.\-]*$")
 
 
 def _decide(decision: str, reason: str) -> None:
@@ -76,11 +76,66 @@ def _allow_silently() -> None:
     sys.exit(0)
 
 
+_SEPARATORS = ";|&"
+
+
+def _strip_heredocs(command: str) -> str:
+    """Remove heredoc bodies before the command is tokenized.
+
+    A heredoc body is data the shell feeds to another program, not a
+    command it runs. Leaving it in means a commit message that merely
+    describes a push blocks the commit that documents it, which is both
+    a false positive and an incentive to write vaguer messages.
+    """
+    lines = command.splitlines()
+    kept: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        kept.append(line)
+        opener = re.search(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)", line)
+        index += 1
+        if opener is None:
+            continue
+        delimiter = opener.group(2)
+        while index < len(lines) and lines[index].strip() != delimiter:
+            index += 1
+        if index < len(lines):
+            index += 1  # drop the closing delimiter line too
+    return "\n".join(kept)
+
+
+def _split_on_separators(tokens: list[str]) -> list[str]:
+    """Split unquoted tokens on shell separators.
+
+    ``shlex(posix=False)`` leaves ``push|cat`` as one token, which a
+    ``== "push"`` comparison misses. Quoted tokens are left intact, so a
+    commit message that merely mentions the command still does not
+    match.
+    """
+    expanded: list[str] = []
+    for token in tokens:
+        if token[:1] in ("'", '"'):
+            expanded.append(token)
+            continue
+        expanded.extend(part for part in re.split(r"[;|&]+", token) if part)
+    return expanded
+
+
 def _unquote(token: str) -> str:
-    """Strip one layer of surrounding quotes left by shlex(posix=False)."""
+    """Strip quotes and adjacent shell separators from a token.
+
+    ``shlex(posix=False)`` does not split on ``;`` or ``|``, so
+    ``git push; echo done`` tokenizes with ``push;`` as one token and a
+    naive ``== "push"`` comparison misses it. That made the gate fail
+    OPEN on the single most natural way to type a push followed by
+    anything else. Separators are stripped from both ends before any
+    comparison.
+    """
+    token = token.strip(_SEPARATORS)
     if len(token) >= 2 and token[0] == token[-1] and token[0] in "\"'":
-        return token[1:-1]
-    return token
+        token = token[1:-1]
+    return token.strip(_SEPARATORS)
 
 
 def _find_git_push(command: str) -> tuple[bool, str | None, list[str]]:
@@ -99,7 +154,9 @@ def _find_git_push(command: str) -> tuple[bool, str | None, list[str]]:
     treating it as a push we could not confirm safe.
     """
     try:
-        tokens = shlex.split(command, posix=False)
+        tokens = _split_on_separators(
+            shlex.split(_strip_heredocs(command), posix=False)
+        )
     except ValueError:
         if re.search(r"\bgit\b", command) and re.search(r"\bpush\b", command):
             return True, None, []
@@ -157,7 +214,8 @@ def _is_release_push(args_after_push: list[str], root: Path) -> tuple[bool, str 
     the gate checks the attestation against the tag's target, not HEAD),
     or None when the release-ness comes from --tags with no explicit tag.
     """
-    for tok in args_after_push:
+    for raw in args_after_push:
+        tok = _unquote(raw)
         if tok in ("--tags", "--follow-tags"):
             return True, None
         if VERSION_TAG_TOKEN.match(tok):

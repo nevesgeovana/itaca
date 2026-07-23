@@ -18,7 +18,7 @@ from numpy.typing import NDArray
 
 from itaca.core.dimension import Dimension
 from itaca.core.historyframe import HistoryFrame
-from itaca.core.pipeline import PipelineStep, to_jsonable
+from itaca.core.pipeline import PipelineStep, _to_jsonable
 from itaca.core.uncframe import UncFrame
 from itaca.core.varframe import VarFrame
 from itaca.core.variable import Variable
@@ -129,7 +129,7 @@ def rebuild(
         PipelineStep(
             call=call,
             kwargs={
-                name: to_jsonable(value)
+                name: _to_jsonable(value)
                 for name, value in (replay_kwargs or {}).items()
             },
             comment=comment,

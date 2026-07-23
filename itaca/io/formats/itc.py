@@ -1,4 +1,6 @@
-"""The .itc native binary format: db.save and itc.open (REQ-70, SRS 4.5).
+"""The .itc native binary format: db.save and itc.open.
+
+REQ-70 and the ``.itc`` section of SRS Chapter 4.
 
 A ZIP archive of open standards (NumPy .npz plus JSON), inspectable
 without ITACA. Writes are atomic (temp file plus replace); the
@@ -9,6 +11,7 @@ metadata carries a versioned schema string and the state hash, and
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
@@ -26,7 +29,7 @@ from itaca.core.dimension import Dimension
 from itaca.core.errors import DataError, HashMismatchError
 from itaca.core.history import History, HistoryEntry
 from itaca.core.historyframe import HistoryFrame
-from itaca.core.pipeline import PipelineStep
+from itaca.core.pipeline import REPLAYABLE_CALLS, PipelineStep
 from itaca.core.provenance import Provenance
 from itaca.core.uncframe import UncFrame
 from itaca.core.varframe import VarFrame
@@ -35,20 +38,51 @@ from itaca.core.version import __version__
 from itaca.io.export import DRAFT_WARNING, guard_draft
 
 FORMAT_SCHEMA = "itaca-itc/2"
-# Schema 2 adds the per-entry replay "step" to history.json (REQ-54).
-# Schema 1 archives stay readable: their entries simply carry no step,
-# and to_pipeline then refuses rather than replaying a silent no-op.
+# Schema 2 adds the per-entry replay "step" to history.json (REQ-54),
+# with a steps_hash in metadata.json covering it. Schema 1 archives stay
+# readable: their entries carry no step, so to_pipeline refuses rather
+# than replaying a silent no-op, and no steps_hash is required.
+_READABLE_SCHEMAS = frozenset({"itaca-itc/1", "itaca-itc/2"})
 
 
-def _step_from_payload(payload: dict[str, Any] | None) -> PipelineStep | None:
+def _steps_digest(entries: list[dict[str, Any]]) -> str:
+    """SHA-256 over the replay steps persisted in history.json.
+
+    The replay step is deliberately outside the REQ-103 state hash: it
+    is provenance metadata, not frame state. But schema 2 makes the
+    archive recipe-bearing, so an edited step could steer a replay while
+    the state hash still matched. This digest closes that gap without
+    widening REQ-103 scope.
+    """
+    canonical = json.dumps(
+        [entry.get("step") for entry in entries], sort_keys=True, allow_nan=False
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _step_from_payload(
+    payload: dict[str, Any] | None, target: Path
+) -> PipelineStep | None:
     """Rebuild a replay step from its history.json member."""
     if payload is None:
         return None
-    return PipelineStep(
-        call=payload["call"],
-        kwargs=payload.get("kwargs", {}),
-        comment=payload.get("comment"),
-    )
+    call = payload.get("call") if isinstance(payload, dict) else None
+    if not isinstance(call, str) or call not in REPLAYABLE_CALLS:
+        raise DataError(
+            f"archive '{target}'",
+            f"a recorded replay step names {call!r}, which is not a replayable "
+            "operation",
+            f"expected one of {sorted(REPLAYABLE_CALLS)}; the archive was "
+            "hand-edited or written by a different ITACA version (REQ-54)",
+        )
+    kwargs = payload.get("kwargs", {})
+    if not isinstance(kwargs, dict):
+        raise DataError(
+            f"archive '{target}'",
+            f"the replay step for {call!r} has a 'kwargs' that is not an object",
+            "re-export the archive from the source data (REQ-54)",
+        )
+    return PipelineStep(call=call, kwargs=kwargs, comment=payload.get("comment"))
 
 
 def _npz_bytes(arrays: dict[str, NDArray[Any]]) -> bytes:
@@ -154,7 +188,7 @@ def save(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Path:
                     # Replay step (REQ-54); null for entries that record
                     # none. Persisted so a reopened archive can still
                     # lift its recipe with history.to_pipeline.
-                    "step": (None if entry.step is None else entry.step.payload()),
+                    "step": (None if entry.step is None else entry.step._payload()),
                 }
                 for entry in db.history
             ]
@@ -164,6 +198,12 @@ def save(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Path:
                 "schema": FORMAT_SCHEMA,
                 "itaca_version": __version__,
                 "state_hash": db.state_hash,
+                "steps_hash": _steps_digest(
+                    [
+                        {"step": (None if e.step is None else e.step._payload())}
+                        for e in db.history
+                    ]
+                ),
             }
         ).encode(),
     }
@@ -348,7 +388,7 @@ def open_itc(path: str | Path) -> VarFrame:
                 timestamp=datetime.fromisoformat(entry["timestamp"]),
                 state_hash=entry["state_hash"],
                 comment=entry["comment"],
-                step=_step_from_payload(entry.get("step")),
+                step=_step_from_payload(entry.get("step"), target),
             )
             for entry in history_payload
         )
@@ -363,6 +403,31 @@ def open_itc(path: str | Path) -> VarFrame:
         correlation=correlation,
         axes=axes,
     )
+    schema = metadata.get("schema")
+    if schema not in _READABLE_SCHEMAS:
+        raise DataError(
+            f"archive '{target}' with schema {schema!r}",
+            "itc.open read an unknown .itc schema",
+            f"this build reads {sorted(_READABLE_SCHEMAS)}; upgrade ITACA to "
+            "open a newer archive (REQ-70)",
+        )
+    if schema != "itaca-itc/1":
+        recorded_steps = metadata.get("steps_hash")
+        if not isinstance(recorded_steps, str):
+            raise DataError(
+                f"archive '{target}'",
+                "itc.open read a schema 2 archive with no 'steps_hash', so its "
+                "replay steps cannot be verified",
+                "re-export the archive from the source data (REQ-54)",
+            )
+        if recorded_steps != _steps_digest(history_payload):
+            raise HashMismatchError(
+                f"archive '{target}'",
+                "itc.open found drift between the recorded and the recomputed "
+                "replay steps, so the stored recipe was modified",
+                "the archive was edited after it was written; re-export it "
+                "from the source data (REQ-54)",
+            )
     if db.state_hash != metadata["state_hash"]:
         raise HashMismatchError(
             f"archive '{target}'",

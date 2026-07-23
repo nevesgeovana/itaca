@@ -428,6 +428,7 @@ CL_corr  = "CL * blockage"
 \end{itemize}
 
 \section{The .itc Native Binary Format}
+\label{sec:itc-archive}
 
 The \code{.itc} format is a ZIP archive containing the files listed in
 Table~\ref{tab:itc-archive}. The format is designed for long-term archival:
@@ -458,6 +459,7 @@ without \itc{} using any ZIP tool plus \code{numpy.load}.
 \end{table}
 
 \section{The .itc\_pipe Pipeline Format}
+\label{sec:itc-pipe}
 
 A \code{.itc\_pipe} file is a human-readable serialization (JSON) of a
 sequence of operations extracted from a VarFrame's History. DD-28

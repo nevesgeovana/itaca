@@ -563,7 +563,7 @@ persisted in the `.itc` archive (schema `itaca-itc/2`) so a reopened
 archive can still lift its recipe.
 
 The `.itc_pipe` encoding is JSON, superseding the TOML named in the
-original SRS 4.5 text. Three reasons: no Python version ships a standard
+original text of the .itc_pipe section of SRS Chapter 4. Three reasons: no Python version ships a standard
 library TOML writer (`tomllib` is read-only and 3.11+), so TOML would
 force a third-party runtime dependency into a core feature; TOML has no
 null type, and `compute(fill=None)` is meaningful and differs from the
@@ -571,10 +571,10 @@ default `fill=nan`, so a TOML encoding would either lose it or need a
 side-channel that a reader can misread; and replay arguments nest
 (`filters`, `at`, `axisTranslation`), which TOML expresses as
 non-adjacent sub-tables that scatter one call's arguments. JSON keeps
-every SRS 4.5 content item (creating version, source index range, each
+every content item that section requires (creating version, source index range, each
 call with its arguments and comment, and a content hash) with no
 dependency and no lossy encoding, and it matches the `.itc` metadata
-discipline. SRS 4.5 was amended in the same change.
+discipline. That section was amended in the same change.
 
 **Rejected alternative:** a hand-rolled stdlib TOML emitter. Rejected
 because the nesting, ordering, and null rules above make it real format

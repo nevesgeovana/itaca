@@ -14,7 +14,7 @@ from itaca.core.errors import (
     UncertaintyError,
     UncertaintyKeyError,
 )
-from itaca.core.pipeline import PipelineStep, to_jsonable
+from itaca.core.pipeline import PipelineStep, _to_jsonable
 from itaca.core.uncframe import UncFrame
 from itaca.core.varframe import VarFrame
 
@@ -75,7 +75,7 @@ def set_uncertainty(
         step=PipelineStep(
             call="set_uncertainty",
             kwargs={
-                "spec": {name: to_jsonable(value) for name, value in spec.items()},
+                "spec": {name: _to_jsonable(value) for name, value in spec.items()},
                 "component": component,
             },
             comment=comment,
