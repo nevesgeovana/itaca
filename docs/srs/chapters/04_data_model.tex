@@ -190,8 +190,9 @@ identical shape with values:
 Operations that produce derived values are responsible for updating the
 HistoryFrame accordingly. \code{compute} sets \code{+1} for newly created
 variables. \code{interpolate} sets \code{+1} within the original axis range
-and \code{-1} outside. \code{fill} sets \code{+1}. \code{fitvalue} sets
-\code{+1} within the fit range and \code{-1} beyond it. The plotter consumes
+and \code{-1} outside. \code{fill} sets \code{+1}. The reshaping rules for
+\code{fitmodel}, \code{fitvalue}, and the windowed operations are stated in
+the OQ-25 paragraph below. The plotter consumes
 the HistoryFrame to allow visual distinction (filled markers for original,
 hollow markers for interpolated, hollow with cross for extrapolated).
 
@@ -201,7 +202,18 @@ Operations that collapse one or more dimensions (\code{average},
 rule: the resulting tag is \code{-1} if any contributing point was
 \code{-1}, else \code{+1} if any was \code{+1}, else \code{0}. This
 preserves the conservative meaning of the tag (a reduced result is at most
-as ``original'' as its weakest contributor).
+as ``original'' as its weakest contributor). For weight-based reductions
+(\code{average}, \code{integrate}), the worst case is taken over the cells
+that carry nonzero weight.
+
+\paragraph{Fits, evaluation, and windows (OQ-25).}
+Operations that reshape the tag grid extend the same worst-case
+conservatism: \code{fitmodel} spreads the worst-case tag of a fitted line
+across all of its coefficients (a coefficient is at most as ``original''
+as the weakest sample that produced it); \code{fitvalue} tags an evaluated
+point \code{+1} inside the recorded fit range and \code{-1} beyond it (an
+extrapolation is derived, REQ-32); and windowed operations (\code{smooth},
+\code{diff}) take the worst case over each moving window.
 
 \section{Provenance and History}
 \label{sec:provenance-history}

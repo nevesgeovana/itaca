@@ -132,6 +132,14 @@ strict green, CHANGELOG updated, role-review passes run.
 * OQ-18 backfill if frozen in Batch B; oracle tier (DD-25)
   exercising the GUM random component against `uncertainties` on
   small cases.
+* On the OQ-18/OQ-24/OQ-26 freeze: un-raise
+  smooth/diff/fitmodel/fitvalue/fill(polyfit) on uncertainty, wire
+  `reduce_systematic`/`reduce_random` and the fit projection into
+  them, and add OP-LEVEL tests binding the derivation harness values
+  to the real op outputs (registered from the B2/derivation QA pass:
+  `tests/derivations/` validates the math and the helpers, not yet the
+  op wiring). Promote the derivation property tests to live
+  regression.
 * Sister-library docs page; pyflightstream-origin candidate-REQ
   channel documented (exporter findings triage as M2 candidates).
 * Evaluate doctest collection for the public Examples blocks

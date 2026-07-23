@@ -329,7 +329,19 @@ provisional row); OQ-18.
 
 ## OQ-25: Origin-tag reduction across a fit or integral
 
-**Status:** open; surfaced 2026-07-23 during M1 Phase B1
+**Status:** resolved (2026-07-23, confirmed by Geovana); surfaced during
+M1 Phase B1
+**Resolution:** the four implemented rules are the intended semantics
+and are folded into Section 4.3: weight-based reductions take the
+worst-case tag over the nonzero-weight cells; `fitmodel` spreads the
+worst case across the coefficients of a fitted line; `fitvalue` tags
+in-range `+1` and out-of-range `-1`; windowed `smooth`/`diff` take the
+worst case over each moving window.
+**SRS:** Section 4.3 (updated 2026-07-23).
+
+<!-- original question retained below -->
+
+**Original question (M1 Phase B1):**
 **Question:** the HistoryFrame worst-case rule (OQ-10) was defined for
 elementwise and windowed operations. `average`, `integrate`,
 `fitmodel`, and `fitvalue` collapse or expand the tag grid: the B1
