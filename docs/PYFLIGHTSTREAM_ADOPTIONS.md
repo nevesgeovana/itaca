@@ -58,6 +58,18 @@ end. This file records intent; the SRS remains the specification.
 * Phase 6 (hardening): reason-required changes for canonical
   artifacts; provenance sentence stamped into generated human-facing
   output.
+* Published docs site (REQ-108, late M1): ProperDocs on GitHub Pages,
+  material theme, build-strict-then-deploy workflow, mirroring the
+  pyflightstream site. The API reference follows pyflightstream's
+  current scheme, `mkdocs-gen-files` plus `mkdocs-literate-nav` with a
+  docs-build script that reads the live docstrings via standard-library
+  introspection (not `mkdocstrings`, which pyflightstream dropped). The
+  generator and the mkdocs tooling live in the docs build tree, are
+  never imported by library code (so the NumPy-only rule of core, ops,
+  and uncertainty is untouched), and nothing generated is committed, so
+  the site cannot drift from the code. ITACA-specific: the SRS chapters
+  are authored in markdown for a browsable SRS (pyflightstream's SRS was
+  already markdown; ITACA's is LaTeX, so this is a port).
 
 ## Conflicts resolved in favor of the SRS
 

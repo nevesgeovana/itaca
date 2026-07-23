@@ -261,3 +261,29 @@ requirement of the contribution workflow.
 Tagged releases on GitHub are mirrored on Zenodo, generating a DOI for
 each release. \itc{} is academically citable from \code{0.1.0}.
 \end{reqbox}
+
+\begin{reqbox}{REQ-108}{\draft}
+\textbf{Published documentation site.}\\
+\itc{} publishes a documentation site on GitHub Pages, built with
+ProperDocs (the maintained MkDocs fork) and the material theme,
+mirroring the pyflightstream site (DD-23). The navigation covers a
+getting-started home page, the SRS chapters authored in markdown for
+the site, \code{DECISIONS.md}, \code{OPEN\_QUESTIONS.md}, the
+sister-library page, and an API reference. Following the pyflightstream
+scheme, the reference and architecture pages are generated at build
+time by \code{mkdocs-gen-files} and \code{mkdocs-literate-nav} from a
+docs-build script that reads the live NumPy-format docstrings through
+standard-library introspection, one page per public module and kept in
+step with the milestone. The generator script and the mkdocs tooling
+live in the docs build tree, are never imported by library code, and
+nothing generated is committed, so the site cannot drift from the code
+and the NumPy-only rule (REQ-82) is untouched. The renderer is a build
+script rather than \code{mkdocstrings}, which pyflightstream dropped. A
+\code{docs.yml} workflow builds the site with \code{--strict} on push
+to \code{main} and deploys it to GitHub Pages. \code{properdocs},
+\code{mkdocs-material}, \code{mkdocs-gen-files}, and
+\code{mkdocs-literate-nav} are development-only dependencies, added to
+the REQ-83 dependency table with version ranges and never runtime. The
+published site does not replace the SRS as the authoritative
+specification.
+\end{reqbox}
