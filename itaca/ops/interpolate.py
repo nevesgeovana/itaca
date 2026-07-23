@@ -24,6 +24,7 @@ from itaca.core.errors import (
     AxisTranslationError,
     DataError,
     DimensionNotFoundError,
+    FitDegreeError,
     NonNumericDimensionError,
 )
 from itaca.core.varframe import VarFrame
@@ -66,10 +67,10 @@ def _validate_method(db: VarFrame, method: str, deg: int | None, n: int) -> None
                 "pass deg=<polynomial degree> (REQ-25)",
             )
         if deg >= n:
-            raise DataError(
+            raise FitDegreeError(
                 f"deg {deg} against {n} points",
                 "polyfit needs more points than the degree",
-                "reduce deg or densify the source first",
+                "reduce deg or densify the source first (REQ-25)",
             )
 
 

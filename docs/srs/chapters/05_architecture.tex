@@ -416,7 +416,7 @@ family classes; family classes inherit from \code{ITACAError}.}
                         & \code{SelectionError}             & A coordinate value in \code{select} is not present\\
                         & \code{AxisTranslationError}       & \code{interpolate} axis-translation target is non-monotonic\\
                         & \code{ConcatOverlapError}         & \code{itc.concat} inputs have overlapping coordinates along \code{along}\\
-                        & \code{DiffWindowError}            & \code{diff} called with \code{window <= deg}\\
+                        & \code{FitDegreeError}            & A moving or global polynomial fit is given too few points for its degree (\code{diff} \code{window <= deg}; \code{smooth} savgol; \code{interpolate} polyfit; \code{fitmodel})\\
                         & \code{GridMismatchError}          & \code{pproc.compare} inputs have different grids and no \code{reference}\\
 \addlinespace
 \code{ProcessorError}   & \code{ProcessorNotFoundError}     & Unknown processor name passed to \code{itc.pproc}\\

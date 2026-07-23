@@ -43,11 +43,20 @@ At the M1 Phase B1 checkpoint, REQ-31 gained a normative note that
 \code{fitmodel} raises when uncertainty is present (its
 coefficient-space rule is not yet frozen, OQ-24), and the
 Table~\ref{tab:unc-ops} normative UncFrame semantics gained a
-\code{fitmodel} provisional row and a scoped restatement of the
-linearity claim (weight-based rows exact, Jacobian rows linearized,
-provisional rows raising). OQ-24 (coefficient-space uncertainty) and
-OQ-25 (origin-tag reduction across collapsing and expanding
-operations) were opened during the same phase.
+\code{fitmodel}/\code{fitvalue} provisional row and a scoped
+restatement of the linearity claim (weight-based rows exact, Jacobian
+rows linearized, provisional rows raising). OQ-24 (coefficient-space
+uncertainty) and OQ-25 (origin-tag reduction across collapsing and
+expanding operations) were opened during the same phase. Three
+author-seat calls were resolved at the B1 checkpoint: \code{fitvalue}
+defers with \code{fitmodel} and raises on uncertainty (REQ-32,
+OQ-24); the exception hierarchy replaces the \code{diff}-only
+\code{DiffWindowError} with a shared \code{FitDegreeError} for the
+too-few-points-for-degree invariant across \code{diff}, \code{smooth},
+\code{interpolate}, and \code{fitmodel} (REQ-30,
+Table~\ref{tab:exception-hierarchy}); and \code{fill}'s positional
+\code{method} argument is deprecated toward keyword-only for
+consistency with the M1 kernel operations (REQ-26).
 
 \section*{Document 0.1.1, 2026-07-21, M0 Uncertainty-Semantics Validation}
 

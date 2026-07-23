@@ -23,6 +23,7 @@ from itaca.core.dimension import Dimension
 from itaca.core.errors import (
     DataError,
     DimensionNotFoundError,
+    FitDegreeError,
     UncertaintyError,
 )
 from itaca.core.uncframe import UncFrame
@@ -69,7 +70,8 @@ class TestFitmodel:
         assert "alpha=[0.0, 4.0]" in model.dims["alpha_coef"].description
 
     def test_deg_not_below_points_rejected(self, parabola: VarFrame) -> None:
-        with pytest.raises(DataError):
+        # Shared FitDegreeError leaf (unified at B1).
+        with pytest.raises(FitDegreeError):
             parabola.fitmodel(along="alpha", deg=5)
 
     def test_unknown_dimension_rejected(self, parabola: VarFrame) -> None:
@@ -176,9 +178,10 @@ class TestFitvalue:
         assert dense.history.last.operation.startswith("fitvalue(")
         assert dense.history.last.comment == "densify"
 
-    def test_uncertainty_through_evaluation_weights(self, prov) -> None:  # type: ignore[no-untyped-def]
-        # REQ-98: fitvalue propagates through the fit weights (1, t):
-        # systematic |u0 + t*u1|, random RSS.
+    def test_uncertainty_rejected(self, prov) -> None:  # type: ignore[no-untyped-def]
+        # Geovana's B1 call: fitvalue defers with fitmodel and raises
+        # when uncertainty is present until the coefficient-space rule
+        # (OQ-24) is frozen, keeping forward and inverse coherent.
         coef = Dimension(
             name="alpha_coef",
             coords=np.array(["alpha^0", "alpha^1"]),
@@ -196,10 +199,5 @@ class TestFitvalue:
             provenance=prov,
             uncertainty=unc,
         )
-        dense = db.fitvalue(coef_dims=["alpha_coef"], at={"alpha": [2.0]})
-        assert dense.uncertainty is not None
-        assert dense.uncertainty.systematic["CL"][0] == pytest.approx(0.5)
-        assert dense.uncertainty.random["CL"][0] == pytest.approx(
-            np.sqrt(0.1**2 + 0.4**2)
-        )
-        assert dense.vars["CL"].values[0] == pytest.approx(5.0)
+        with pytest.raises(UncertaintyError, match="OQ-24"):
+            db.fitvalue(coef_dims=["alpha_coef"], at={"alpha": [2.0]})

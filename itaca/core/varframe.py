@@ -8,6 +8,7 @@ UncFrame effect (REQ-18, REQ-98). Arrays are read-only (REQ-102).
 from __future__ import annotations
 
 import dataclasses
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -998,8 +999,10 @@ class VarFrame:
             A new VarFrame where the coefficient dimensions are
             replaced by the evaluation dimensions. Values within the
             original fit range are tagged ``+1``; beyond it, ``-1``
-            (REQ-32). Uncertainty propagates through the evaluation
-            weights ``t^k`` (REQ-98).
+            (REQ-32). The forward evaluation is exact and linear in the
+            coefficients, but it defers with ``fitmodel`` and raises
+            when uncertainty is present until the coefficient-space
+            rule is frozen (OQ-24).
 
         Raises
         ------
@@ -1007,7 +1010,10 @@ class VarFrame:
             A coefficient dimension is absent.
         DataError
             A coefficient dimension cannot be paired with an ``at``
-            grid.
+            grid, an ``at`` key was not used, or the fitted range is
+            unreadable.
+        UncertaintyError
+            Uncertainty is present (deferred with fitmodel, OQ-24).
 
         Examples
         --------
@@ -1029,8 +1035,8 @@ class VarFrame:
     def fill(
         self,
         along: str,
+        *args: str,
         method: str = "linear",
-        *,
         deg: int | None = None,
         window: int | None = None,
         global_fit: bool = False,
@@ -1047,7 +1053,9 @@ class VarFrame:
             ``"linear"`` (between neighbors, default), ``"nearest"``,
             or ``"polyfit"`` (moving window of ``window`` points and
             degree ``deg``; ``global_fit=True`` fits the full
-            dimension instead).
+            dimension instead). Keyword-only: passing it positionally
+            is deprecated and warns (it becomes keyword-only in a
+            future release, aligning with the M1 kernel ops).
         deg : int or None, optional
             Polynomial degree for ``"polyfit"``.
         window : int or None, optional
@@ -1063,7 +1071,40 @@ class VarFrame:
         -------
         VarFrame
             A new VarFrame with filled values tagged ``+1`` (SRS 4.3).
+
+        Raises
+        ------
+        DataError
+            Unknown method, or more than one positional argument.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> arr = np.column_stack([[0.0, 1.0, 2.0], [1.0, np.nan, 3.0]])
+        >>> db = itc.load(arr, names=["alpha", "CT"]).pivot(dims=["alpha"])
+        >>> filled = db.fill("alpha", method="linear")
+        >>> float(filled.vars["CT"].values[1])
+        2.0
         """
+        if args:
+            if len(args) > 1:
+                raise DataError(
+                    f"fill positional arguments {args}",
+                    "fill takes at most the dimension and (deprecated) "
+                    "the method positionally",
+                    "pass method= and the rest as keywords (REQ-26)",
+                )
+            warnings.warn(
+                "passing 'method' to fill positionally is deprecated and "
+                "will become keyword-only in a future release; pass "
+                "method= as a keyword (aligns fill with the M1 kernel "
+                "ops smooth/diff)",
+                FutureWarning,
+                stacklevel=2,
+            )
+            method = args[0]
+
         from itaca.ops.fill import fill as _fill
 
         return _fill(

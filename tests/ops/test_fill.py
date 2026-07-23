@@ -72,6 +72,26 @@ class TestFillMethods:
             db.fill(along="blade")
 
 
+class TestFillDeprecation:
+    def test_positional_method_warns(self, db: VarFrame) -> None:
+        # Geovana's B1 call: fill's positional method is deprecated,
+        # aligning with the keyword-only M1 kernel ops.
+        with pytest.warns(FutureWarning, match="keyword-only"):
+            result = db.fill("alpha", "linear")
+        assert np.allclose(result.vars["CT"].values, [1.0, 2.0, 3.0, 4.0, 5.0])
+
+    def test_keyword_method_does_not_warn(self, db: VarFrame) -> None:
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            db.fill("alpha", method="linear")
+
+    def test_extra_positional_rejected(self, db: VarFrame) -> None:
+        with pytest.raises(DataError):
+            db.fill("alpha", "linear", "extra")  # type: ignore[call-arg]
+
+
 class TestFillBookkeeping:
     def test_filled_values_tagged(self, db: VarFrame) -> None:
         # REQ-26: filled values are tagged +1 in the HistoryFrame.

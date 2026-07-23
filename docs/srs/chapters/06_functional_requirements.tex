@@ -339,7 +339,10 @@ dimension. Methods:
     \code{diff}); when \code{global\_fit=True}, a single polynomial of
     degree \code{deg} is fit to the full dimension instead.
 \end{itemize}
-Filled values are tagged \code{+1} in the HistoryFrame.
+Filled values are tagged \code{+1} in the HistoryFrame. For
+signature consistency with the M1 kernel operations, \code{method}
+is being moved to keyword-only: passing it positionally is deprecated
+and warns from v0.2.0 (M1 Phase B1 decision).
 \end{reqbox}
 
 \begin{reqbox}{REQ-27}{\stable}
@@ -382,7 +385,11 @@ a moving polynomial fit:
   \item a window of \code{window} points centered on each point is fitted
     with a polynomial of degree \code{deg};
   \item the constraint \code{window > deg} is enforced before any
-    computation; violation raises \code{DiffWindowError};
+    computation; violation raises \code{FitDegreeError} (the shared
+    leaf for the too-few-points-for-degree invariant across
+    \code{diff}, \code{smooth}, \code{interpolate}, and
+    \code{fitmodel}; unified from the former \code{DiffWindowError} at
+    the M1 Phase B1 checkpoint);
   \item the analytical derivative of the fitted polynomial is evaluated at
     the central point;
   \item at boundaries where a centered window is unavailable, the window
@@ -415,7 +422,12 @@ VarFrame produced by \code{fitmodel} at user-specified coordinates,
 returning a new VarFrame where the coefficient dimensions are replaced by
 the evaluation dimensions. Useful for densifying a fit beyond the original
 sweep range. Values within the original fit range are tagged \code{+1} in
-the HistoryFrame; beyond the range, \code{-1}.
+the HistoryFrame; beyond the range, \code{-1}. The forward evaluation is
+exact and linear in the coefficients, but because a \code{fitmodel}
+output carries no coefficient uncertainty until OQ-24 is frozen,
+\code{fitvalue} defers with \code{fitmodel} and raises when
+uncertainty is present, keeping the coefficient-space treatment
+coherent (DD-18).
 \end{reqbox}
 
 \begin{reqbox}{REQ-33}{\stable}
@@ -622,21 +634,22 @@ specified input variability. No separate sensitivity module is required
 \textbf{Uncertainty propagation through every operation.}\\
 Every operation declares its effect on the UncFrame (DD-18).
 Table~\ref{tab:unc-ops} is normative. The weight-based rows (subset,
-interpolate, fill, fitvalue, and the reductions) are linear in the
-variable values, so propagation through the operation weights is
-exact; the Jacobian rows (\code{rotate}, \code{translate\_moments},
+interpolate, fill, and the reductions) are linear in the variable
+values, so propagation through the operation weights is exact; the
+Jacobian rows (\code{rotate}, \code{translate\_moments},
 \code{combine}, \code{compute}) linearize a nonlinear map, and the
-provisional rows raise until their rule is frozen. No operation
+provisional rows (\code{smooth}, \code{diff}, \code{fitmodel},
+\code{fitvalue}) raise until their rule is frozen. No operation
 silently drops or silently carries an UncFrame. The \code{smooth},
 \code{diff}, and \code{fitmodel} rows remain provisional until OQ-18
 and OQ-24 are resolved during v0.2.0 implementation; an operation
 whose weight rule is not yet frozen raises when uncertainty is
 present rather than guessing. The M0 rows were validated against the
 implementation on 2026-07-21; the M1 weight-based rows
-(\code{interpolate}, \code{fitvalue}, and the reductions) were
-validated at the M1 Phase B1 checkpoint, with the mixed-sign
-systematic behavior of the cubic and polyfit kernels carried as a
-validation item alongside OQ-18.
+(\code{interpolate} and the reductions) were validated at the M1
+Phase B1 checkpoint, with the mixed-sign systematic behavior of the
+cubic and polyfit kernels carried as a validation item alongside
+OQ-18.
 
 \begin{table}[H]
 \centering
@@ -650,7 +663,7 @@ validation item alongside OQ-18.
 \code{select}, \code{at}, \code{squeeze}, \code{concat}, \code{expand},
 \code{pivot} & Components are subset, concatenated, or broadcast
 unchanged.\\
-\code{interpolate}, \code{fill}, \code{fitvalue} & Propagated through the
+\code{interpolate}, \code{fill} & Propagated through the
 interpolation or fit weights, per point, both components.\\
 \code{average}, \code{integrate}, \code{statistics} & Propagated through
 the reduction weights: random component with independence between points
@@ -658,8 +671,11 @@ the reduction weights: random component with independence between points
 gain).\\
 \code{smooth}, \code{diff} & Propagated through the kernel or moving-fit
 weights, same component rules as reductions.\\
-\code{fitmodel} & Coefficient-space rule not yet frozen (OQ-24);
-raises when uncertainty is present until validated.\\
+\code{fitmodel}, \code{fitvalue} & Coefficient-space rule not yet
+frozen (OQ-24); both raise when uncertainty is present until
+validated. \code{fitvalue}'s forward evaluation is exact and linear,
+but it defers with \code{fitmodel} so the coefficient story stays
+coherent.\\
 \code{rotate}, \code{translate\_moments}, \code{combine}, \code{compute} &
 Exact Jacobian propagation with covariance (REQ-37, REQ-38, REQ-41,
 REQ-100).\\

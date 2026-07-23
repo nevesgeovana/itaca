@@ -18,14 +18,26 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   moving-polynomial derivative with `nan_edges`), `db.fitmodel` and
   `db.fitvalue` (REQ-31/32, polynomial coefficients with
   in-range/out-of-range tags). Every operation is immutable, records
-  History, and declares its UncFrame effect (DD-18): reductions,
-  interpolation, and `fitvalue` propagate both components through
-  their weights (REQ-98), while `smooth`, `diff`, and `fitmodel`
-  raise on uncertainty until OQ-18 and OQ-24 freeze their
-  kernel-weight and coefficient-space rules. New error leaves
-  `ConcatOverlapError`, `AxisTranslationError`, `DiffWindowError`.
-  The REQ-105 sentinel is adopted in the `smooth` signature with the
-  shared `reject_no_default` enforcement helper.
+  History, and declares its UncFrame effect (DD-18): reductions and
+  interpolation propagate both components through their weights
+  (REQ-98), while `smooth`, `diff`, `fitmodel`, and `fitvalue` raise
+  on uncertainty until OQ-18 and OQ-24 freeze their kernel-weight and
+  coefficient-space rules. New error leaves `ConcatOverlapError`,
+  `AxisTranslationError`, and the shared `FitDegreeError` (the
+  too-few-points-for-degree invariant across diff, smooth,
+  interpolate, and fitmodel). The REQ-105 sentinel is adopted in the
+  `smooth` signature with the shared `reject_no_default` helper.
+
+### Changed
+
+* `db.fill`: the `method` argument is moving to keyword-only for
+  consistency with the M1 kernel operations. Passing it positionally
+  is deprecated and emits a `FutureWarning` from v0.2.0 (REQ-26).
+
+### Deprecated
+
+* `db.fill(along, method)` with `method` passed positionally; pass
+  `method=` as a keyword instead.
 * `itc.no_default` (REQ-105): typed no-default sentinel in
   `core/sentinels.py`, an enum singleton whose type is expressible in
   annotations, distinguishing an argument that was not passed from an

@@ -20,6 +20,7 @@ from numpy.typing import NDArray
 from itaca.core.errors import (
     DataError,
     DimensionNotFoundError,
+    FitDegreeError,
     NonNumericDimensionError,
     UncertaintyError,
 )
@@ -147,10 +148,10 @@ def smooth(
     if method == "savgol":
         assert isinstance(window, int) and isinstance(polyorder, int)
         if window <= polyorder:
-            raise DataError(
+            raise FitDegreeError(
                 f"smooth window {window}",
                 f"a moving fit of degree {polyorder} needs more points than the degree",
-                "increase window so that window > polyorder",
+                "increase window so that window > polyorder (REQ-29)",
             )
     if method == "moving_avg":
         assert isinstance(window, int)

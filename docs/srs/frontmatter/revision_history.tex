@@ -24,8 +24,15 @@ checkpoint; its status moves to stable through the normal process
 once implemented and tested during M1. At the M1 Phase B1
 checkpoint, REQ-31 and the normative UncFrame-semantics table gained
 the \code{fitmodel} raise-until-frozen note and row (OQ-24), and
-OQ-24 and OQ-25 were opened; these are same-baseline refinements
-recorded here rather than a further version bump.\\
+OQ-24 and OQ-25 were opened. Three author-seat calls at the same
+checkpoint: \code{fitvalue} defers with \code{fitmodel} and raises on
+uncertainty (OQ-24); the too-few-points-for-degree invariant is
+unified into a shared \code{FitDegreeError} leaf across \code{diff},
+\code{smooth}, \code{interpolate}, and \code{fitmodel} (REQ-30, the
+former \code{DiffWindowError}); and \code{fill}'s positional
+\code{method} is deprecated toward keyword-only (REQ-26). These are
+same-baseline refinements recorded here rather than a further version
+bump.\\
 \addlinespace
 0.1.1 & 2026-07-21 & Geovana Neves &
 REQ-98 and REQ-99 promoted from draft to stable after the M0

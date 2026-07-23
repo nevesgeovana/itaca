@@ -311,11 +311,19 @@ per-coefficient correlation are not obvious and interact with OQ-18
 (the same kernel-weight question). Until a rule is worked and
 validated, `fitmodel` follows DD-18 and raises when uncertainty is
 present, consistent with the sanctioned smooth/diff raise.
+**Decision (2026-07-23, M1 Phase B1, Geovana):** `fitvalue` also
+raises when uncertainty is present, deferring with `fitmodel` even
+though its forward `sum_k c_k t^k` evaluation is exact and linear.
+Rationale: a `fitmodel` output carries no coefficient uncertainty
+until this question is resolved, so the forward branch would only ever
+fire on a hand-assembled frame; keeping forward and inverse frozen
+together avoids shipping half a coefficient-space story. Both raise;
+the REQ-98 table carries a `fitmodel`/`fitvalue` provisional row.
 **Proposed handling:** carry the derivation together with the OQ-18
 work (Q-004) so Geovana validates one coherent coefficient-space
-story; if deferred, the `fitmodel` raise is documented in REQ-31 and
-a `fitmodel` row is added to the REQ-98 table stating the raise.
-**SRS:** REQ-31, REQ-98 (Table to gain a `fitmodel` row); OQ-18.
+story.
+**SRS:** REQ-31, REQ-32, REQ-98 (Table `fitmodel`/`fitvalue`
+provisional row); OQ-18.
 
 ---
 

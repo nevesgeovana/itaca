@@ -18,8 +18,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.errors import (
-    DiffWindowError,
     DimensionNotFoundError,
+    FitDegreeError,
     NonNumericDimensionError,
     UncertaintyError,
 )
@@ -83,7 +83,7 @@ def diff(
             "numerical operations need numeric coordinates (SRS 4.1.3)",
         )
     if window <= deg:
-        raise DiffWindowError(
+        raise FitDegreeError(
             f"window {window} against deg {deg}",
             "the moving polynomial fit needs more points than the degree",
             "increase window so that window > deg (REQ-30)",

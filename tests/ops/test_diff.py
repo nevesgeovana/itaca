@@ -24,8 +24,8 @@ from hypothesis import strategies as st
 
 import itaca as itc
 from itaca.core.errors import (
-    DiffWindowError,
     DimensionNotFoundError,
+    FitDegreeError,
     UncertaintyError,
 )
 from itaca.core.uncframe import UncFrame
@@ -84,8 +84,9 @@ class TestDiffIndexer:
 
 class TestDiffValidation:
     def test_window_le_deg_rejected(self, parabola: VarFrame) -> None:
-        # REQ-76 edge case: diff with window <= deg.
-        with pytest.raises(DiffWindowError, match="more points than the degree") as exc:
+        # REQ-76 edge case: diff with window <= deg. The shared
+        # FitDegreeError leaf (REQ-30, unified at B1).
+        with pytest.raises(FitDegreeError, match="more points than the degree") as exc:
             parabola.diff(along="alpha", window=2, deg=2)
         assert "Suggested fix:" in str(exc.value)
 

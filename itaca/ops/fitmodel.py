@@ -9,15 +9,13 @@ fitmodel row, so the operation raises when uncertainty is present
 rather than guessing (DD-18); the gap is queued for the author
 (OQ-24).
 
-``fitvalue`` is the forward evaluation ``sum_k c_k t^k``, linear in
-the coefficients, so it propagates both UncFrame components exactly
-through the evaluation weights ``t^k`` (systematic as the absolute
-weighted sum, random as the root sum of squares). This forward rule
-is distinct from and unaffected by the open OQ-24 question, which
-concerns only the inverse least-squares coefficient covariance that
-``fitmodel`` would produce; whether ``fitvalue`` should nonetheless
-defer until fitmodel-produced coefficient uncertainty exists is
-queued for the author.
+``fitvalue`` is the forward evaluation ``sum_k c_k t^k``, exact and
+linear in the coefficients. Because a fitmodel output never carries
+coefficient uncertainty until OQ-24 is resolved, ``fitvalue`` defers
+with ``fitmodel`` and raises when uncertainty is present (Geovana's
+call at the M1 Phase B1 checkpoint: keep the coefficient-space story
+coherent, forward and inverse frozen together), rather than applying
+a forward rule to coefficients whose covariance is not yet defined.
 """
 
 from __future__ import annotations
@@ -31,6 +29,7 @@ from itaca.core.dimension import Dimension
 from itaca.core.errors import (
     DataError,
     DimensionNotFoundError,
+    FitDegreeError,
     NonNumericDimensionError,
     UncertaintyError,
 )
@@ -67,8 +66,14 @@ def fitmodel(
             "numerical operations need numeric coordinates (SRS 4.1.3)",
         )
     n = db.dims[along].cardinality
-    if deg < 0 or deg >= n:
+    if deg < 0:
         raise DataError(
+            f"deg {deg}",
+            "fitmodel needs a nonnegative polynomial degree",
+            "pass deg >= 0 (REQ-31)",
+        )
+    if deg >= n:
+        raise FitDegreeError(
             f"deg {deg} against {n} points",
             "fitmodel needs more points than the polynomial degree",
             "reduce deg or densify the sweep first (REQ-31)",
@@ -161,7 +166,14 @@ def fitvalue(
 
     See ``VarFrame.fitvalue`` for the full parameter description.
     """
-    from itaca.ops._reduction import reduce_random, reduce_systematic
+    if db.uncertainty is not None:
+        raise UncertaintyError(
+            "fitvalue",
+            "coefficient-space uncertainty is not frozen yet, so its "
+            "forward evaluation defers with fitmodel (REQ-98 provisional "
+            "row, OQ-24)",
+            "evaluate before assigning uncertainty; the rule is queued for the author",
+        )
 
     content = content_of(db)
     consumed_sources: set[str] = set()
@@ -205,23 +217,6 @@ def fitvalue(
             out = flat @ weights.T
             out_shape = (*moved.shape[:-1], targets.size)
             content.values[name] = np.moveaxis(out.reshape(out_shape), -1, axis)
-            for label, rule in (
-                ("systematic", reduce_systematic),
-                ("random", reduce_random),
-            ):
-                component = getattr(content, label)
-                if component is not None and name in component:
-                    moved_u = np.moveaxis(component[name], axis, -1).reshape(flat.shape)
-                    evaluated = np.stack(
-                        [
-                            rule(weights[row], moved_u, -1)
-                            for row in range(targets.size)
-                        ],
-                        axis=-1,
-                    )
-                    component[name] = np.moveaxis(
-                        evaluated.reshape(out_shape), -1, axis
-                    )
             _, lo, hi = fit_range
             inside = (targets >= lo) & (targets <= hi)
             line_tags = np.where(inside, np.int8(1), np.int8(-1))

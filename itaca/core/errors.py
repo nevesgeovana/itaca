@@ -15,9 +15,9 @@ __all__ = [
     "CorrelationMatrixError",
     "DataError",
     "DependencyError",
-    "DiffWindowError",
     "DimensionNotFoundError",
     "DraftModeExportError",
+    "FitDegreeError",
     "HashMismatchError",
     "ITACAError",
     "LoadCoordinateError",
@@ -163,13 +163,15 @@ class AxisTranslationError(DataError):
     """interpolate axis-translation target is non-monotonic (REQ-25)."""
 
 
-class DiffWindowError(DataError):
-    """diff called with window <= deg (REQ-30).
+class FitDegreeError(DataError):
+    """Too few points for the requested polynomial degree (REQ-30).
 
-    A typed leaf because REQ-30 names it; the sibling "needs more
-    points than the degree" invariant in smooth, interpolate, and
-    fitmodel raises plain ``DataError`` (queue question on whether to
-    unify).
+    The shared leaf for the "needs more points than the degree"
+    invariant across ``diff`` (window <= deg), ``smooth`` (savgol
+    window <= polyorder), ``interpolate`` (polyfit deg >= points), and
+    ``fitmodel`` (deg >= points). REQ-30 originally named
+    ``DiffWindowError``; it was unified into this shared leaf at the M1
+    Phase B1 checkpoint (SRS document 0.2.0).
     """
 
 

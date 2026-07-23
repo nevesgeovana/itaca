@@ -21,6 +21,7 @@ import itaca as itc
 from itaca.core.errors import (
     DataError,
     DimensionNotFoundError,
+    FitDegreeError,
     UncertaintyError,
 )
 from itaca.core.uncframe import UncFrame
@@ -115,7 +116,8 @@ class TestSmoothValidation:
             noisy.smooth(along="beta", method="moving_avg", window=3)
 
     def test_window_not_larger_than_polyorder_rejected(self, noisy: VarFrame) -> None:
-        with pytest.raises(DataError):
+        # Shared FitDegreeError leaf (unified at B1).
+        with pytest.raises(FitDegreeError):
             noisy.smooth(along="alpha", method="savgol", window=3, polyorder=3)
 
 
