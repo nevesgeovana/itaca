@@ -294,3 +294,43 @@ of `combine`. A future need for per-component correlation (e.g.
 common calibration biasing only the systematic parts) would be a new
 requirement, not a reinterpretation.
 **SRS:** Section 4.2 (document 0.1.1); REQ-40, REQ-41.
+
+---
+
+## OQ-24: Coefficient-space uncertainty rule for fitmodel
+
+**Status:** open; surfaced 2026-07-23 during M1 Phase B1
+**Question:** the normative REQ-98 table (Table "Normative UncFrame
+semantics per operation") lists `interpolate`, `fill`, and `fitvalue`
+as propagating through fit weights, but has no row for `fitmodel`.
+Unlike `fitvalue` (a linear evaluation of stored coefficients),
+`fitmodel` maps sampled values to least-squares polynomial
+coefficients: the coefficient covariance is the Gauss-Markov
+`(X^T X)^-1 X^T Sigma X (X^T X)^-1`, whose two-component split and
+per-coefficient correlation are not obvious and interact with OQ-18
+(the same kernel-weight question). Until a rule is worked and
+validated, `fitmodel` follows DD-18 and raises when uncertainty is
+present, consistent with the sanctioned smooth/diff raise.
+**Proposed handling:** carry the derivation together with the OQ-18
+work (Q-004) so Geovana validates one coherent coefficient-space
+story; if deferred, the `fitmodel` raise is documented in REQ-31 and
+a `fitmodel` row is added to the REQ-98 table stating the raise.
+**SRS:** REQ-31, REQ-98 (Table to gain a `fitmodel` row); OQ-18.
+
+---
+
+## OQ-25: Origin-tag reduction across a fit or integral
+
+**Status:** open; surfaced 2026-07-23 during M1 Phase B1
+**Question:** the HistoryFrame worst-case rule (OQ-10) was defined for
+elementwise and windowed operations. `average`, `integrate`,
+`fitmodel`, and `fitvalue` collapse or expand the tag grid: the B1
+implementation reduces a collapsed line to its worst-case tag over the
+weighted cells, spreads a fitted line's worst case across its
+coefficients, and tags a `fitvalue` point by whether it lies inside
+the recorded fit range. These choices are reasonable but were made in
+implementation, not specified. They should be stated in Section 4.3 or
+confirmed as the intended semantics.
+**Proposed handling:** low-risk documentation item; confirm the four
+rules and fold them into Section 4.3 at the next document revision.
+**SRS:** Section 4.3; REQ-27, REQ-28, REQ-31, REQ-32.

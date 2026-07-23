@@ -3,9 +3,10 @@
 Filled values are tagged ``+1`` (SRS 4.3). Uncertainty propagates
 through the interpolation weights per REQ-98: systematic through the
 weight sum (fully correlated), random through the RSS of weights.
-The moving-polyfit weight rule is not frozen yet (REQ-98 is draft):
-filling with uncertainty present and ``method="polyfit"`` raises
-rather than guessing (DD-18).
+The moving-polyfit weight rule is not frozen yet (the provisional
+smooth/diff/fitmodel family of REQ-98, OQ-18): filling with
+uncertainty present and ``method="polyfit"`` raises rather than
+guessing (DD-18).
 """
 
 from __future__ import annotations
@@ -136,7 +137,7 @@ def fill(
             raise UncertaintyError(
                 "fill(method='polyfit')",
                 "uncertainty propagation through moving-fit weights is "
-                "not frozen yet (REQ-98 draft)",
+                "not frozen yet (REQ-98 provisional row, OQ-18)",
                 "fill before assigning uncertainty, or use method="
                 "'linear' or 'nearest'",
             )

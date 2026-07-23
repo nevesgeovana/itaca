@@ -402,7 +402,10 @@ that dimension with $N+1$ coordinate entries representing the polynomial
 coefficients. The new dimension keeps the original name suffixed by
 \code{\_coef} as a name and uses coordinate labels of the form
 \code{alpha\^{}0}, \code{alpha\^{}1}, $\dots$, \code{alpha\^{}N}, mirroring
-the variable's exponent in the polynomial fit.
+the variable's exponent in the polynomial fit. The propagation of
+uncertainty into coefficient space is not yet frozen (OQ-24, tied to
+OQ-18); until it is, \code{fitmodel} raises when uncertainty is
+present rather than guessing (DD-18).
 \end{reqbox}
 
 \begin{reqbox}{REQ-32}{\stable}
@@ -618,14 +621,22 @@ specified input variability. No separate sensitivity module is required
 \begin{reqbox}{REQ-98}{\stable}
 \textbf{Uncertainty propagation through every operation.}\\
 Every operation declares its effect on the UncFrame (DD-18).
-Table~\ref{tab:unc-ops} is normative. All listed operations are linear in
-the variable values, so propagation through the operation weights is
-exact. No operation silently drops or silently carries an UncFrame.
-The \code{smooth} and \code{diff} row remains provisional until OQ-18
-is resolved during v0.2.0 implementation; an operation whose weight
-rule is not yet frozen raises when uncertainty is present rather than
-guessing. The M0 rows were validated against the implementation on
-2026-07-21.
+Table~\ref{tab:unc-ops} is normative. The weight-based rows (subset,
+interpolate, fill, fitvalue, and the reductions) are linear in the
+variable values, so propagation through the operation weights is
+exact; the Jacobian rows (\code{rotate}, \code{translate\_moments},
+\code{combine}, \code{compute}) linearize a nonlinear map, and the
+provisional rows raise until their rule is frozen. No operation
+silently drops or silently carries an UncFrame. The \code{smooth},
+\code{diff}, and \code{fitmodel} rows remain provisional until OQ-18
+and OQ-24 are resolved during v0.2.0 implementation; an operation
+whose weight rule is not yet frozen raises when uncertainty is
+present rather than guessing. The M0 rows were validated against the
+implementation on 2026-07-21; the M1 weight-based rows
+(\code{interpolate}, \code{fitvalue}, and the reductions) were
+validated at the M1 Phase B1 checkpoint, with the mixed-sign
+systematic behavior of the cubic and polyfit kernels carried as a
+validation item alongside OQ-18.
 
 \begin{table}[H]
 \centering
@@ -647,6 +658,8 @@ the reduction weights: random component with independence between points
 gain).\\
 \code{smooth}, \code{diff} & Propagated through the kernel or moving-fit
 weights, same component rules as reductions.\\
+\code{fitmodel} & Coefficient-space rule not yet frozen (OQ-24);
+raises when uncertainty is present until validated.\\
 \code{rotate}, \code{translate\_moments}, \code{combine}, \code{compute} &
 Exact Jacobian propagation with covariance (REQ-37, REQ-38, REQ-41,
 REQ-100).\\

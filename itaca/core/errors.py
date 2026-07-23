@@ -9,10 +9,13 @@ the families are complete from M0.
 
 __all__ = [
     "AxesError",
+    "AxisTranslationError",
+    "ConcatOverlapError",
     "CorrelationKeyError",
     "CorrelationMatrixError",
     "DataError",
     "DependencyError",
+    "DiffWindowError",
     "DimensionNotFoundError",
     "DraftModeExportError",
     "HashMismatchError",
@@ -145,6 +148,29 @@ class NonNumericDimensionError(DataError):
 
 class SelectionError(DataError):
     """A coordinate value in select is not present (REQ-20)."""
+
+
+# ---------------------------------------------------------------------------
+# DataError leaves (M1)
+# ---------------------------------------------------------------------------
+
+
+class ConcatOverlapError(DataError):
+    """itc.concat inputs have overlapping coordinates along `along` (REQ-24)."""
+
+
+class AxisTranslationError(DataError):
+    """interpolate axis-translation target is non-monotonic (REQ-25)."""
+
+
+class DiffWindowError(DataError):
+    """diff called with window <= deg (REQ-30).
+
+    A typed leaf because REQ-30 names it; the sibling "needs more
+    points than the degree" invariant in smooth, interpolate, and
+    fitmodel raises plain ``DataError`` (queue question on whether to
+    unify).
+    """
 
 
 # ---------------------------------------------------------------------------

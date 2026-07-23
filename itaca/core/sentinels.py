@@ -20,7 +20,7 @@ adopting signature (M1 Phase B1 onward), not by this module.
 from enum import Enum
 from typing import Final, Literal
 
-__all__ = ["NoDefault", "no_default"]
+__all__ = ["NoDefault", "no_default", "reject_no_default"]
 
 
 class NoDefault(Enum):
@@ -56,3 +56,45 @@ class NoDefault(Enum):
 
 no_default: Final[Literal[NoDefault.no_default]] = NoDefault.no_default
 """The sentinel marking an argument that was not passed (REQ-105)."""
+
+
+def reject_no_default(value: object, obj: str, operation: str) -> None:
+    """Raise if ``value`` is the sentinel where it is not the default.
+
+    The shared enforcement helper for the REQ-105 raise clause: an
+    adopting signature calls this on every parameter whose declared
+    default is not ``no_default``, so the sentinel can never act as a
+    data value.
+
+    Parameters
+    ----------
+    value : object
+        The received argument.
+    obj : str
+        The object part of the three-part message (REQ-81).
+    operation : str
+        The operation part of the three-part message.
+
+    Raises
+    ------
+    DataError
+        ``value`` is the sentinel.
+
+    Examples
+    --------
+    >>> reject_no_default(0.5, "smooth(method=...)", "method resolution")
+    >>> reject_no_default(
+    ...     no_default, "smooth(method=...)", "method resolution"
+    ... )  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    itaca.core.errors.DataError: ...
+    """
+    if value is no_default:
+        from itaca.core.errors import DataError
+
+        raise DataError(
+            obj,
+            f"{operation} received the no_default sentinel where it "
+            "is not the declared default",
+            "omit the argument or pass a real value (REQ-105)",
+        )

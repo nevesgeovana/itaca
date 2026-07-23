@@ -8,6 +8,24 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Added
 
+* M1 Phase B1, structural and numeric operations. `db.expand`
+  (REQ-23, broadcast a new dimension), `itc.concat` (REQ-24,
+  concatenate along a shared dimension), `db.interpolate` (REQ-25,
+  linear/cubic/nearest/polyfit densify plus `axisTranslation` and the
+  `override` flag), `db.average` (REQ-27), `db.integrate` (REQ-28,
+  Cartesian and polar, `skipna`), `db.smooth` (REQ-29, savgol,
+  spline, moving_avg), `db.diff` and `db.d[dim]` (REQ-30,
+  moving-polynomial derivative with `nan_edges`), `db.fitmodel` and
+  `db.fitvalue` (REQ-31/32, polynomial coefficients with
+  in-range/out-of-range tags). Every operation is immutable, records
+  History, and declares its UncFrame effect (DD-18): reductions,
+  interpolation, and `fitvalue` propagate both components through
+  their weights (REQ-98), while `smooth`, `diff`, and `fitmodel`
+  raise on uncertainty until OQ-18 and OQ-24 freeze their
+  kernel-weight and coefficient-space rules. New error leaves
+  `ConcatOverlapError`, `AxisTranslationError`, `DiffWindowError`.
+  The REQ-105 sentinel is adopted in the `smooth` signature with the
+  shared `reject_no_default` enforcement helper.
 * `itc.no_default` (REQ-105): typed no-default sentinel in
   `core/sentinels.py`, an enum singleton whose type is expressible in
   annotations, distinguishing an argument that was not passed from an

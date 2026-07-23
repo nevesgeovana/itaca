@@ -11,10 +11,12 @@ from itaca.core.sentinels import no_default
 from itaca.core.version import __version__
 from itaca.io.formats.itc import open_itc as open
 from itaca.io.loader import load
+from itaca.ops.concat import concat
 
 __all__ = [
     "ITACAError",
     "__version__",
+    "concat",
     "load",
     "no_default",
     "open",

@@ -39,6 +39,15 @@ scope may still ship inside v0.2.0 if green in the same window.
 REQ-101 was validated as written at the Batch A checkpoint; the
 reqbox stays draft until the implementation and its tests land, then
 moves to stable through this changelog and the revision history.
+At the M1 Phase B1 checkpoint, REQ-31 gained a normative note that
+\code{fitmodel} raises when uncertainty is present (its
+coefficient-space rule is not yet frozen, OQ-24), and the
+Table~\ref{tab:unc-ops} normative UncFrame semantics gained a
+\code{fitmodel} provisional row and a scoped restatement of the
+linearity claim (weight-based rows exact, Jacobian rows linearized,
+provisional rows raising). OQ-24 (coefficient-space uncertainty) and
+OQ-25 (origin-tag reduction across collapsing and expanding
+operations) were opened during the same phase.
 
 \section*{Document 0.1.1, 2026-07-21, M0 Uncertainty-Semantics Validation}
 

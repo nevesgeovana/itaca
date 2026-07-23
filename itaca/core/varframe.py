@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -28,8 +28,12 @@ from itaca.core.errors import (
 from itaca.core.history import History, compute_state_hash
 from itaca.core.historyframe import HistoryFrame
 from itaca.core.provenance import Provenance, validate_mode
+from itaca.core.sentinels import NoDefault, no_default
 from itaca.core.uncframe import UncFrame
 from itaca.core.variable import Variable
+
+if TYPE_CHECKING:
+    from itaca.ops.diff import DiffIndexer
 
 _UNSET: object = object()
 
@@ -463,6 +467,564 @@ class VarFrame:
         from itaca.ops.squeeze import squeeze as _squeeze
 
         return _squeeze(self, along=along, history=history, comment=comment)
+
+    def expand(
+        self,
+        dim_name: str,
+        values: object,
+        axis: int | None = None,
+        *,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Add a new dimension, broadcasting existing arrays (REQ-23).
+
+        Every stored array (values, uncertainty components, origin
+        tags) is materialized at the expanded shape, so the memory
+        footprint multiplies by the new dimension's cardinality.
+
+        Parameters
+        ----------
+        dim_name : str
+            Name of the new dimension; must not collide with an
+            existing dimension or variable.
+        values : array-like
+            1-D coordinate array for the new dimension; entries must
+            be unique. String values create a non-numeric dimension.
+        axis : int or None, optional
+            Position of the new axis; defaults to the last position.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame with the added dimension; ``self`` is
+            unchanged. UncFrame components and origin tags broadcast
+            unchanged (REQ-98).
+
+        Raises
+        ------
+        DataError
+            Name collision, non-1-D or duplicate values, or an axis
+            outside ``[0, ndim]``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> arr = np.column_stack([[0.0, 2.0], [1.0, 2.0]])
+        >>> db = itc.load(arr, names=["alpha", "CT"]).pivot(dims=["alpha"])
+        >>> swept = db.expand("rpm", [1000.0, 2000.0])
+        >>> swept.shape
+        (2, 2)
+        """
+        from itaca.ops.expand import expand as _expand
+
+        return _expand(self, dim_name, values, axis, history=history, comment=comment)
+
+    def interpolate(
+        self,
+        mapping: dict[str, object] | None = None,
+        method: str = "linear",
+        deg: int | None = None,
+        override: bool = False,
+        *,
+        axisTranslation: dict[str, str] | None = None,  # noqa: N803  (SRS REQ-25)
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Interpolate onto a new grid or translate the axis (REQ-25).
+
+        Parameters
+        ----------
+        mapping : dict or None, optional
+            ``{dim: new_coords}`` targets, applied dimension by
+            dimension. With ``axisTranslation``, the only allowed key
+            is the target variable, providing an explicit new grid
+            (default: the target values of the first sweep line).
+        method : str, optional
+            ``"linear"`` (default), ``"cubic"`` (natural spline),
+            ``"nearest"``, or ``"polyfit"`` (global fit of degree
+            ``deg``).
+        deg : int or None, optional
+            Polynomial degree for ``"polyfit"``.
+        override : bool, optional
+            By default a target that already exists in the original
+            dimension keeps the existing value (and its origin tag);
+            ``True`` forces recomputation everywhere.
+        axisTranslation : dict or None, optional
+            ``{"from": dim, "to": var}`` replaces the dimension with
+            the strictly monotonic variable as sweep axis. The target
+            variable becomes exact coordinates; any uncertainty
+            declared on it does not transfer (recorded in History).
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame on the target grid. Both uncertainty
+            components propagate exactly through the interpolation
+            weights (REQ-98). Origin tags: ``+1`` inside the convex
+            hull of the original axis, ``-1`` outside, original tag on
+            preserved points.
+
+        Raises
+        ------
+        DimensionNotFoundError
+            A referenced dimension is absent.
+        NonNumericDimensionError
+            Interpolation along a string-valued dimension.
+        AxisTranslationError
+            The translation target is not strictly monotonic.
+        DataError
+            Unknown method, missing ``deg``, empty call, or malformed
+            targets.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> arr = np.column_stack([[0.0, 1.0, 2.0], [0.0, 2.0, 4.0]])
+        >>> db = itc.load(arr, names=["alpha", "CT"]).pivot(dims=["alpha"])
+        >>> dense = db.interpolate({"alpha": [0.5, 1.5]})
+        >>> dense.vars["CT"].values.tolist()
+        [1.0, 3.0]
+        """
+        from itaca.ops.interpolate import interpolate as _interpolate
+
+        return _interpolate(
+            self,
+            mapping,
+            method=method,
+            deg=deg,
+            override=override,
+            axis_translation=axisTranslation,
+            history=history,
+            comment=comment,
+        )
+
+    def average(
+        self,
+        along: str | list[str],
+        *,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Collapse dimensions by the mean of non-NaN values (REQ-27).
+
+        Parameters
+        ----------
+        along : str or list of str
+            Dimension(s) to collapse; the mean is taken jointly over
+            every collapsed cell, skipping NaN.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A reduced-order VarFrame. The random uncertainty component
+            gains 1/sqrt(N) over the populated cells; the systematic
+            component is fully correlated and keeps its magnitude
+            (REQ-98, REQ-99). Tags follow the worst-case rule (OQ-10).
+
+        Raises
+        ------
+        DimensionNotFoundError
+            A named dimension is absent.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> rows = [[0.0, 1.0, 2.0], [0.0, 2.0, 4.0]]
+        >>> db = itc.load(np.array(rows), names=["alpha", "rep", "CT"])
+        >>> mean = db.pivot(dims=["alpha", "rep"]).average(along="rep")
+        >>> float(mean.vars["CT"].values[0])
+        3.0
+        """
+        from itaca.ops.average import average as _average
+
+        return _average(self, along=along, history=history, comment=comment)
+
+    def integrate(
+        self,
+        var: str,
+        *,
+        over: str | list[str],
+        coords: str | None = None,
+        skipna: bool = False,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Integrate a variable over dimensions (REQ-28).
+
+        Trapezoidal quadrature over the coordinate grid, applied
+        sequentially over ``over``.
+
+        Parameters
+        ----------
+        var : str
+            Variable to integrate; the result keeps only this
+            variable.
+        over : str or list of str
+            Dimension(s) to integrate over. With ``coords="polar"``,
+            exactly ``[r_dim, theta_dim]`` in that order.
+        coords : str or None, optional
+            ``"polar"`` applies the polar area element r dr dtheta
+            (theta in radians); default is Cartesian.
+        skipna : bool, optional
+            By default any NaN inside the domain makes the result NaN
+            (a partial quadrature is silently biased). ``True``
+            integrates populated cells only, records the populated
+            fraction in History, and tags the result ``+1``.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A reduced-order VarFrame with the integrated quantity.
+            Uncertainty propagates through the quadrature weights
+            (REQ-98): systematic as the absolute weighted sum, random
+            as the root sum of squares.
+
+        Raises
+        ------
+        VariableNotFoundError
+            ``var`` is absent.
+        DimensionNotFoundError
+            A dimension in ``over`` is absent.
+        NonNumericDimensionError
+            A dimension in ``over`` is string-valued.
+        DataError
+            Unknown ``coords`` or a polar call without exactly two
+            dimensions.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> arr = np.column_stack([[0.0, 1.0, 2.0], [0.0, 2.0, 4.0]])
+        >>> db = itc.load(arr, names=["alpha", "CT"]).pivot(dims=["alpha"])
+        >>> total = db.integrate("CT", over=["alpha"])
+        >>> float(total.vars["CT"].values[0])
+        4.0
+        """
+        from itaca.ops.integrate import integrate as _integrate
+
+        return _integrate(
+            self,
+            var,
+            over=over,
+            coords=coords,
+            skipna=skipna,
+            history=history,
+            comment=comment,
+        )
+
+    def smooth(
+        self,
+        *,
+        along: str,
+        method: str,
+        window: int | NoDefault = no_default,
+        polyorder: int | NoDefault = no_default,
+        smoothing: float | NoDefault = no_default,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Smooth all variables along a dimension (REQ-29).
+
+        Parameters
+        ----------
+        along : str
+            Dimension to smooth along.
+        method : str
+            ``"savgol"`` (moving polynomial fit; takes ``window`` and
+            ``polyorder``), ``"spline"`` (natural smoothing spline;
+            takes ``smoothing``), or ``"moving_avg"`` (takes
+            ``window``).
+        window : int, optional
+            Moving-window size; consumed by ``"savgol"`` and
+            ``"moving_avg"`` only (REQ-105: passing it elsewhere
+            raises).
+        polyorder : int, optional
+            Fit degree for ``"savgol"``; must be below ``window``.
+        smoothing : float, optional
+            Nonnegative spline penalty; ``0`` is the identity.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame with smoothed values tagged ``+1`` (cells
+            already ``-1`` stay ``-1``).
+
+        Raises
+        ------
+        DataError
+            Unknown method, a missing or non-consumed method kwarg
+            (REQ-105), or invalid window/degree combinations.
+        DimensionNotFoundError
+            ``along`` is absent.
+        NonNumericDimensionError
+            ``along`` is string-valued.
+        UncertaintyError
+            Uncertainty is present (OQ-18: the kernel weight rule is
+            not frozen yet).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> arr = np.column_stack([np.arange(7.0), np.arange(7.0) ** 2])
+        >>> db = itc.load(arr, names=["alpha", "CT"]).pivot(dims=["alpha"])
+        >>> out = db.smooth(along="alpha", method="savgol", window=5, polyorder=2)
+        >>> bool(np.allclose(out.vars["CT"].values, db.vars["CT"].values))
+        True
+        """
+        from itaca.ops.smooth import smooth as _smooth
+
+        return _smooth(
+            self,
+            along=along,
+            method=method,
+            window=window,
+            polyorder=polyorder,
+            smoothing=smoothing,
+            history=history,
+            comment=comment,
+        )
+
+    def diff(
+        self,
+        *,
+        along: str,
+        window: int = 5,
+        deg: int = 2,
+        nan_edges: bool = False,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Differentiate all variables along a dimension (REQ-30).
+
+        A window of ``window`` points centered on each point is fitted
+        with a polynomial of degree ``deg`` and the analytical
+        derivative of the fit is evaluated at the point. At the
+        boundaries the window is asymmetric, preserving output shape.
+
+        Parameters
+        ----------
+        along : str
+            Dimension to differentiate along.
+        window : int, optional
+            Moving-window size; must exceed ``deg`` (REQ-30).
+        deg : int, optional
+            Polynomial degree of the moving fit.
+        nan_edges : bool, optional
+            Set asymmetric-window points to NaN instead.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame whose variables follow the ``dVAR_ddim``
+            naming convention (e.g. ``dCL_dalpha``). Output tags carry
+            the worst case over each moving window (OQ-10).
+
+        Raises
+        ------
+        DiffWindowError
+            ``window <= deg``.
+        DimensionNotFoundError
+            ``along`` is absent.
+        NonNumericDimensionError
+            ``along`` is string-valued.
+        UncertaintyError
+            Uncertainty is present (OQ-18: the moving-fit weight rule
+            is not frozen yet).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> arr = np.column_stack([np.arange(6.0), np.arange(6.0) ** 2])
+        >>> db = itc.load(arr, names=["alpha", "CL"]).pivot(dims=["alpha"])
+        >>> slopes = db.diff(along="alpha", window=5, deg=2)
+        >>> float(slopes.vars["dCL_dalpha"].values[1])
+        2.0
+        """
+        from itaca.ops.diff import diff as _diff
+
+        return _diff(
+            self,
+            along=along,
+            window=window,
+            deg=deg,
+            nan_edges=nan_edges,
+            history=history,
+            comment=comment,
+        )
+
+    @property
+    def d(self) -> DiffIndexer:
+        """``db.d[dim]``: derivative with default parameters (REQ-30).
+
+        Indexer sugar for ``db.diff(along=dim)``; nothing is stored on
+        the source frame (REQ-18 immutability).
+
+        Returns
+        -------
+        DiffIndexer
+            Supports ``db.d["alpha"]`` returning the derivative
+            VarFrame.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> arr = np.column_stack([np.arange(5.0), np.arange(5.0) ** 2])
+        >>> db = itc.load(arr, names=["alpha", "CL"]).pivot(dims=["alpha"])
+        >>> list(db.d["alpha"].vars)
+        ['dCL_dalpha']
+        """
+        from itaca.ops.diff import DiffIndexer
+
+        return DiffIndexer(self)
+
+    def fitmodel(
+        self,
+        *,
+        along: str,
+        deg: int,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Fit a polynomial along a dimension (REQ-31).
+
+        Every variable is fitted with a polynomial of degree ``deg``
+        along ``along``; the dimension is replaced by
+        ``<along>_coef`` with ``deg + 1`` string labels ``dim^0`` to
+        ``dim^N`` (ascending exponents). The original sweep range is
+        recorded in the coefficient dimension's description so that
+        ``fitvalue`` can tag beyond-range evaluations ``-1``.
+
+        Parameters
+        ----------
+        along : str
+            Dimension to fit along.
+        deg : int
+            Polynomial degree; needs more points than the degree.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame holding polynomial coefficients.
+
+        Raises
+        ------
+        DimensionNotFoundError
+            ``along`` is absent.
+        NonNumericDimensionError
+            ``along`` is string-valued.
+        DataError
+            ``deg`` negative or not below the point count, or a name
+            collision with ``<along>_coef``.
+        UncertaintyError
+            Uncertainty is present (the REQ-98 table declares no
+            fitmodel row; DD-18).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> arr = np.column_stack([np.arange(5.0), np.arange(5.0) ** 2])
+        >>> db = itc.load(arr, names=["alpha", "CL"]).pivot(dims=["alpha"])
+        >>> model = db.fitmodel(along="alpha", deg=2)
+        >>> model.dims["alpha_coef"].coords.tolist()
+        ['alpha^0', 'alpha^1', 'alpha^2']
+        """
+        from itaca.ops.fitmodel import fitmodel as _fitmodel
+
+        return _fitmodel(self, along=along, deg=deg, history=history, comment=comment)
+
+    def fitvalue(
+        self,
+        *,
+        coef_dims: list[str],
+        at: dict[str, object],
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Evaluate fitmodel coefficients at coordinates (REQ-32).
+
+        Parameters
+        ----------
+        coef_dims : list of str
+            Coefficient dimensions produced by ``fitmodel`` (their
+            names end in ``_coef``).
+        at : dict
+            ``{dim: array}`` evaluation grids, keyed by the original
+            (pre-fit) dimension names.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame where the coefficient dimensions are
+            replaced by the evaluation dimensions. Values within the
+            original fit range are tagged ``+1``; beyond it, ``-1``
+            (REQ-32). Uncertainty propagates through the evaluation
+            weights ``t^k`` (REQ-98).
+
+        Raises
+        ------
+        DimensionNotFoundError
+            A coefficient dimension is absent.
+        DataError
+            A coefficient dimension cannot be paired with an ``at``
+            grid.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> arr = np.column_stack([np.arange(5.0), np.arange(5.0) ** 2])
+        >>> db = itc.load(arr, names=["alpha", "CL"]).pivot(dims=["alpha"])
+        >>> model = db.fitmodel(along="alpha", deg=2)
+        >>> dense = model.fitvalue(coef_dims=["alpha_coef"], at={"alpha": [2.0]})
+        >>> float(round(dense.vars["CL"].values[0], 6))
+        4.0
+        """
+        from itaca.ops.fitmodel import fitvalue as _fitvalue
+
+        return _fitvalue(
+            self, coef_dims=coef_dims, at=at, history=history, comment=comment
+        )
 
     def fill(
         self,
