@@ -326,7 +326,19 @@ def interpolate(
             f"override={override}{note})"
         )
         return rebuild(
-            db, content, operation=operation, comment=comment, history=history
+            db,
+            content,
+            operation=operation,
+            comment=comment,
+            history=history,
+            method="interpolate",
+            # The method spells the selector axisTranslation (REQ-25).
+            replay_kwargs={
+                "axisTranslation": axis_translation,
+                "method": method,
+                "deg": deg,
+                "override": override,
+            },
         )
 
     if not mapping:
@@ -362,4 +374,17 @@ def interpolate(
     operation = (
         f"interpolate({detail}, method='{method}', deg={deg}, override={override})"
     )
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="interpolate",
+        replay_kwargs={
+            "mapping": detail,
+            "method": method,
+            "deg": deg,
+            "override": override,
+        },
+    )

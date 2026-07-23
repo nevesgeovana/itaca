@@ -220,4 +220,12 @@ def smooth(
     knobs = {k: v for k, v in given.items() if v is not no_default}
     detail = ", ".join(f"{k}={v}" for k, v in knobs.items())
     operation = f"smooth(along='{along}', method='{method}', {detail})"
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="smooth",
+        replay_kwargs={"along": along, "method": method, **knobs},
+    )

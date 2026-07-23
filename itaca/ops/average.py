@@ -98,4 +98,12 @@ def average(
     content.random = new_rand if content.random is not None else None
     content.tags = new_tags if content.tags is not None else None
     operation = f"average(along={names})"
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="average",
+        replay_kwargs={"along": along},
+    )

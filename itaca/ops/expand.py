@@ -89,4 +89,12 @@ def expand(
     content.tags = _broadcast_all(content.tags)
 
     operation = f"expand(dim='{dim_name}', n={n}, axis={position})"
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="expand",
+        replay_kwargs={"dim_name": dim_name, "values": values, "axis": axis},
+    )

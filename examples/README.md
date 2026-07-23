@@ -15,6 +15,14 @@ policy; release provenance-scrub gate, SRS Chapter 10).
   provenanced `.itc` archive plus CSV (REQ-70). Outputs land in
   `examples/output/` (not tracked).
 
+* `pipeline_reuse.py`: reusable pipelines (REQ-53 to REQ-55). Processes
+  one synthetic run (smooth, then a derived ratio), lifts the recorded
+  processing out of History as a `Pipeline`, replays it on a second run
+  so both are processed identically, and round trips the recipe through
+  a human-readable `.itc_pipe` file. Outputs land in `examples/output/`
+  (not tracked).
+
 Run from the repository root::
 
     python examples/wt_campaign.py
+    python examples/pipeline_reuse.py

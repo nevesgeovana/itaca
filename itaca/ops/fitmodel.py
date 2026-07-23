@@ -136,7 +136,15 @@ def fitmodel(
     content.dims = dict(dims)
     content.tags = new_tags if content.tags is not None else None
     operation = f"fitmodel(along='{along}', deg={deg})"
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="fitmodel",
+        replay_kwargs={"along": along, "deg": deg},
+    )
 
 
 def _parse_fit_range(dim: Dimension) -> tuple[str, float, float] | None:
@@ -243,4 +251,12 @@ def fitvalue(
         )
     at_detail = {name: np.atleast_1d(np.asarray(v)).tolist() for name, v in at.items()}
     operation = f"fitvalue(coef_dims={coef_dims}, at={at_detail})"
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="fitvalue",
+        replay_kwargs={"coef_dims": coef_dims, "at": at},
+    )

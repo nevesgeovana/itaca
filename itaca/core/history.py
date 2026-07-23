@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from itaca.core.axes import AxisRegistry
     from itaca.core.correlation import CorrelationMatrix
     from itaca.core.historyframe import HistoryFrame
+    from itaca.core.pipeline import Pipeline, PipelineStep
     from itaca.core.uncframe import UncFrame
 
 _SEP = b"\x1f"
@@ -47,6 +48,11 @@ class HistoryEntry:
         SHA-256 of the resulting VarFrame state (REQ-103).
     comment : str or None, optional
         User comment passed via ``comment=`` (REQ-19).
+    step : PipelineStep or None, optional
+        The replayable step this entry contributes to a pipeline
+        (REQ-54). ``None`` marks a non-replayable entry: the initial
+        ``load`` anchor, or a state-only or multi-input operation. It is
+        excluded from the state hash (replay metadata, not state).
     """
 
     index: int
@@ -54,6 +60,7 @@ class HistoryEntry:
     timestamp: datetime
     state_hash: str
     comment: str | None = None
+    step: PipelineStep | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +97,7 @@ class History:
         state_hash: str,
         comment: str | None = None,
         timestamp: datetime | None = None,
+        step: PipelineStep | None = None,
     ) -> History:
         """Return a new History with one entry appended.
 
@@ -103,6 +111,9 @@ class History:
             User comment (REQ-19).
         timestamp : datetime.datetime or None, optional
             Defaults to the current UTC time.
+        step : PipelineStep or None, optional
+            The replayable pipeline step, when the operation supports
+            replay (REQ-54).
 
         Returns
         -------
@@ -116,8 +127,80 @@ class History:
             timestamp=stamp,
             state_hash=state_hash,
             comment=comment,
+            step=step,
         )
         return History(entries=(*self.entries, entry))
+
+    def to_pipeline(self, start: int | None = None, end: int | None = None) -> Pipeline:
+        """Extract a contiguous index range as a reusable Pipeline (REQ-53).
+
+        Parameters
+        ----------
+        start : int or None, optional
+            First history index (1-based, inclusive). Defaults to the
+            first entry.
+        end : int or None, optional
+            Last history index (1-based, inclusive). Defaults to the
+            last entry.
+
+        Returns
+        -------
+        Pipeline
+            The replayable steps in the requested range.
+
+        Raises
+        ------
+        DataError
+            The range is empty or out of bounds.
+        PipelineCompatibilityError
+            The range spans a non-replayable operation once processing
+            has begun (a multi-input ``concat`` or a state-only entry
+            such as ``set_uncertainty``). Leading non-replayable entries
+            (frame construction such as ``load`` and ``pivot``, and
+            state setup) are treated as input preparation and skipped,
+            not replayed, so a full-history default does not raise on
+            them.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> arr = np.column_stack([np.arange(5.0), np.arange(5.0)])
+        >>> db = itc.load(arr, names=["x", "y"]).pivot(dims=["x"])
+        >>> pipe = db.compute("z = y * 2").history.to_pipeline()
+        >>> len(pipe)
+        1
+        """
+        from itaca.core.errors import DataError, PipelineCompatibilityError
+        from itaca.core.pipeline import Pipeline
+
+        count = len(self.entries)
+        lo = 1 if start is None else start
+        hi = count if end is None else end
+        if count == 0 or lo < 1 or hi > count or lo > hi:
+            raise DataError(
+                f"history range start={start}, end={end}",
+                f"to_pipeline received a range outside 1..{count}",
+                "pass 1-based indices with start <= end within the history (REQ-53)",
+            )
+        steps: list[PipelineStep] = []
+        started = False
+        for entry in self.entries[lo - 1 : hi]:
+            if entry.step is not None:
+                steps.append(entry.step)
+                started = True
+            elif not started:
+                continue  # leading construction and setup: input preparation
+            else:
+                raise PipelineCompatibilityError(
+                    f"history entry [{entry.index}] {entry.operation}",
+                    "to_pipeline spans an operation that cannot be replayed "
+                    "onto a new VarFrame once processing has begun",
+                    "narrow the range to the replayable transforms; concat and "
+                    "state-only operations are not part of a reusable pipeline "
+                    "(REQ-54)",
+                )
+        return Pipeline(steps=tuple(steps))
 
     @property
     def last(self) -> HistoryEntry | None:

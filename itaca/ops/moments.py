@@ -153,7 +153,21 @@ def translate_moments(
         f"translate_moments(to_point={list(to_pt)}, "
         f"from_point={list(from_pt)}{axis_note})"
     )
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="translate_moments",
+        replay_kwargs={
+            "to_point": to_point,
+            "from_point": from_point,
+            "axis": axis,
+            "force": force,
+            "moment": moment,
+        },
+    )
 
 
 def _channel_field(

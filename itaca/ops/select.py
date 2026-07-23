@@ -163,7 +163,16 @@ def select(
                 drop_indexers[name] = np.nonzero(keep)[0]
         content = take(content, drop_indexers)
     operation = f"select(filters={dict(filters)!r}, Frame='{frame}', masked={masked})"
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="select",
+        # The method spells the target Frame with a capital F (REQ-20).
+        replay_kwargs={"filters": dict(filters), "Frame": frame},
+    )
 
 
 def at(

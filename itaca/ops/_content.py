@@ -9,6 +9,7 @@ the mirrors explicitly (DD-18): nothing is dropped silently.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -17,6 +18,7 @@ from numpy.typing import NDArray
 
 from itaca.core.dimension import Dimension
 from itaca.core.historyframe import HistoryFrame
+from itaca.core.pipeline import PipelineStep, to_jsonable
 from itaca.core.uncframe import UncFrame
 from itaca.core.varframe import VarFrame
 from itaca.core.variable import Variable
@@ -101,8 +103,16 @@ def rebuild(
     operation: str,
     comment: str | None,
     history: bool,
+    method: str | None = None,
+    replay_kwargs: Mapping[str, Any] | None = None,
 ) -> VarFrame:
-    """Wrap content back into frames and derive the new VarFrame."""
+    """Wrap content back into frames and derive the new VarFrame.
+
+    When ``method`` is given, the operation is replayable: a
+    :class:`PipelineStep` is recorded so ``history.to_pipeline`` can
+    reconstruct the call (REQ-54). Operations that omit ``method`` (a
+    multi-input ``concat``) are non-replayable by construction.
+    """
     variables = {
         name: replace(content.meta[name], values=values)
         for name, values in content.values.items()
@@ -114,6 +124,17 @@ def rebuild(
             random=content.random or {},
         )
     tags = HistoryFrame(tags=content.tags) if content.tags is not None else None
+    step = (
+        PipelineStep(
+            method=method,
+            kwargs={
+                name: to_jsonable(value)
+                for name, value in (replay_kwargs or {}).items()
+            },
+        )
+        if method is not None
+        else None
+    )
     return db._derive(
         operation=operation,
         comment=comment,
@@ -122,4 +143,5 @@ def rebuild(
         variables=variables,
         uncertainty=uncertainty,
         tags=tags,
+        step=step,
     )

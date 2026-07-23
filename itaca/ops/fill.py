@@ -193,4 +193,18 @@ def fill(
         f"fill(along='{along}', method='{method}', deg={deg}, "
         f"window={window}, global_fit={global_fit})"
     )
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="fill",
+        replay_kwargs={
+            "along": along,
+            "method": method,
+            "deg": deg,
+            "window": window,
+            "global_fit": global_fit,
+        },
+    )

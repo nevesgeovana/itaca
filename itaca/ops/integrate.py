@@ -186,4 +186,17 @@ def integrate(
     if skipna:
         detail += f", populated={domain_finite}/{domain_total}"
     operation = f"integrate({detail})"
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="integrate",
+        replay_kwargs={
+            "var": var,
+            "over": over,
+            "coords": coords,
+            "skipna": skipna,
+        },
+    )

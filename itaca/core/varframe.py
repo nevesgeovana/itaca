@@ -36,6 +36,7 @@ from itaca.core.uncframe import UncFrame
 from itaca.core.variable import Variable
 
 if TYPE_CHECKING:
+    from itaca.core.pipeline import PipelineStep
     from itaca.ops.diff import DiffIndexer
 
 _UNSET: object = object()
@@ -336,6 +337,7 @@ class VarFrame:
         tags: object = _UNSET,
         correlation: object = _UNSET,
         axes: object = _UNSET,
+        step: PipelineStep | None = None,
     ) -> VarFrame:
         """Return a new VarFrame with content replaced and recorded.
 
@@ -374,7 +376,10 @@ class VarFrame:
                 axes=new_axes,
             )
             new_history = self.history.append(
-                operation=operation, state_hash=state_hash, comment=comment
+                operation=operation,
+                state_hash=state_hash,
+                comment=comment,
+                step=step,
             )
         return dataclasses.replace(
             self,

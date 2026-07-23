@@ -94,4 +94,6 @@ def squeeze(
         operation=f"squeeze(along={names})",
         comment=comment,
         history=history,
+        method="squeeze",
+        replay_kwargs={"along": along},
     )

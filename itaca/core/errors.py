@@ -196,6 +196,16 @@ class HashMismatchError(ProvenanceError):
     """itc.open detects source-hash drift (REQ-103)."""
 
 
+class PipelineCompatibilityError(ProvenanceError):
+    """A pipeline cannot be extracted or replayed (REQ-53, REQ-54).
+
+    Raised when ``history.to_pipeline`` spans a non-replayable
+    operation (a multi-input ``concat`` or a state-only entry such as
+    ``set_uncertainty``), or when ``pipeline.apply`` meets a VarFrame
+    that lacks a variable or dimension the recorded sequence needs.
+    """
+
+
 # ---------------------------------------------------------------------------
 # UncertaintyError leaves (M0)
 # ---------------------------------------------------------------------------

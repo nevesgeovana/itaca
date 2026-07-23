@@ -251,7 +251,18 @@ def rotate(
 
     detail = f"target='{target_axis}', groups={sorted(groups)}"
     operation = f"rotate({detail})"
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="rotate",
+        replay_kwargs={
+            "target_axis": target_axis,
+            "vector_groups": vector_groups,
+        },
+    )
 
 
 def _angle_terms(

@@ -137,4 +137,17 @@ def diff(
     operation = (
         f"diff(along='{along}', window={window}, deg={deg}, nan_edges={nan_edges})"
     )
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="diff",
+        replay_kwargs={
+            "along": along,
+            "window": window,
+            "deg": deg,
+            "nan_edges": nan_edges,
+        },
+    )

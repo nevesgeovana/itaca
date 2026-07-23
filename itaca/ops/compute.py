@@ -159,4 +159,21 @@ def compute(
     operation = (
         f"compute('{name} = {text}', method='{method}', where={where!r}, fill={fill!r})"
     )
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    replay: dict[str, Any] = {"equation": equation}
+    if method != "symbolic":
+        replay["method"] = method
+    if where is not None:
+        replay["where"] = where
+    if not (isinstance(fill, float) and fill != fill):
+        # Omit the default NaN fill: it is not JSON-safe and replay
+        # restores it from the method default anyway.
+        replay["fill"] = fill
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        method="compute",
+        replay_kwargs=replay,
+    )

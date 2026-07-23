@@ -8,6 +8,22 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Added
 
+* M1 Phase B3a, reusable pipelines. `db.history.to_pipeline(start=,
+  end=)` lifts a contiguous range of History entries into a `Pipeline`
+  (REQ-53), `pipeline.apply(db_new)` replays the recorded sequence onto
+  another VarFrame (REQ-54), and `pipeline.save(path)` plus
+  `itc.load_pipeline(path)` round trip it through a human-readable,
+  version-controllable `.itc_pipe` file (REQ-55, schema
+  `itaca-itc_pipe/1`, atomic write). Replay re-dispatches structured
+  steps rather than re-parsing the History display strings: each
+  replayable operation records a `PipelineStep` (the method name and
+  its keyword call) as it derives, so a pipeline reconstructs the exact
+  calls and reproduces the state hash. Leading construction and setup
+  entries (`load`, `pivot`, `set_uncertainty`) are input preparation and
+  are skipped; a non-replayable operation appearing after processing has
+  begun raises `PipelineCompatibilityError`, as does applying a pipeline
+  to a frame that lacks a referenced variable. `itc.Pipeline` and
+  `itc.VarFrame` join the top-level exports.
 * M1 Phase B2, axes. The `Axis` type (exported as `itc.Axis`; constant
   orthogonal matrix or parametric `angles_from` with the AIAA R-004A
   Etkin wind/stability conventions, SME-accepted), the immutable
