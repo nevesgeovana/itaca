@@ -132,6 +132,87 @@ class TestUncertainty:
         assert out.uncertainty.systematic["MZ"][0] == pytest.approx(expected[2])
 
 
+class TestDeclaredGroups:
+    def test_honors_declared_force_moment_frames(self) -> None:
+        from itaca.core.axes import Axis
+
+        db = _balance(1.0, 2.0, 3.0, 0.0, 0.0, 0.0)
+        rig = Axis(name="rig", rotation_matrix=np.eye(3))
+        staged = (
+            db.register_axis(rig)
+            .declare_vector("force", ["FX", "FY", "FZ"], frame="rig")
+            .declare_vector("moment", ["MX", "MY", "MZ"], frame="rig")
+        )
+        out = staged.translate_moments(to_point=[0.1, 0.0, 0.0])
+        r = np.array([-0.1, 0.0, 0.0])
+        expected = np.cross(r, np.array([1.0, 2.0, 3.0]))
+        assert out.vars["MY"].values[0] == pytest.approx(expected[1])
+
+    def test_mismatched_frames_rejected(self) -> None:
+        from itaca.core.axes import Axis
+        from itaca.core.errors import DataError
+
+        db = _balance(1.0, 2.0, 3.0, 0.0, 0.0, 0.0)
+        rig = Axis(name="rig", rotation_matrix=np.eye(3))
+        staged = (
+            db.register_axis(rig)
+            .declare_vector("force", ["FX", "FY", "FZ"], frame="rig")
+            .declare_vector("moment", ["MX", "MY", "MZ"], frame="body")
+        )
+        with pytest.raises(DataError, match="same frame"):
+            staged.translate_moments(to_point=[0.1, 0.0, 0.0])
+
+    def test_mismatched_offset_frame_rejected(self, db: VarFrame) -> None:
+        from itaca.core.errors import DataError
+
+        with pytest.raises(DataError, match="offset"):
+            _declared(db).translate_moments(to_point=[0.1, 0.0, 0.0], frame="stability")
+
+
+class TestPartialAndRandom:
+    def test_random_component_propagates(self) -> None:
+        db = _declared(_balance(1.0, 2.0, 3.0, 0.0, 0.0, 0.0))
+        names = ["FX", "FY", "FZ", "MX", "MY", "MZ"]
+        u = np.array([0.1, 0.1, 0.1, 0.2, 0.2, 0.2])
+        unc = UncFrame(
+            systematic={},
+            random={n: np.array([u[i]]) for i, n in enumerate(names)},
+        )
+        out = dataclasses.replace(db, uncertainty=unc).translate_moments(
+            to_point=[0.1, 0.0, 0.0]
+        )
+        r = np.array([-0.1, 0.0, 0.0])
+        jac = np.hstack([_skew(r), np.eye(3)])
+        cov6 = np.diag(u**2)
+        expected = np.sqrt(np.diag(jac @ cov6 @ jac.T))
+        assert out.uncertainty is not None
+        assert out.uncertainty.random["MZ"][0] == pytest.approx(expected[2])
+
+    def test_force_only_uncertainty_reaches_moment(self) -> None:
+        # Force carries uncertainty, moment channels do not; the
+        # transferred moment must still receive the r x F contribution.
+        db = _declared(_balance(1.0, 2.0, 3.0, 0.0, 0.0, 0.0))
+        unc = UncFrame(
+            systematic={c: np.array([0.1]) for c in ("FX", "FY", "FZ")},
+            random={},
+        )
+        out = dataclasses.replace(db, uncertainty=unc).translate_moments(
+            to_point=[0.0, 0.1, 0.0]
+        )
+        r = np.array([0.0, -0.1, 0.0])
+        jac = np.hstack([_skew(r), np.eye(3)])
+        u6 = np.array([0.1, 0.1, 0.1, 0.0, 0.0, 0.0])
+        expected = np.sqrt(np.diag(jac @ np.diag(u6**2) @ jac.T))
+        assert out.uncertainty is not None
+        assert out.uncertainty.systematic["MX"][0] == pytest.approx(expected[0])
+
+    def test_result_read_only(self, db: VarFrame) -> None:
+        out = _declared(db).translate_moments(to_point=[0.1, 0.0, 0.0])
+        assert not out.vars["MX"].values.flags.writeable
+        with pytest.raises((ValueError, RuntimeError)):
+            out.vars["MX"].values[0] = 9.0
+
+
 class TestBookkeeping:
     def test_force_unchanged(self, db: VarFrame) -> None:
         out = _declared(db).translate_moments(to_point=[0.1, 0.0, 0.0])

@@ -63,6 +63,9 @@ class VarFrame:
         Spatial coordinate tag; Cartesian by default.
     correlation : CorrelationMatrix or None, optional
         Declared correlation structure; ``None`` means independence.
+    axes : AxisRegistry, optional
+        Registered coordinate frames and vector-group declarations;
+        empty by default and part of the state hash (REQ-103).
 
     Raises
     ------
@@ -263,6 +266,7 @@ class VarFrame:
             uncertainty=self.uncertainty,
             correlation=self.correlation,
             tags=self.tags,
+            axes=self.axes,
         )
         return dataclasses.replace(
             self,
@@ -1175,8 +1179,8 @@ class VarFrame:
         self,
         name: str,
         components: Sequence[str],
-        frame: str = "body",
         *,
+        frame: str = "body",
         history: bool = False,
         comment: str | None = None,
     ) -> VarFrame:
@@ -1288,15 +1292,29 @@ class VarFrame:
 
         Examples
         --------
+        Rotate a body-frame force to the condition-dependent wind frame
+        at 90 degrees angle of attack (the angle is read in the
+        Dimension's unit):
+
         >>> import numpy as np
         >>> import itaca as itc
-        >>> rows = [[0.0, 1.0, 0.0, 0.0]]
-        >>> db = itc.load(np.array(rows), names=["a", "FX", "FY", "FZ"]).pivot(
-        ...     dims=["a"]
+        >>> from itaca.core.dimension import Dimension
+        >>> import dataclasses
+        >>> rows = [[90.0, 0.0, 1.0, 0.0, 0.0]]
+        >>> db = itc.load(
+        ...     np.array(rows), names=["alpha", "beta", "FX", "FY", "FZ"]
+        ... ).pivot(dims=["alpha", "beta"])
+        >>> deg = {"unit": "deg"}
+        >>> db = dataclasses.replace(
+        ...     db,
+        ...     dims={
+        ...         "alpha": Dimension(name="alpha", coords=np.array([90.0]), **deg),
+        ...         "beta": Dimension(name="beta", coords=np.array([0.0]), **deg),
+        ...     },
         ... )
-        >>> out = db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("body")
-        >>> float(out.vars["FX"].values[0])
-        1.0
+        >>> out = db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("wind")
+        >>> float(round(out.vars["FZ"].values[0, 0], 6))
+        -1.0
         """
         from itaca.ops.rotate import rotate as _rotate
 

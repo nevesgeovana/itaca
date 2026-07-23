@@ -11,10 +11,14 @@ from pathlib import Path
 
 import itaca
 
-# scipy and uncertainties are dev-only test oracles (DD-25, DD-26):
-# barred from library code, allowed only under tests/oracle/.
-BANNED_TOP_LEVEL = {"xarray", "dask", "pandas", "scipy", "uncertainties"}
+# The NumPy-only rule bars xarray/dask/pandas from core, ops, and
+# uncertainty. scipy and uncertainties are dev-only test oracles
+# (DD-25, DD-26): barred from ALL library code, allowed only under
+# tests/oracle/. pandas stays allowed in io/ and utils/ (REQ-05).
+BANNED_TOP_LEVEL = {"xarray", "dask", "pandas"}
+ORACLE_ONLY = {"scipy", "uncertainties"}
 RESTRICTED_PACKAGES = ("core", "ops", "uncertainty")
+ALL_PACKAGES = ("core", "ops", "uncertainty", "io", "utils")
 
 
 def _imported_top_level_names(tree: ast.AST) -> set[str]:
@@ -42,3 +46,16 @@ def test_numpy_only_rule() -> None:
             banned = _imported_top_level_names(tree) & BANNED_TOP_LEVEL
             offenders.extend(f"{path.name}: {name}" for name in sorted(banned))
     assert not offenders, f"NumPy-only rule violated (REQ-82): {offenders}"
+
+
+def test_dev_only_oracles_barred_from_library() -> None:
+    # scipy and uncertainties are dev-only test oracles (DD-25, DD-26):
+    # never imported by any library package, including io/ and utils/.
+    root = Path(itaca.__file__).parent
+    offenders: list[str] = []
+    for pkg in ALL_PACKAGES:
+        for path in sorted((root / pkg).rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            banned = _imported_top_level_names(tree) & ORACLE_ONLY
+            offenders.extend(f"{path.name}: {name}" for name in sorted(banned))
+    assert not offenders, f"dev-only oracle imported by library (DD-25/26): {offenders}"

@@ -16,8 +16,8 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   `db.rotate(target_axis, vector_groups=...)` (REQ-38, REQ-101):
   each group transforms from its own source frame to the target,
   composing through the canonical body axis, with condition-dependent
-  frames evaluated per grid point (angle read in the source
-  Dimension's unit). Uncertainty is the exact Jacobian applied to the
+  frames evaluated per grid point (angle read in the source Dimension
+  or Variable unit). Uncertainty is the exact Jacobian applied to the
   within-cell component covariance (declared correlation, OQ-23), and
   angle uncertainty enters by the chain-rule `dR/dangle` term; origin
   tags are preserved. The axis registry joins the state hash and the
@@ -56,16 +56,6 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   interpolate, and fitmodel). The REQ-105 sentinel is adopted in the
   `smooth` signature with the shared `reject_no_default` helper.
 
-### Changed
-
-* `db.fill`: the `method` argument is moving to keyword-only for
-  consistency with the M1 kernel operations. Passing it positionally
-  is deprecated and emits a `FutureWarning` from v0.2.0 (REQ-26).
-
-### Deprecated
-
-* `db.fill(along, method)` with `method` passed positionally; pass
-  `method=` as a keyword instead.
 * `itc.no_default` (REQ-105): typed no-default sentinel in
   `core/sentinels.py`, an enum singleton whose type is expressible in
   annotations, distinguishing an argument that was not passed from an
@@ -82,6 +72,20 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 * `docs/SISTER_PYFLIGHTSTREAM.md`: the sister library page for the
   pyflightstream co-development (DD-22, DD-23), linked from the
   README design record.
+
+### Changed
+
+* `db.fill`: the `method` argument is moving to keyword-only for
+  consistency with the M1 kernel operations. Passing it positionally
+  is deprecated and emits a `FutureWarning` from v0.2.0 (REQ-26).
+* REQ-101 (condition-dependent axes) promoted from draft to stable at
+  the M1 Phase B2 checkpoint, once condition-dependent frames were
+  implemented and tested.
+
+### Deprecated
+
+* `db.fill(along, method)` with `method` passed positionally; pass
+  `method=` as a keyword instead.
 
 ## [0.1.0] - 2026-07-22
 

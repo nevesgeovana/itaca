@@ -342,3 +342,31 @@ confirmed as the intended semantics.
 **Proposed handling:** low-risk documentation item; confirm the four
 rules and fold them into Section 4.3 at the next document revision.
 **SRS:** Section 4.3; REQ-27, REQ-28, REQ-31, REQ-32.
+
+---
+
+## OQ-26: Correlation involving frame angles in rotation propagation
+
+**Status:** open; surfaced 2026-07-23 during M1 Phase B2
+**Question:** `db.rotate` propagates uncertainty through the exact
+rotation Jacobian on the within-cell component covariance (REQ-98,
+OQ-23) plus a chain-rule term for uncertain frame angles (REQ-101).
+The B2 implementation treats the frame angles (alpha, beta) as
+mutually independent and independent of the vector components: the
+sensitivities to a shared angle across the source and target frames
+are accumulated into one `dR/dtheta` before squaring (so a shared
+angle does not double-count and cancels correctly), but a *declared*
+correlation whose pair touches an angle variable (angle-angle, or
+component-angle, the cross terms `2 s_i s_j cov` of the joint
+covariance) is not consulted. This is a first-order LPU shortcut and
+collides with stable REQ-40 ("the correlation matrix is consulted by
+every uncertainty propagation operation"). To avoid a silent drop,
+`rotate` currently *raises* when a declared correlation involves a
+frame angle rather than ignoring it.
+**Proposed handling:** the numerical-analyst seat confirms the angle
+independence model (and the raise as the fail-loud stance), or
+specifies the joint angle-component covariance to propagate. Carry
+with the OQ-18/OQ-24 uncertainty work (Q-004). Until resolved, the
+independence assumption is stated in the REQ-101 reqbox and the
+`rotate` docstring, and the raise stands.
+**SRS:** REQ-101, REQ-40, REQ-98; OQ-23.

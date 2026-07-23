@@ -543,15 +543,24 @@ channels is included when declared. History records source point, target
 point, and frame.
 \end{reqbox}
 
-\begin{reqbox}{REQ-101}{\draft}
+\begin{reqbox}{REQ-101}{\stable}
 \textbf{Condition-dependent axes.}\\
 An \code{Axis} may be defined either by a constant 3$\times$3 rotation
 matrix or parametrically via \code{angles\_from=("alpha", "beta")} with a
 named angle convention. Parametric frames are evaluated per grid point
-from the referenced dimensions or variables. The built-in \code{"wind"}
-and \code{"stability"} frames follow AIAA R-004A-1992~\citep{aiaaR004A}.
-When a referenced angle carries uncertainty, its chain-rule sensitivity
-$\partial R / \partial \alpha$ enters the propagation. Exactly one of
+from the referenced dimensions or variables; the referenced angle is
+read in the unit of its \code{Dimension} or \code{Variable} and
+converted to radians. The built-in \code{"wind"} and \code{"stability"}
+frames follow AIAA R-004A-1992~\citep{aiaaR004A} in the Etkin
+body-to-frame direction-cosine convention. When a referenced angle
+carries uncertainty, its chain-rule sensitivity
+$\partial R / \partial \alpha$ enters the propagation; the sensitivities
+to a shared angle through the source and target frames are accumulated
+before squaring. Frame angles are treated as mutually independent and
+independent of the vector components; a declared correlation whose pair
+involves a frame angle is rejected rather than silently dropped, pending
+OQ-26. A constant \code{rotation\_matrix} must be a proper rotation
+(orthogonal, determinant $+1$); a reflection is rejected. Exactly one of
 \code{rotation\_matrix} and \code{angles\_from} must be provided;
 providing both or neither raises \code{RotationMatrixError}.
 \end{reqbox}

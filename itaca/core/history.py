@@ -168,9 +168,9 @@ def compute_state_hash(
     dimension order dictates array shape), variable names and values
     (sorted by name, since insertion order is incidental), the ordered
     operation sequence with comments, and the uncertainty, correlation,
-    and origin-tag content when present. It excludes every volatile
-    field: timestamps, user identity, source paths, and the ITACA
-    version.
+    origin-tag, and axis-registry content when present. It excludes
+    every volatile field: timestamps, user identity, source paths, and
+    the ITACA version.
 
     Parameters
     ----------
@@ -186,6 +186,10 @@ def compute_state_hash(
         Declared correlation structure, when present.
     tags : HistoryFrame or None, optional
         Origin-tag mirror, when present.
+    axes : AxisRegistry or None, optional
+        Registered frames and vector-group declarations; an empty
+        registry contributes no tokens, so a frame that registers no
+        custom axis keeps the hash it had before the registry existed.
 
     Returns
     -------

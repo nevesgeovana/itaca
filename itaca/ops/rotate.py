@@ -25,7 +25,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.axes import Axis
-from itaca.core.errors import DataError, VectorGroupError
+from itaca.core.errors import DataError, UncertaintyError, VectorGroupError
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import content_of, rebuild
 from itaca.utils.units import convert
@@ -152,6 +152,53 @@ def _corr_matrix(db: VarFrame, comps: tuple[str, str, str]) -> _Array:
     return corr
 
 
+def _component_field(
+    component: dict[str, _Array], name: str, shape: tuple[int, ...]
+) -> _Array:
+    """Uncertainty of a channel, or zeros when it carries none.
+
+    A group where only some channels carry uncertainty still propagates
+    (the missing channels contribute zero variance), rather than
+    silently dropping the whole group (DD-18).
+    """
+    if name in component:
+        return component[name]
+    return np.zeros(shape)
+
+
+def _reject_angle_correlation(
+    db: VarFrame,
+    comps: tuple[str, str, str],
+    dl_tb: dict[str, _Array],
+    dl_sb: dict[str, _Array],
+) -> None:
+    """Fail loud on a declared correlation involving a frame angle (OQ-26).
+
+    The rotation propagation treats frame angles as mutually independent
+    and independent of the vector components. Consulting a declared
+    angle correlation (the cross terms of the joint covariance) is an
+    open modeling question (OQ-26); until it is resolved, a declared
+    correlation touching an angle variable raises rather than being
+    silently dropped (REQ-40).
+    """
+    if db.correlation is None:
+        return
+    angles = set(dl_tb) | set(dl_sb)
+    if not angles:
+        return
+    for pair in db.correlation.pairs:
+        touched = angles.intersection(pair)
+        if touched:
+            raise UncertaintyError(
+                f"declared correlation {pair}",
+                "rotation propagation does not yet consult a correlation "
+                "involving a frame angle (angle independence, OQ-26)",
+                "drop the angle correlation, or await the OQ-26 "
+                "resolution; the angle-independent rule is applied "
+                "otherwise",
+            )
+
+
 def rotate(
     db: VarFrame,
     target_axis: str,
@@ -177,6 +224,7 @@ def rotate(
                 db, db.axes.resolve(source_name), shape
             )
         l_sb, dl_sb, src_unc = source_cache[source_name]
+        _reject_angle_correlation(db, comps, dl_tb, dl_sb)
         # Composite source-to-target rotation, per cell: R = L_tb @ L_sb^T.
         r = np.einsum("...kj,...mj->...km", l_tb, l_sb)
         v = np.stack([content.values[c] for c in comps], axis=-1)
@@ -186,9 +234,11 @@ def rotate(
 
         for label in ("systematic", "random"):
             component = getattr(content, label)
-            if component is None or not all(c in component for c in comps):
+            if component is None or not any(c in component for c in comps):
                 continue
-            u = np.stack([component[c] for c in comps], axis=-1)
+            u = np.stack(
+                [_component_field(component, c, shape) for c in comps], axis=-1
+            )
             corr = _corr_matrix(db, comps)
             cov = (u[..., :, None] * u[..., None, :]) * corr
             cov_t = np.einsum("...kj,...jl,...ml->...km", r, cov, r)
@@ -215,23 +265,38 @@ def _angle_terms(
     dl_sb: dict[str, _Array],
     src_unc: dict[str, tuple[_Array | None, _Array | None]],
 ) -> _Array:
-    """Chain-rule variance from uncertain frame angles (REQ-101)."""
+    """Chain-rule variance from uncertain frame angles (REQ-101).
+
+    Sensitivities to the same angle variable through the target frame
+    (``dL_tb @ L_sb^T``) and the source frame (``L_tb @ dL_sb^T``) are
+    accumulated into a single ``dR/dtheta`` before squaring, so a shared
+    angle does not double-count and cancels correctly when the two
+    contributions oppose. Angles are treated as mutually independent
+    and independent of the vector components; a declared correlation
+    involving an angle variable is rejected upstream (OQ-26).
+    """
     idx = 0 if label == "systematic" else 1
-    extra = np.zeros(v.shape)
-    # Target-frame angles: dR/dtheta = (dL_tb/dtheta) @ L_sb^T.
+    # Accumulate the total sensitivity dR/dtheta @ v per distinct angle
+    # variable, from both the target and source frames.
+    sens_by_angle: dict[str, _Array] = {}
+    unc_by_angle: dict[str, _Array] = {}
     for name, d_l_tb in dl_tb.items():
         u_angle = tgt_unc[name][idx]
         if u_angle is None:
             continue
         d_r = np.einsum("...kj,...mj->...km", d_l_tb, l_sb)
         sens = np.einsum("...kj,...j->...k", d_r, v)
-        extra += sens**2 * u_angle[..., None] ** 2
-    # Source-frame angles: dR/dtheta = L_tb @ (dL_sb/dtheta)^T.
+        sens_by_angle[name] = sens_by_angle.get(name, np.zeros(v.shape)) + sens
+        unc_by_angle[name] = u_angle
     for name, d_l_sb in dl_sb.items():
         u_angle = src_unc[name][idx]
         if u_angle is None:
             continue
         d_r = np.einsum("...kj,...mj->...km", l_tb, d_l_sb)
         sens = np.einsum("...kj,...j->...k", d_r, v)
-        extra += sens**2 * u_angle[..., None] ** 2
+        sens_by_angle[name] = sens_by_angle.get(name, np.zeros(v.shape)) + sens
+        unc_by_angle[name] = u_angle
+    extra = np.zeros(v.shape)
+    for name, sens in sens_by_angle.items():
+        extra += sens**2 * unc_by_angle[name][..., None] ** 2
     return extra

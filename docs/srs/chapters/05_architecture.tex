@@ -450,11 +450,13 @@ family classes; family classes inherit from \code{ITACAError}.}
                         & \code{CorrelationKeyError}        & \code{set\_correlation} references unknown variable\\
                         & \code{CorrelationMatrixError}     & Provided correlation matrix is not symmetric or violates $|r|\le 1$\\
 \addlinespace
-\code{AxesError}        & \code{AxisNotFoundError}          & \code{db.rotate} target axis is not registered\\
-                        & \code{VectorGroupError}           & \code{db.rotate} cannot resolve a vector group from naming convention\\
-                        & \code{RotationMatrixError}        & Provided matrix is not orthogonal\\
+\code{AxesError}        & \code{AxisNotFoundError}          & A referenced coordinate frame (\code{rotate} target, or a \code{declare\_vector} source) is not registered\\
+                        & \code{VectorGroupError}           & A vector group cannot be resolved, is not a triplet, names an absent variable, or is re-declared\\
+                        & \code{RotationMatrixError}        & An \code{Axis} definition is ambiguous or empty, its matrix is not a proper rotation (non-3$\times$3, non-orthogonal, or a reflection), the convention is unknown, or a frame name is duplicated\\
 \addlinespace
 \code{DependencyError}  & \code{MissingDependencyError}     & Optional dependency (matplotlib, plotly, SMT, reportlab) absent\\
+\addlinespace
+\code{ITACAError} (direct) & \code{AccessorRegistrationError} & \code{itc.register\_accessor} name is not an identifier, or collides with an existing attribute or accessor (REQ-106). It has no family: registration errors of the extension point sit directly under \code{ITACAError}\\
 \bottomrule
 \end{tabularx}
 \end{table}

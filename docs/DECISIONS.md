@@ -504,3 +504,29 @@ data-management core, pull in a heavy runtime dependency, and still
 not provide the analytical derivative terms that condition-dependent
 frames need; a hand-composed general formulation is textbook, small,
 and fully differentiable.
+
+---
+
+## DD-27: The accessor per-instance cache is the one permitted frozen-instance write
+
+**Date:** 2026-07-23
+**Status:** confirmed
+
+DD-03 makes in-place mutation of a VarFrame structurally impossible.
+The accessor registration mechanism (REQ-106) introduces one sanctioned
+exception: the `_CachedAccessor` descriptor writes a per-instance cache
+dict onto the frozen VarFrame via `object.__setattr__` on first access,
+so `db.<name>` instantiates the accessor once and reuses it (the xarray
+pattern). This does not weaken DD-03: the cache attribute is not a
+dataclass field, so it never enters the state hash, equality (VarFrame
+is `eq=False`), `dataclasses.replace`, or any export; and the
+class-level attribute set by `register_accessor` is registration, not
+instance state. This entry records that the single `object.__setattr__`
+on a frozen VarFrame instance found under `core/accessors.py` is
+intentional and bounded, so a future reviewer grepping for it does not
+read it as a DD-03 breach.
+
+**Rejected alternative:** an external `WeakKeyDictionary` cache keyed by
+frame identity. Rejected because it duplicates the instance lifetime
+management the interpreter already provides through the instance
+`__dict__`, and the cache is conceptually per-frame state anyway.

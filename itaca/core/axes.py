@@ -10,9 +10,11 @@ the chain rule.
 
 The built-in ``"wind"`` and ``"stability"`` frames follow AIAA
 R-004A-1992 in the standard Etkin body-to-wind form
-(``v_target = L @ v_body``; stability ``Ry(alpha)``, wind
-``Rz(-beta) @ Ry(alpha)``), SME-accepted by Geovana at the M1 Phase B2
-checkpoint (2026-07-23) and cross-validated against scipy (DD-26).
+(``v_target = L @ v_body``; stability = active ``Ry(alpha)``, wind =
+active ``Rz(-beta) @ Ry(alpha)``), SME-accepted by Geovana at the M1
+Phase B2 checkpoint (2026-07-23) and cross-validated against scipy
+(DD-26). The elementary factors below are the coordinate (transposed)
+form, so this module writes wind as ``Rz(beta) @ Ry(alpha)``.
 
 This module is NumPy-only (DD-02).
 """
@@ -41,8 +43,12 @@ _Matrix = NDArray[np.float64]
 # product, left to right, is the body-to-frame DCM. The angle-position
 # indexes into the frame's angles_from tuple.
 #
+# ``_elementary(axis, theta)`` is the body-to-frame (coordinate /
+# transposed) elementary factor, so this module's ``Rz(beta)`` equals
+# the standard active ``Rz(-beta)`` (the scipy oracle confirms it):
+#
 #   stability:  Ry(alpha)                 (AIAA R-004A)
-#   wind:       Rz(beta) @ Ry(alpha)      (AIAA R-004A, Etkin order)
+#   wind:       Rz(beta) @ Ry(alpha)      = active Rz(-beta) @ Ry(alpha)
 _CONVENTION_SEQ: dict[str, tuple[tuple[int, int], ...]] = {
     "stability": ((1, 0),),
     "wind": ((2, 1), (1, 0)),
@@ -153,6 +159,11 @@ class Axis:
     description: str | None = None
 
     def __post_init__(self) -> None:
+        if self.parent is not None:
+            raise NotImplementedError(
+                f"Axis '{self.name}': chained transforms via parent are "
+                "not implemented yet; leave parent=None (REQ-38)"
+            )
         has_matrix = self.rotation_matrix is not None
         has_angles = self.angles_from is not None
         if has_matrix == has_angles:
@@ -174,6 +185,14 @@ class Axis:
                     f"Axis '{self.name}'",
                     "rotation_matrix is not orthogonal (R R^T != I)",
                     "provide an orthogonal rotation matrix (REQ-101)",
+                )
+            if not np.isclose(np.linalg.det(matrix), 1.0, atol=1e-9):
+                raise RotationMatrixError(
+                    f"Axis '{self.name}'",
+                    f"rotation_matrix is a reflection (det = "
+                    f"{np.linalg.det(matrix):.3f}, not +1), not a proper "
+                    "rotation",
+                    "provide a proper rotation matrix (det = +1) (REQ-101)",
                 )
             matrix = matrix.copy()
             matrix.setflags(write=False)
@@ -218,13 +237,26 @@ class Axis:
         Parameters
         ----------
         angles : mapping of str to float
-            Values for the ``angles_from`` names; ignored for a
-            constant frame.
+            Values (in radians) for the ``angles_from`` names; ignored
+            for a constant frame.
 
         Returns
         -------
         numpy.ndarray
             The 3x3 direction cosine matrix.
+
+        Raises
+        ------
+        VectorGroupError
+            A required angle is missing from ``angles``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from itaca.core.axes import stability_axis
+        >>> m = stability_axis().matrix_at({"alpha": 0.0})
+        >>> bool(np.allclose(m, np.eye(3)))
+        True
         """
         if self.rotation_matrix is not None:
             return np.array(self.rotation_matrix, dtype=float)
@@ -235,7 +267,27 @@ class Axis:
     def d_matrix_d_angle(self, angles: Mapping[str, float]) -> dict[str, _Matrix]:
         """Analytical sensitivities ``dR/dangle`` at the given point.
 
-        Returns an empty dict for a constant frame (REQ-101 chain rule).
+        Parameters
+        ----------
+        angles : mapping of str to float
+            Values (in radians) for the ``angles_from`` names.
+
+        Returns
+        -------
+        dict of str to numpy.ndarray
+            The ``dR/dangle`` 3x3 matrix per angle name (REQ-101 chain
+            rule); an empty dict for a constant frame.
+
+        Raises
+        ------
+        VectorGroupError
+            A required angle is missing from ``angles``.
+
+        Examples
+        --------
+        >>> from itaca.core.axes import stability_axis
+        >>> sorted(stability_axis().d_matrix_d_angle({"alpha": 0.1}))
+        ['alpha']
         """
         if self.rotation_matrix is not None:
             return {}
@@ -350,14 +402,15 @@ class AxisRegistry:
         frame : str, optional
             The frame the components are currently expressed in;
             defaults to the canonical body axis (REQ-107). It must be a
-            registered frame.
+            registered or built-in frame.
 
         Raises
         ------
         VectorGroupError
-            The group does not have exactly three components.
+            The group does not have exactly three components, or a
+            group of the same name is already declared.
         AxisNotFoundError
-            ``frame`` is not registered.
+            ``frame`` is not registered or built in.
         """
         comps = tuple(components)
         if len(comps) != 3:
@@ -365,6 +418,12 @@ class AxisRegistry:
                 f"vector group '{name}'",
                 f"declared with {len(comps)} components, not three",
                 "a vector group is a triplet (x, y, z) (REQ-38)",
+            )
+        if name in self.vector_groups:
+            raise VectorGroupError(
+                f"vector group '{name}'",
+                "a group of that name is already declared",
+                "choose a distinct group name, or resolve the existing one (REQ-38)",
             )
         if frame != "body":
             self.resolve(frame)
@@ -416,6 +475,6 @@ class AxisRegistry:
         known = sorted({*self.axes, *_BUILTINS})
         raise AxisNotFoundError(
             f"axis '{name}'",
-            "rotate referenced an unregistered frame",
+            "an unregistered coordinate frame was referenced",
             f"register it first, or use one of {known} (REQ-38)",
         )

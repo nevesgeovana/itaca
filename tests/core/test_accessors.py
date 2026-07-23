@@ -92,6 +92,14 @@ class TestCollisions:
                 def __init__(self, db: VarFrame) -> None:
                     self._db = db
 
+    def test_non_identifier_name_rejected(self) -> None:
+        with pytest.raises(AccessorRegistrationError, match="identifier"):
+
+            @itc.register_accessor("not an identifier")
+            class Bad:
+                def __init__(self, db: VarFrame) -> None:
+                    self._db = db
+
     def test_duplicate_accessor_rejected(self) -> None:
         @itc.register_accessor("dup")
         class First:

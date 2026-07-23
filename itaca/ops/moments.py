@@ -39,13 +39,23 @@ def _skew(r: _Array) -> _Array:
 
 
 def _group(
-    db: VarFrame, default: tuple[str, str, str], role: str
-) -> tuple[str, str, str]:
-    for comps in db.axes.vector_groups.values():
+    db: VarFrame, role: str, default: tuple[str, str, str]
+) -> tuple[tuple[str, str, str], str]:
+    """Resolve the components and source frame of the force/moment group.
+
+    A group declared under the role name (``"force"`` / ``"moment"``)
+    wins, honoring its per-group source frame (REQ-107); otherwise the
+    default-named ``(FX, FY, FZ)`` / ``(MX, MY, MZ)`` variables are used
+    in the body frame.
+    """
+    if role in db.axes.vector_groups:
+        comps = db.axes.vector_groups[role]
+        return comps, db.axes.group_frame(role)  # type: ignore[return-value]
+    for name, comps in db.axes.vector_groups.items():
         if tuple(comps) == default:
-            return default
+            return default, db.axes.group_frame(name)
     if all(c in db.vars for c in default):
-        return default
+        return default, "body"
     raise VectorGroupError(
         f"the {role} vector group",
         f"translate_moments needs a resolvable {role} group",
@@ -80,14 +90,28 @@ def translate_moments(
     See ``VarFrame.translate_moments`` for the full parameter
     description.
     """
-    force = _group(db, _FORCE, "force")
-    moment = _group(db, _MOMENT, "moment")
+    force, force_frame = _group(db, "force", _FORCE)
+    moment, moment_frame = _group(db, "moment", _MOMENT)
+    if force_frame != moment_frame:
+        raise DataError(
+            f"force frame '{force_frame}' and moment frame '{moment_frame}'",
+            "translate_moments needs the force and moment groups in the same frame",
+            "rotate them into a common frame first (REQ-100)",
+        )
+    if frame is not None and frame != force_frame:
+        raise DataError(
+            f"frame='{frame}' against the group frame '{force_frame}'",
+            "translate_moments takes the offset in the group's own frame; "
+            "a differing offset frame is not rotated yet",
+            f"pass frame='{force_frame}' or None, or rotate the data first (REQ-100)",
+        )
     to_pt = _point(to_point, "to_point")
     from_pt = _point(from_point, "from_point")
     offset = from_pt - to_pt
     skew = _skew(offset)
 
     content = content_of(db)
+    shape = db.shape
     f = np.stack([content.values[c] for c in force], axis=-1)
     m = np.stack([content.values[c] for c in moment], axis=-1)
     # M' = M + r x F, per cell.
@@ -99,9 +123,9 @@ def translate_moments(
     jac = np.hstack([skew, np.eye(3)])  # 3x6: M' = [S | I] @ [F; M]
     for label in ("systematic", "random"):
         component = getattr(content, label)
-        if component is None or not all(c in component for c in channels):
+        if component is None or not any(c in component for c in channels):
             continue
-        u = np.stack([component[c] for c in channels], axis=-1)
+        u = np.stack([_channel_field(component, c, shape) for c in channels], axis=-1)
         corr = _corr6(db, channels)
         cov = (u[..., :, None] * u[..., None, :]) * corr
         cov_m = np.einsum("ki,...ij,lj->...kl", jac, cov, jac)
@@ -115,6 +139,15 @@ def translate_moments(
         f"from_point={list(from_pt)}{frame_note})"
     )
     return rebuild(db, content, operation=operation, comment=comment, history=history)
+
+
+def _channel_field(
+    component: dict[str, _Array], name: str, shape: tuple[int, ...]
+) -> _Array:
+    """Uncertainty of a channel, or zeros when it carries none (DD-18)."""
+    if name in component:
+        return component[name]
+    return np.zeros(shape)
 
 
 def _corr6(db: VarFrame, channels: tuple[str, ...]) -> _Array:

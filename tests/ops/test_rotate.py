@@ -19,6 +19,8 @@ import dataclasses
 
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 import itaca as itc
 from itaca.core.axes import Axis
@@ -378,6 +380,165 @@ class TestUncertainty:
         assert out.uncertainty is not None
         assert out.uncertainty.systematic["FX"][0] == pytest.approx(expected[0])
         assert out.uncertainty.systematic["FZ"][0] == pytest.approx(expected[2])
+
+
+class TestSharedAngle:
+    def test_shared_angle_cancels(self) -> None:
+        # Source stability (alpha) to target wind (alpha, beta) with
+        # beta=0: R = Rz(0) @ Rz(0)... the composite is alpha-independent
+        # for FY, so the shared-alpha sensitivity must cancel, not double
+        # count. Verified: the alpha contribution to FZ is exactly zero.
+        alpha0 = 0.3
+        rows = [[0.0, alpha0, 0.0, 0.0, 2.0, 0.0]]
+        db = itc.load(
+            np.array(rows), names=["idx", "alpha", "beta", "FX", "FY", "FZ"]
+        ).pivot(dims=["idx"])
+        db = dataclasses.replace(
+            db,
+            vars={
+                **db.vars,
+                "alpha": dataclasses.replace(db.vars["alpha"], unit="rad"),
+                "beta": dataclasses.replace(db.vars["beta"], unit="rad"),
+            },
+        )
+        u_alpha = 0.05
+        unc = UncFrame(
+            systematic={
+                "FX": np.array([0.0]),
+                "FY": np.array([0.0]),
+                "FZ": np.array([0.0]),
+                "alpha": np.array([u_alpha]),
+                "beta": np.array([0.0]),
+            },
+            random={},
+        )
+        out = (
+            dataclasses.replace(db, uncertainty=unc)
+            .declare_vector("force", ["FX", "FY", "FZ"], frame="stability")
+            .rotate("wind")
+        )
+        # source stability = Ry(alpha), target wind at beta=0 = Ry(alpha);
+        # composite R = Ry(alpha) @ Ry(alpha)^T = I, alpha-independent, so
+        # the total dR/dalpha is zero and the propagated uncertainty is 0.
+        assert out.uncertainty is not None
+        assert out.uncertainty.systematic["FZ"][0] == pytest.approx(0.0, abs=1e-12)
+
+
+class TestAngleCorrelationGuard:
+    def test_declared_angle_correlation_rejected(self) -> None:
+        from itaca.core.correlation import CorrelationMatrix
+
+        rows = [[0.5, 1.0, 0.0, 0.0]]
+        db = itc.load(np.array(rows), names=["alpha", "FX", "FY", "FZ"]).pivot(
+            dims=["alpha"]
+        )
+        from itaca.core.dimension import Dimension
+
+        db = dataclasses.replace(
+            db,
+            dims={"alpha": Dimension(name="alpha", coords=np.array([0.5]), unit="rad")},
+            vars={
+                **db.vars,
+                "beta": dataclasses.replace(db.vars["FX"], name="beta"),
+            },
+            uncertainty=UncFrame(
+                systematic={
+                    "FX": np.array([0.1]),
+                    "FY": np.array([0.1]),
+                    "FZ": np.array([0.1]),
+                },
+                random={},
+            ),
+            correlation=CorrelationMatrix(pairs={("alpha", "FX"): 0.3}),
+        )
+        with pytest.raises(Exception, match="OQ-26"):
+            db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("stability")
+
+
+class TestReflectionRejected:
+    def test_det_minus_one_rejected(self) -> None:
+        from itaca.core.axes import Axis
+        from itaca.core.errors import RotationMatrixError
+
+        reflection = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]])
+        with pytest.raises(RotationMatrixError, match="reflection"):
+            Axis(name="bad", rotation_matrix=reflection)
+
+
+class TestRotateProperties:
+    @given(
+        angle=st.floats(min_value=-1.4, max_value=1.4, allow_nan=False),
+        u=st.floats(min_value=0.0, max_value=10.0, allow_nan=False),
+    )
+    def test_orthogonal_rotation_preserves_total_variance(
+        self, angle: float, u: float
+    ) -> None:
+        # An orthogonal rotation of uncorrelated equal-sigma components
+        # conserves the sum of variances (trace invariance).
+        from itaca.core.axes import Axis
+
+        c, s = np.cos(angle), np.sin(angle)
+        m = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+        rows = [[0.0, 1.0, 2.0, 3.0]]
+        db = itc.load(np.array(rows), names=["i", "FX", "FY", "FZ"]).pivot(dims=["i"])
+        unc = UncFrame(
+            systematic={c_: np.array([u]) for c_ in ("FX", "FY", "FZ")},
+            random={},
+        )
+        out = (
+            dataclasses.replace(db, uncertainty=unc)
+            .register_axis(Axis(name="rig", rotation_matrix=m))
+            .declare_vector("force", ["FX", "FY", "FZ"])
+            .rotate("rig")
+        )
+        assert out.uncertainty is not None
+        total = sum(out.uncertainty.systematic[c_][0] ** 2 for c_ in ("FX", "FY", "FZ"))
+        assert total == pytest.approx(3.0 * u**2)
+
+    def test_zero_uncertainty_in_zero_out(self, db: VarFrame) -> None:
+        from itaca.core.axes import Axis
+
+        unc = UncFrame(
+            systematic={c: np.zeros(2) for c in ("FX", "FY", "FZ")}, random={}
+        )
+        out = (
+            dataclasses.replace(db, uncertainty=unc)
+            .register_axis(Axis(name="rig", rotation_matrix=_M90))
+            .declare_vector("force", ["FX", "FY", "FZ"])
+            .rotate("rig")
+        )
+        assert out.uncertainty is not None
+        assert np.allclose(out.uncertainty.systematic["FX"], 0.0)
+
+
+class TestImmutability:
+    def test_rotate_result_read_only(self, db: VarFrame) -> None:
+        rig = Axis(name="rig", rotation_matrix=_M90)
+        out = (
+            db.register_axis(rig)
+            .declare_vector("force", ["FX", "FY", "FZ"])
+            .rotate("rig")
+        )
+        assert not out.vars["FX"].values.flags.writeable
+        with pytest.raises((ValueError, RuntimeError)):
+            out.vars["FX"].values[0] = 9.0
+
+
+class TestPartialUncertainty:
+    def test_missing_channel_still_propagates(self, db: VarFrame) -> None:
+        # Only FX carries uncertainty; the rotated FY (which equals FX)
+        # must still receive it, not be dropped.
+        unc = UncFrame(systematic={"FX": np.full(2, 0.1)}, random={})
+        rig = Axis(name="rig", rotation_matrix=_M90)
+        out = (
+            dataclasses.replace(db, uncertainty=unc)
+            .register_axis(rig)
+            .declare_vector("force", ["FX", "FY", "FZ"])
+            .rotate("rig")
+        )
+        # FY' = FX, so u(FY') = u(FX) = 0.1.
+        assert out.uncertainty is not None
+        assert out.uncertainty.systematic["FY"][0] == pytest.approx(0.1)
 
 
 class TestBookkeeping:

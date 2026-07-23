@@ -17,6 +17,8 @@ convention is pending Geovana's SME acceptance.
 
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from itaca.core.axes import (
     Axis,
@@ -26,6 +28,8 @@ from itaca.core.axes import (
     wind_axis,
 )
 from itaca.core.errors import AxisNotFoundError, RotationMatrixError, VectorGroupError
+
+_angle = st.floats(min_value=-1.4, max_value=1.4, allow_nan=False, allow_infinity=False)
 
 
 class TestAxisConstruction:
@@ -57,6 +61,16 @@ class TestAxisConstruction:
     def test_unknown_convention_rejected(self) -> None:
         with pytest.raises(RotationMatrixError, match="convention"):
             Axis(name="x", angles_from=("alpha",), convention="martian")
+
+    def test_reflection_rejected(self) -> None:
+        reflection = np.diag([1.0, 1.0, -1.0])
+        with pytest.raises(RotationMatrixError, match="reflection"):
+            Axis(name="bad", rotation_matrix=reflection)
+
+    def test_parent_not_implemented(self) -> None:
+        body = Axis(name="body", rotation_matrix=np.eye(3))
+        with pytest.raises(NotImplementedError, match="chained"):
+            Axis(name="child", rotation_matrix=np.eye(3), parent=body)
 
     def test_matrix_is_read_only(self) -> None:
         axis = Axis(name="rig", rotation_matrix=np.eye(3))
@@ -162,3 +176,38 @@ class TestAxisRegistry:
     def test_vector_group_needs_three_components(self) -> None:
         with pytest.raises(VectorGroupError, match="three"):
             AxisRegistry().with_vector_group("bad", ["FX", "FY"])
+
+    def test_duplicate_vector_group_rejected(self) -> None:
+        reg = AxisRegistry().with_vector_group("force", ["FX", "FY", "FZ"])
+        with pytest.raises(VectorGroupError, match="already declared"):
+            reg.with_vector_group("force", ["AX", "AY", "AZ"])
+
+
+class TestDcmProperties:
+    # REQ-77: scipy-free property coverage of the DCM kernel, so the
+    # contracts hold even when the scipy oracle tier is unavailable.
+    @given(alpha=_angle, beta=_angle)
+    def test_wind_is_a_proper_rotation(self, alpha: float, beta: float) -> None:
+        r = wind_axis().matrix_at({"alpha": alpha, "beta": beta})
+        assert np.allclose(r @ r.T, np.eye(3), atol=1e-12)
+        assert np.isclose(np.linalg.det(r), 1.0)
+
+    @given(alpha=_angle)
+    def test_stability_is_a_proper_rotation(self, alpha: float) -> None:
+        r = stability_axis().matrix_at({"alpha": alpha})
+        assert np.allclose(r @ r.T, np.eye(3), atol=1e-12)
+        assert np.isclose(np.linalg.det(r), 1.0)
+
+    @given(alpha=_angle, beta=_angle)
+    def test_wind_derivatives_match_finite_difference(
+        self, alpha: float, beta: float
+    ) -> None:
+        axis = wind_axis()
+        grads = axis.d_matrix_d_angle({"alpha": alpha, "beta": beta})
+        eps = 1e-6
+        for name in ("alpha", "beta"):
+            base = {"alpha": alpha, "beta": beta}
+            plus = axis.matrix_at({**base, name: base[name] + eps})
+            minus = axis.matrix_at({**base, name: base[name] - eps})
+            fd = (plus - minus) / (2.0 * eps)
+            assert np.allclose(grads[name], fd, atol=1e-5)

@@ -81,6 +81,7 @@ def register_accessor(name: str) -> Callable[[_T], _T]:
 
     Examples
     --------
+    >>> import numpy as np
     >>> import itaca as itc
     >>> @itc.register_accessor("demo_accessor")
     ... class Demo:
@@ -88,10 +89,23 @@ def register_accessor(name: str) -> Callable[[_T], _T]:
     ...         self._db = db
     ...     def n_dims(self):
     ...         return len(self._db.dims)
-    >>> _ = itc  # doctest: +SKIP
+    >>> arr = np.column_stack([[0.0, 1.0], [1.0, 2.0]])
+    >>> db = itc.load(arr, names=["a", "CT"]).pivot(dims=["a"])
+    >>> db.demo_accessor.n_dims()
+    1
+    >>> from itaca.core import accessors
+    >>> accessors.restore({})  # tidy up the demo registration
     """
 
     def decorator(accessor: _T) -> _T:
+        if not name.isidentifier():
+            raise AccessorRegistrationError(
+                f"accessor '{name}'",
+                "the name is not a valid Python identifier, so db.<name> "
+                "could never reach it",
+                "use an identifier name (letters, digits, underscore, not "
+                "starting with a digit) (REQ-106)",
+            )
         if name in _REGISTERED:
             raise AccessorRegistrationError(
                 f"accessor '{name}'",

@@ -36,9 +36,14 @@ bump. M1 Phase B2 opened the axes work: the built-in wind and
 stability direction-cosine convention (AIAA R-004A, Etkin) was
 SME-accepted; scipy joined the dev-only test oracles (DD-26);
 condition-dependent angle inputs are read in the unit of their
-Dimension; the axis registry and vector-group declarations join the
-VarFrame state hash (REQ-103); and REQ-107 (per-group source frames
-and multi-frame data) was added as a draft requirement.\\
+Dimension or Variable; the axis registry and vector-group declarations
+join the VarFrame state hash (REQ-103); and REQ-107 (per-group source
+frames and multi-frame data) was added as a draft requirement. With the
+axes machinery implemented and tested (rotation with per-grid-point
+condition-dependent frames and chain-rule angle uncertainty, moment
+transfer), REQ-101 was promoted from draft to stable. The angle
+independence model of the rotation propagation was recorded as OQ-26,
+and DD-27 records the sanctioned accessor per-instance cache write.\\
 \addlinespace
 0.1.1 & 2026-07-21 & Geovana Neves &
 REQ-98 and REQ-99 promoted from draft to stable after the M0

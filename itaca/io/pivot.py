@@ -276,6 +276,7 @@ def pivot(
             uncertainty=uncertainty,
             correlation=db.correlation,
             tags=tags,
+            axes=db.axes,
         )
         new_history = db.history.append(
             operation=operation, state_hash=state_hash, comment=comment
@@ -289,4 +290,5 @@ def pivot(
         tags=tags,
         coords=db.coords,
         correlation=db.correlation,
+        axes=db.axes,
     )
