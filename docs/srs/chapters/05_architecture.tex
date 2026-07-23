@@ -356,6 +356,45 @@ consume and produce \itc{}-compatible data through \code{itc.load} and the
 export formats; embedding any driver was rejected.
 \end{ddbox}
 
+\begin{ddbox}{DD-23}{Co-development with pyflightstream}
+\itc{} and pyflightstream are developed as consciously integrated sister
+libraries: each may generate requirements for the other, and each
+documents awareness of the other's architecture. This refines DD-22: the
+adapter emitting \itc{}-compatible datasets lives in pyflightstream
+behind an optional extra, and \itc{} never imports the driver. Needs the
+exporter cannot satisfy with the existing \itc{} surface enter as
+candidate requirements carrying a pyflightstream origin. Both
+repositories share the role-based review process. Independent evolution
+with deferred integration was rejected: requirement flow is cheapest
+while both APIs are young.
+\end{ddbox}
+
+\begin{ddbox}{DD-24}{Options registry with exact keys}
+The central options registry (REQ-104) follows the pandas
+\code{register\_option} model with a strict message contract: every
+option registers a type, a validator, and a default, and a validator
+rejection names the offered value and the accepted domain. Keys are
+exact, dot-namespaced strings; partial or abbreviated matching was
+rejected because silent prefix resolution can bind a setting to the
+wrong option as the registry grows, exactly the quiet misconfiguration
+the fail-fast posture (DD-04 family) exists to prevent. The registry
+lives in \code{utils/options.py}; the NumPy-only rule is untouched. The
+first consumer is the AIAA plot theme as a validated configuration tree
+with a frozen testing theme.
+\end{ddbox}
+
+\begin{ddbox}{DD-25}{The uncertainties package as a dev-only test oracle}
+The \code{uncertainties} package (BSD license) enters the dev dependency
+group as an independent oracle for the GUM linear-propagation
+mathematics: an oracle test tier cross-validates the random-component
+propagation on small analytic cases. It is never a runtime dependency
+and is never imported by library code. Adopting it as the propagation
+engine was rejected: the two-component model, covariance handling, and
+provenance recording require an implementation the library owns, and
+the NumPy-only rule bars third-party runtime dependencies in
+\code{uncertainty/}.
+\end{ddbox}
+
 \section{Exception Hierarchy}
 
 \begin{table}[H]

@@ -9,15 +9,16 @@ convention: `import itaca as itc`. Tagline: From data to wisdom.
 
 ## Authority chain
 
-1. `docs/srs/` is the authoritative specification (document 0.1.0,
-   2026-07-21, first workspace-tracked version). The SRS describes desired
+1. `docs/srs/` is the authoritative specification (document 0.2.0,
+   2026-07-23; baseline 0.1.0 was the first workspace-tracked
+   version). The SRS describes desired
    behavior; code is verified against the SRS, and the SRS is changed only
    when a requirement itself is wrong or ambiguous, with the revision
    history and Chapter 11 updated together.
-2. `docs/DECISIONS.md` (DD-01 to DD-22) records why. Frozen entries,
-   append-only, supersede rather than edit.
-3. `docs/OPEN_QUESTIONS.md` (OQ-01 to OQ-18) records design questions and
-   resolutions. New questions are appended as they arise.
+2. `docs/DECISIONS.md` records why. Frozen entries, append-only,
+   supersede rather than edit; the current DD range lives in the file.
+3. `docs/OPEN_QUESTIONS.md` records design questions and resolutions,
+   append-only. New questions are appended as they arise.
 4. The research workspace thread (`AeropropulsiveResearch/threads/itaca/`)
    holds the DLV-008 snapshot of this baseline; from now on this
    repository is the living home of the SRS and companions.
@@ -33,10 +34,14 @@ and random); releases are incremental (M0 to M3 as v0.1.0 to v0.4.0).
 REQ-98 and REQ-99 were validated by Geovana at the M0 Phase 4
 checkpoint (2026-07-21, SRS document 0.1.1) and are stable; the
 smooth and diff row of REQ-98 remains provisional pending OQ-18
-(revisit during v0.2.0). REQ-101 (condition-dependent axes, v0.2.0
-scope) is still tagged draft pending her validation. Do not freeze
-draft implementations without her confirmation; everything tagged
-stable may proceed.
+(revisit during v0.2.0). REQ-101 (condition-dependent axes) was
+validated as written by Geovana (2026-07-23, ultraplan Batch A,
+Q-003): implement fully in M1 phase B2; the reqbox moves
+draft-to-stable through the SRS process once implemented and tested.
+REQ-104, REQ-105, and REQ-106 entered as draft with ids confirmed by
+Geovana (Q-002); their code is unblocked in the M1 windows. Do not
+freeze draft implementations without her confirmation; everything
+tagged stable may proceed.
 
 ## Development rules (non-negotiable)
 
@@ -91,11 +96,14 @@ pyflightstream repository carries the same process (DD-23).
 
 ## Current milestone
 
-M0, release v0.1.0 (SRS Chapter 10): VarFrame, UncFrame, HistoryFrame,
-all load modes, inspect and pivot, manifest, diagnostics, summary,
-operating modes, select, at, squeeze, fill, combine, compute with
-symbolic two-component LPU including covariance, exports, units,
-immutability and hash invariants, full test suite, CI, pre-commit. Axes
-move to v0.2.0; Monte Carlo and PROV export to v0.3.0. Release gates:
-green CI, LICENSE and CITATION.cff present, example-data provenance
-scrub, PyPI name registration (`itaca`, verified free 2026-07-21).
+M1, release v0.2.0 "Analysis Core, computation complete" (SRS
+Chapter 10 as re-baselined 2026-07-23; docs/M1_EXECUTION_PLAN.md is
+the approved plan). In scope: ops (expand, concat, interpolate,
+average, integrate, smooth, diff, fitmodel, fitvalue), axes base with
+condition-dependent frames (REQ-38/100/101), pipeline and .itc_pipe
+(REQ-53..55), processor infrastructure (REQ-45..48), no-default
+sentinel (REQ-105), accessors (REQ-106), dev-only uncertainties
+oracle (DD-25). Stretch scope (same week or fast v0.2.1): options
+registry (REQ-104), plot core, WT builtins, statistics and compare.
+v0.1.0 shipped 2026-07-22 (PyPI and Zenodo). Cross-repo decision
+queue: pyflightstream `_private/DECISION_QUEUE.md`.

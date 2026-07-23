@@ -12,6 +12,34 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.0, 2026-07-23, M1 Re-Baseline and Library Infrastructure}
+
+Issued at the M1 kickoff (ultraplan Batch A approval), together with
+the approved execution plan committed as
+\code{docs/M1\_EXECUTION\_PLAN.md}.
+
+\paragraph{Added.} Functional requirements REQ-104 (options registry
+with exact keys), REQ-105 (typed no-default sentinel), and REQ-106
+(accessor registration), all draft, adopted from the 2026-07-23
+library-review triage (decisions D1, D2, D6) in the new
+Section~\ref{sec:library-infrastructure}. Design-decision boxes DD-23
+(co-development with pyflightstream, recorded in the decision log on
+2026-07-23 and entered here at this baseline per the editing rule),
+DD-24 (options-registry adoption), and DD-25 (\code{uncertainties} as
+a dev-only test oracle, never a runtime dependency) in
+Chapter~\ref{ch:architecture}, each with its long-form entry in the
+repository decision log.
+
+\paragraph{Changed.} Chapter~\ref{ch:roadmap}: the M1 deliverables
+table splits into v0.2.0 (computation: operations, axes, pipeline,
+processor infrastructure, REQ-105, REQ-106) and v0.2.1 (presentation
+and builtins: REQ-104, plot core, WT builtins, statistics and
+compare), recording the 2026-07-23 re-baseline decision; the stretch
+scope may still ship inside v0.2.0 if green in the same window.
+REQ-101 was validated as written at the Batch A checkpoint; the
+reqbox stays draft until the implementation and its tests land, then
+moves to stable through this changelog and the revision history.
+
 \section*{Document 0.1.1, 2026-07-21, M0 Uncertainty-Semantics Validation}
 
 Issued at the M0 Phase 4 checkpoint, with the implementation and its

@@ -66,9 +66,22 @@ axis and moment-transfer machinery, pipeline persistence, first
 processors, and the core plot system. The state at which \itc{} becomes
 useful for real campaign analysis.
 
+\begin{noteinfo}[Re-baseline of 2026-07-23]
+After the M1 capacity measurement, the milestone was split into a
+computation release and a presentation release. \code{v0.2.0}
+(``Analysis Core, computation complete'') ships the computation layer
+whole: operations, axes base, pipeline, processor infrastructure, and
+the library-infrastructure requirements REQ-105 and REQ-106. The
+presentation layer and the domain builtins
+(Table~\ref{tab:phase-m1-stretch}) ship as \code{v0.2.1}, unless they
+are green inside the \code{v0.2.0} window, in which case they may
+still ship with \code{v0.2.0}. The stretch scope is never silently
+absorbed into the \code{v0.2.0} definition of done.
+\end{noteinfo}
+
 \begin{table}[H]
 \centering
-\caption{M1 deliverables.}
+\caption{M1 deliverables, v0.2.0 (computation).}
 \label{tab:phase-m1}
 \small
 \begin{tabularx}{\textwidth}{@{}lXl@{}}
@@ -82,9 +95,27 @@ REQ-31, REQ-32 & \code{fitmodel}, \code{fitvalue} & \code{ops/fitmodel.py}, \cod
 REQ-38, REQ-100, REQ-101 & \code{Axis}, \code{db.rotate()} with uncertainty propagation, \code{db.translate\_moments()}, condition-dependent frames & \code{core/axes.py}\\
 REQ-53 \dots\ REQ-55 & Indexed history; Pipeline; \code{.itc\_pipe} I/O & \code{core/pipeline.py}\\
 REQ-45 \dots\ REQ-48 & Processor protocol, factory, \code{.itceq} parser with cycle detection and optional topological sort & \code{pproc/}\\
+REQ-105 & Typed no-default sentinel adopted across the M1 operation signatures & \code{core/sentinels.py}\\
+REQ-106 & Accessor registration (sanctioned extension point; first consumer: the pyflightstream exporter, DD-23) & \code{core/accessors.py}\\
+n/a & Dev-only test oracle for the GUM random component (DD-25) & dev deps, \code{tests/oracle/}\\
+n/a & Sister-library documentation page and the pyflightstream-origin candidate-requirement channel (DD-23) & \code{docs/}\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{M1 deliverables, v0.2.1 (presentation and builtins; may ship inside v0.2.0 if green in the same window).}
+\label{tab:phase-m1-stretch}
+\small
+\begin{tabularx}{\textwidth}{@{}lXl@{}}
+\toprule
+\textbf{Requirements} & \textbf{Feature} & \textbf{Module}\\
+\midrule
+REQ-104 & Options registry with exact keys (first consumer: the AIAA plot theme, DD-24) & \code{utils/options.py}\\
+REQ-56, REQ-57, REQ-60, REQ-61 & \code{itc.datavis()}, \code{DataVis}, \code{ItcFigure}, AIAA style, matplotlib backend & \code{plot/}\\
 n/a & Built-in processors: \code{WT\_propeller}, \code{WT\_balance\_off} with companion \code{.itceq} files & \code{pproc/builtin/}\\
 REQ-49, REQ-50 & \code{pproc.statistics}, \code{pproc.compare} (N-way, named inputs) & \code{pproc/}\\
-REQ-56, REQ-57, REQ-60, REQ-61 & \code{itc.datavis()}, \code{DataVis}, \code{ItcFigure}, AIAA style, matplotlib backend & \code{plot/}\\
 \bottomrule
 \end{tabularx}
 \end{table}

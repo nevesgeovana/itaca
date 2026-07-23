@@ -427,3 +427,53 @@ integration lets each library ossify around the other's absence;
 requirement flow is cheapest while both APIs are young, and the
 version-aware driver produces exactly the provenance-rich run data
 the data layer is designed to receive.
+
+---
+
+## DD-24: Options registry with exact keys (library-review adoption D1)
+
+**Date:** 2026-07-23
+**Status:** confirmed
+
+ITACA adopts a central options registry (REQ-104) modeled on the pandas
+`register_option` mechanism combined with the OpenMDAO options message
+contract: every option is registered with a type, a validator, and a
+default; a validator rejection names the offered value, the accepted
+domain, and the bounds. Keys are exact, dot-namespaced strings. Partial
+or abbreviated key matching is rejected outright: ambiguity is an
+error, consistent with the fail-fast posture of the DD-04 family. The
+registry supports snapshot and restore so the test suite can reset it
+through an autouse fixture. The first consumer is the plot core's
+AIAATheme, expressed as a validated configuration tree with a frozen
+testing theme (the pyvista pattern), which places the implementation in
+the stretch window of M1 (`utils/options.py`; the NumPy-only rule of
+`core/`, `ops/`, and `uncertainty/` is untouched).
+
+**Rejected alternative:** pandas-style partial key matching for
+convenience. Rejected because silent prefix resolution can bind a
+setting to the wrong option as the registry grows, which is exactly the
+class of quiet misconfiguration the error-message contract exists to
+prevent.
+
+---
+
+## DD-25: uncertainties as a dev-only test oracle (library-review adoption D5)
+
+**Date:** 2026-07-23
+**Status:** confirmed
+
+The `uncertainties` package (BSD license) enters the dev dependency
+group as a test oracle for the GUM linear-propagation mathematics: an
+oracle test tier (`tests/oracle/`) cross-validates the random-component
+propagation on small analytic cases against an independent
+implementation. It is never a runtime dependency, is never imported by
+library code, and its absence never affects any public behavior; the
+oracle tier exists purely to catch defects in ITACA's own LPU
+implementation. No requirement accompanies this decision because it
+adds no public surface.
+
+**Rejected alternative:** adopting `uncertainties` as the runtime
+propagation engine. Rejected because ITACA's two-component model,
+covariance handling, and provenance recording require an implementation
+that the library owns, and because the NumPy-only rule bars third-party
+runtime dependencies in `uncertainty/`.

@@ -1015,3 +1015,59 @@ is hand-curated, validated against unit tests, and covers SI base units
 plus common aerospace units (deg, rpm, knot, ft, lb, slug, etc.).
 External unit libraries are not used (DD-13, NREQ-09).
 \end{reqbox}
+
+\section{Library Infrastructure}
+\label{sec:library-infrastructure}
+
+The requirements of this section are adoptions from the 2026-07-23
+library-review triage (decisions D1, D2, and D6; DD-24 records the
+options-registry adoption): infrastructure patterns proven in the
+scientific Python ecosystem, specified here so that they enter \itc{}
+through the same requirement process as every domain feature.
+
+\begin{reqbox}{REQ-104}{\draft}
+\textbf{Options registry with exact keys.}\\
+\itc{} provides a central options registry:
+\code{itc.set\_option(key, value)}, \code{itc.get\_option(key)},
+\code{itc.describe\_option(key)}, and the context manager
+\code{itc.option\_context(key, value, ...)}. Keys are exact,
+dot-namespaced strings (for example \code{"plot.theme"}); there is no
+partial or abbreviated matching, and an unknown key raises
+\code{OptionsError} naming the key, the closest registered keys, and
+\code{describe\_option} as the fix. Every registered option declares
+its type, its validator, and its default at registration; a validator
+rejection names the offered value, the accepted domain, and the
+bounds in the message. An option may be registered as
+required-until-set: reading it before it is set raises with the owner prefix and the
+setting call in the message. The registry supports snapshot and
+restore for tests; the test suite resets it through an autouse
+fixture. Registration of a duplicate key raises.
+\end{reqbox}
+
+\begin{reqbox}{REQ-105}{\draft}
+\textbf{Typed no-default sentinel.}\\
+\itc{} defines a single sentinel object \code{itc.no\_default} whose
+type is expressible in annotations (an enum singleton usable with
+\code{Literal}), used by every public signature that must distinguish
+an argument that was not passed from an argument explicitly set to
+\code{None}. The sentinel's repr is readable
+(\code{<no\_default>}); it is never a valid data value; passing it
+explicitly where it is not the declared default raises. All M1
+operations adopt it where the distinction changes behavior, and new
+public signatures adopt it from day one.
+\end{reqbox}
+
+\begin{reqbox}{REQ-106}{\draft}
+\textbf{Accessor registration.}\\
+\code{itc.register\_accessor(name)} is a class decorator registering
+a named accessor namespace on VarFrame: after registration,
+\code{db.<name>} instantiates the accessor class with the frame and
+caches it per instance. Registering a name that collides with an
+existing attribute or accessor raises at registration time, naming
+the holder. An \code{AttributeError} escaping the accessor's
+\code{\_\_init\_\_} is re-raised as \code{RuntimeError} carrying the
+original, so attribute machinery never swallows a real defect
+silently. Accessors are the sanctioned extension point for external
+packages; the sister-library page documents the contract. The
+registry supports snapshot and restore for tests.
+\end{reqbox}

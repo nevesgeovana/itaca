@@ -1,9 +1,10 @@
 # ITACA SRS: LaTeX sources
 
-Authoritative specification of ITACA, document version 0.1.0
-(2026-07-21, first workspace-tracked version; research-workspace
-snapshot id DLV-008). Companions: `../DECISIONS.md` (DD-01 to DD-22) and
-`../OPEN_QUESTIONS.md` (OQ-01 to OQ-18).
+Authoritative specification of ITACA, document version 0.2.0
+(2026-07-23; baseline 0.1.0 was the first workspace-tracked version,
+research-workspace snapshot id DLV-008). Companions: `../DECISIONS.md`
+(design decisions) and `../OPEN_QUESTIONS.md` (open questions), both
+append-only; the current id ranges live in those files.
 
 ## Build
 
