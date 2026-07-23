@@ -1,8 +1,10 @@
-# ITACA Architectural Decisions Log
+﻿# ITACA Architectural Decisions Log
 
 This file captures the **architectural decisions** that shaped ITACA v0.1.0.
 It is the long-form companion to the design-decision boxes (DD-01 to DD-22)
-in the SRS. The SRS states the decision; this file records why.
+in the SRS; later entries (DD-23 onward) are recorded here first and enter
+the SRS at its next baseline. The SRS states the decision; this file
+records why.
 Since 2026-07-21 this file is tracked in the research workspace
 (`threads/itaca/`); the SRS carries the same baseline as DLV-008.
 
@@ -98,7 +100,7 @@ presence rather than testing for sentinel values.
 **Date:** v0.1.0 baseline
 **Status:** confirmed
 
-Origin tags `{0, +1, −1}` are stored in a separate HistoryFrame, not as extra
+Origin tags `{0, +1, âˆ’1}` are stored in a separate HistoryFrame, not as extra
 columns or as sentinel values within the main arrays.
 
 **Why:** the numerical arrays remain pure NumPy; operations can manipulate

@@ -37,10 +37,12 @@ complete synthetic walkthrough.
 * `docs/srs/`: the SRS LaTeX sources, the authoritative reference for
   what ITACA must do and how it is built. First workspace-tracked
   version: document 0.1.0, 2026-07-21.
-* `docs/DECISIONS.md`: architectural decisions DD-01 to DD-22 with
-  long-form rationale.
-* `docs/OPEN_QUESTIONS.md`: design questions OQ-01 to OQ-18 with
-  resolutions.
+* `docs/DECISIONS.md`: the architectural decisions with long-form
+  rationale (the file's own header carries the current range).
+* `docs/OPEN_QUESTIONS.md`: the design questions with resolutions.
+* `docs/SISTER_PYFLIGHTSTREAM.md`: the co-developed sister library
+  (DD-22, DD-23): division of labor, the cross-requirement
+  convention, and the shared review process.
 
 ## Core convictions
 

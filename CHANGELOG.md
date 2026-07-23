@@ -6,7 +6,11 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+* `docs/SISTER_PYFLIGHTSTREAM.md`: the sister library page for the
+  pyflightstream co-development (DD-22, DD-23), linked from the
+  README design record.
 
 ## [0.1.0] - 2026-07-22
 
