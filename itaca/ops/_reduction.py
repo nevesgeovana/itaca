@@ -66,13 +66,13 @@ def trapezoid_weights(x: _Array) -> _Array:
 def reduce_systematic(weights: _Array, component: _Array, axis: int) -> _Array:
     """Fully correlated propagation: absolute weighted sum (REQ-99)."""
     contributions = np.where(weights != 0.0, weights * component, 0.0)
-    return np.abs(np.sum(contributions, axis=axis))
+    return np.asarray(np.abs(np.sum(contributions, axis=axis)))
 
 
 def reduce_random(weights: _Array, component: _Array, axis: int) -> _Array:
     """Independent propagation: root sum of squares of weights (REQ-99)."""
     contributions = np.where(weights != 0.0, weights * component, 0.0)
-    return np.sqrt(np.sum(np.square(contributions), axis=axis))
+    return np.asarray(np.sqrt(np.sum(np.square(contributions), axis=axis)))
 
 
 def reduce_tags(tags: _Array, weighted: _Array, axis: int) -> _Array:

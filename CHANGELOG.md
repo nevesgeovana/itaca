@@ -128,6 +128,16 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Fixed
 
+* Python 3.10 typing conformance: `mypy --strict` failed on the 3.10
+  legs of the CI matrix only, because the NumPy stubs resolve
+  differently per interpreter, and the failures were invisible in a
+  3.12 development environment. The reduction kernels now pin their
+  return type through `np.asarray`, the comparison table in the
+  expression parser carries an explicit `Callable` annotation instead
+  of a joined `object` value type, and the `savez_compressed` call
+  casts the callable rather than carrying an inline ignore that is
+  unused on some interpreters and required on others. Internal typing
+  only; no packaged surface changes.
 * ruff is pinned to one exact version in the `[dev]` extra and the
   ruff-pre-commit `rev` is locked to the same version, so the ruff half
   of the pre-commit mirror now runs the identical linter and formatter

@@ -15,7 +15,7 @@ import os
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -53,8 +53,11 @@ def _step_from_payload(payload: dict[str, Any] | None) -> PipelineStep | None:
 
 def _npz_bytes(arrays: dict[str, NDArray[Any]]) -> bytes:
     buffer = io.BytesIO()
-    # The numpy stubs type **kwds of savez_compressed too narrowly.
-    np.savez_compressed(buffer, **arrays)  # type: ignore[arg-type]
+    # The numpy stubs type **kwds of savez_compressed differently across
+    # interpreter versions, so an inline ignore is unused on some and
+    # required on others. Casting the callable is stable either way.
+    savez = cast("Any", np.savez_compressed)
+    savez(buffer, **arrays)
     return buffer.getvalue()
 
 

@@ -10,7 +10,7 @@ but refuse differentiation (the per-variable guard of REQ-36).
 from __future__ import annotations
 
 import ast
-from collections.abc import Mapping, Set
+from collections.abc import Callable, Mapping, Set
 from dataclasses import dataclass
 from typing import Any, Union
 
@@ -50,7 +50,7 @@ _BINARY_AST = {
     ast.Div: "div",
     ast.Pow: "pow",
 }
-_COMPARE_AST = {
+_COMPARE_AST: dict[type[ast.cmpop], Callable[[Any, Any], Any]] = {
     ast.Gt: np.greater,
     ast.GtE: np.greater_equal,
     ast.Lt: np.less,
