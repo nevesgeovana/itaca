@@ -1308,6 +1308,76 @@ class VarFrame:
             comment=comment,
         )
 
+    def translate_moments(
+        self,
+        *,
+        to_point: Sequence[float],
+        from_point: Sequence[float] | None = None,
+        frame: str | None = None,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Transfer declared moments to a new reference point (REQ-100).
+
+        Applies ``M' = M + r x F`` to every declared moment group, with
+        ``r = from_point - to_point`` (the rigid transfer
+        ``M_B = M_A + (r_A - r_B) x F``).
+
+        Parameters
+        ----------
+        to_point : sequence of float
+            The new moment reference point ``[x, y, z]``.
+        from_point : sequence of float or None, optional
+            The current reference point; defaults to the origin.
+        frame : str or None, optional
+            The frame the offset is expressed in; recorded in History
+            (the offset and the force group are taken in the same
+            frame).
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame with the moment components transferred. The
+            Jacobian ``[skew(r) | I]`` is exact; force-moment
+            covariance propagates when declared (REQ-98, OQ-23). Origin
+            tags are preserved.
+
+        Raises
+        ------
+        VectorGroupError
+            No resolvable force or moment group.
+        DataError
+            A reference point is not length three.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> rows = [[0.0, 1.0, 2.0, 3.0, 0.0, 0.0, 0.0]]
+        >>> db = itc.load(
+        ...     np.array(rows), names=["i", "FX", "FY", "FZ", "MX", "MY", "MZ"]
+        ... ).pivot(dims=["i"])
+        >>> db = db.declare_vector("force", ["FX", "FY", "FZ"])
+        >>> db = db.declare_vector("moment", ["MX", "MY", "MZ"])
+        >>> moved = db.translate_moments(to_point=[0.1, 0.0, 0.0])
+        >>> float(round(moved.vars["MY"].values[0], 6))
+        0.3
+        """
+        from itaca.ops.moments import translate_moments as _translate
+
+        return _translate(
+            self,
+            to_point=to_point,
+            from_point=from_point,
+            frame=frame,
+            history=history,
+            comment=comment,
+        )
+
     def set_uncertainty(
         self,
         spec: Mapping[str, float | str],
