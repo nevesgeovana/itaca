@@ -267,6 +267,7 @@ within the VarFrame, starting from 1.
 \code{comment}     & \code{str}      & Optional user comment passed via the \code{comment=} keyword to any operation.\\
 \code{timestamp}   & \code{datetime} & When the operation was applied.\\
 \code{state\_hash} & \code{str}      & SHA-256 of the resulting VarFrame state.\\
+\code{step}        & \code{PipelineStep} or \code{None} & Replayable call recorded for pipeline extraction (REQ-54): the VarFrame method, its keyword arguments, and the comment. \code{None} when the operation records none. Replay metadata, so it is excluded from the state hash.\\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -458,16 +459,28 @@ without \itc{} using any ZIP tool plus \code{numpy.load}.
 
 \section{The .itc\_pipe Pipeline Format}
 
-A \code{.itc\_pipe} file is a human-readable serialization (TOML) of a
-sequence of operations extracted from a VarFrame's History. It records:
+A \code{.itc\_pipe} file is a human-readable serialization (JSON) of a
+sequence of operations extracted from a VarFrame's History. DD-28
+records why the encoding is JSON rather than the TOML this section named
+at the 0.1.0 baseline: no Python version ships a standard-library TOML
+writer, TOML has no null type (and \code{compute(fill=None)} is
+meaningful, differing from the default \code{fill=nan}), and replay
+arguments nest. The file records:
 
 \begin{itemize}[noitemsep,topsep=2pt]
   \item the \itc{} version that created it,
   \item the index range in the source history,
-  \item each operation's name, positional and keyword arguments, and any
-    attached comment,
-  \item a content hash for integrity verification.
+  \item each operation's call with its keyword arguments and any
+    attached comment (REQ-19),
+  \item a content hash for integrity verification, reverified on load so
+    a recipe edited after it was written fails loud rather than
+    replaying something unintended.
 \end{itemize}
+
+Each recorded call is validated against the set of replayable operations
+when the file is read. A \code{.itc\_pipe} is meant to be shared and
+version-controlled, so a hand-edited file naming an arbitrary method is
+refused rather than dispatched.
 
 A \code{.itc\_pipe} file is intentionally separate from \code{.itc}: a
 pipeline encapsulates how to transform data without containing data itself,

@@ -26,6 +26,7 @@ from itaca.core.dimension import Dimension
 from itaca.core.errors import DataError, HashMismatchError
 from itaca.core.history import History, HistoryEntry
 from itaca.core.historyframe import HistoryFrame
+from itaca.core.pipeline import PipelineStep
 from itaca.core.provenance import Provenance
 from itaca.core.uncframe import UncFrame
 from itaca.core.varframe import VarFrame
@@ -33,7 +34,21 @@ from itaca.core.variable import Variable
 from itaca.core.version import __version__
 from itaca.io.export import DRAFT_WARNING, guard_draft
 
-FORMAT_SCHEMA = "itaca-itc/1"
+FORMAT_SCHEMA = "itaca-itc/2"
+# Schema 2 adds the per-entry replay "step" to history.json (REQ-54).
+# Schema 1 archives stay readable: their entries simply carry no step,
+# and to_pipeline then refuses rather than replaying a silent no-op.
+
+
+def _step_from_payload(payload: dict[str, Any] | None) -> PipelineStep | None:
+    """Rebuild a replay step from its history.json member."""
+    if payload is None:
+        return None
+    return PipelineStep(
+        call=payload["call"],
+        kwargs=payload.get("kwargs", {}),
+        comment=payload.get("comment"),
+    )
 
 
 def _npz_bytes(arrays: dict[str, NDArray[Any]]) -> bytes:
@@ -133,6 +148,10 @@ def save(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Path:
                     "timestamp": entry.timestamp.isoformat(),
                     "state_hash": entry.state_hash,
                     "comment": entry.comment,
+                    # Replay step (REQ-54); null for entries that record
+                    # none. Persisted so a reopened archive can still
+                    # lift its recipe with history.to_pipeline.
+                    "step": (None if entry.step is None else entry.step.payload()),
                 }
                 for entry in db.history
             ]
@@ -326,6 +345,7 @@ def open_itc(path: str | Path) -> VarFrame:
                 timestamp=datetime.fromisoformat(entry["timestamp"]),
                 state_hash=entry["state_hash"],
                 comment=entry["comment"],
+                step=_step_from_payload(entry.get("step")),
             )
             for entry in history_payload
         )

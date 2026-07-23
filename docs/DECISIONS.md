@@ -530,3 +530,53 @@ read it as a DD-03 breach.
 frame identity. Rejected because it duplicates the instance lifetime
 management the interpreter already provides through the instance
 `__dict__`, and the cache is conceptually per-frame state anyway.
+
+## DD-28: Pipelines replay structured steps, and .itc_pipe is JSON
+
+**Date:** 2026-07-23
+**Status:** confirmed
+
+A Pipeline (REQ-53 to REQ-55) replays by re-dispatching structured
+steps, not by re-parsing the History display strings. Every replayable
+operation records a `PipelineStep` (the VarFrame method to call, its
+keyword arguments, and the History comment) through the single
+`VarFrame._derive` choke point, so a pipeline reconstructs the exact
+calls and reproduces the state hash.
+
+**Rejected alternative:** parsing the History `operation` text back into
+a call. Those strings are built for humans and for the state hash, and
+they are not round-trippable: `concat(along='x', with=[...])` names
+frames that no longer exist at replay time, `select` embeds a `repr`,
+and any change to display formatting would silently change replay.
+
+Two consequences are recorded here because they are load-bearing. First,
+which operations are replayable is an explicit allowlist
+(`REPLAYABLE_CALLS`), and `to_pipeline` skips only the frame
+construction prefix (`load`, `pivot`). An entry that records no step
+anywhere else raises, and a range that yields no step at all raises
+rather than returning a pipeline that would apply as a silent no-op.
+Keying the skip on "records no step" instead would also swallow a
+transform that was merely not wired, silently changing the result.
+Second, the step is stored on `HistoryEntry` and excluded from the state
+hash, because it is replay metadata rather than frame state; it is
+persisted in the `.itc` archive (schema `itaca-itc/2`) so a reopened
+archive can still lift its recipe.
+
+The `.itc_pipe` encoding is JSON, superseding the TOML named in the
+original SRS 4.5 text. Three reasons: no Python version ships a standard
+library TOML writer (`tomllib` is read-only and 3.11+), so TOML would
+force a third-party runtime dependency into a core feature; TOML has no
+null type, and `compute(fill=None)` is meaningful and differs from the
+default `fill=nan`, so a TOML encoding would either lose it or need a
+side-channel that a reader can misread; and replay arguments nest
+(`filters`, `at`, `axisTranslation`), which TOML expresses as
+non-adjacent sub-tables that scatter one call's arguments. JSON keeps
+every SRS 4.5 content item (creating version, source index range, each
+call with its arguments and comment, and a content hash) with no
+dependency and no lossy encoding, and it matches the `.itc` metadata
+discipline. SRS 4.5 was amended in the same change.
+
+**Rejected alternative:** a hand-rolled stdlib TOML emitter. Rejected
+because the nesting, ordering, and null rules above make it real format
+code of ours to maintain and test, for a file whose only job is faithful
+reproduction.

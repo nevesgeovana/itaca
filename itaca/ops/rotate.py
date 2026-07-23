@@ -257,7 +257,7 @@ def rotate(
         operation=operation,
         comment=comment,
         history=history,
-        method="rotate",
+        call="rotate",
         replay_kwargs={
             "target_axis": target_axis,
             "vector_groups": vector_groups,

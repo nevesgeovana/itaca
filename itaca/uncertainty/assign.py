@@ -14,6 +14,7 @@ from itaca.core.errors import (
     UncertaintyError,
     UncertaintyKeyError,
 )
+from itaca.core.pipeline import PipelineStep, to_jsonable
 from itaca.core.uncframe import UncFrame
 from itaca.core.varframe import VarFrame
 
@@ -71,6 +72,14 @@ def set_uncertainty(
         comment=comment,
         history=history,
         uncertainty=UncFrame(systematic=systematic, random=random),
+        step=PipelineStep(
+            call="set_uncertainty",
+            kwargs={
+                "spec": {name: to_jsonable(value) for name, value in spec.items()},
+                "component": component,
+            },
+            comment=comment,
+        ),
     )
 
 
@@ -107,4 +116,11 @@ def set_correlation(
         comment=comment,
         history=history,
         correlation=CorrelationMatrix(pairs=merged),
+        # JSON object keys cannot be tuples, so the declared pairs are
+        # recorded as [a, b, r] triples and rebuilt on replay.
+        step=PipelineStep(
+            call="set_correlation",
+            kwargs={"spec": [[a, b, r] for (a, b), r in canonical_new.items()]},
+            comment=comment,
+        ),
     )

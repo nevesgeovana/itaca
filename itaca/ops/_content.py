@@ -103,15 +103,16 @@ def rebuild(
     operation: str,
     comment: str | None,
     history: bool,
-    method: str | None = None,
+    call: str | None = None,
     replay_kwargs: Mapping[str, Any] | None = None,
 ) -> VarFrame:
     """Wrap content back into frames and derive the new VarFrame.
 
-    When ``method`` is given, the operation is replayable: a
-    :class:`PipelineStep` is recorded so ``history.to_pipeline`` can
-    reconstruct the call (REQ-54). Operations that omit ``method`` (a
-    multi-input ``concat``) are non-replayable by construction.
+    When ``call`` is given, the operation is replayable: a
+    :class:`PipelineStep` is recorded, carrying the comment too (REQ-19),
+    so ``history.to_pipeline`` can reconstruct the call (REQ-54).
+    Operations that omit ``call`` (a multi-input ``concat``) are
+    non-replayable by construction.
     """
     variables = {
         name: replace(content.meta[name], values=values)
@@ -126,13 +127,14 @@ def rebuild(
     tags = HistoryFrame(tags=content.tags) if content.tags is not None else None
     step = (
         PipelineStep(
-            method=method,
+            call=call,
             kwargs={
                 name: to_jsonable(value)
                 for name, value in (replay_kwargs or {}).items()
             },
+            comment=comment,
         )
-        if method is not None
+        if call is not None
         else None
     )
     return db._derive(

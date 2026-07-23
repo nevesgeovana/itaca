@@ -95,6 +95,6 @@ def expand(
         operation=operation,
         comment=comment,
         history=history,
-        method="expand",
+        call="expand",
         replay_kwargs={"dim_name": dim_name, "values": values, "axis": axis},
     )

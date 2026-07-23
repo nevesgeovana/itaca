@@ -192,7 +192,7 @@ def integrate(
         operation=operation,
         comment=comment,
         history=history,
-        method="integrate",
+        call="integrate",
         replay_kwargs={
             "var": var,
             "over": over,

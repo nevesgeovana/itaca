@@ -85,6 +85,30 @@ selectors (REQ-100). OQ-25 (origin-tag reduction across collapsing and
 reshaping operations) was resolved and its four rules folded into the
 HistoryFrame section (Chapter~\ref{ch:datamodel}, Section 4.3).
 
+\paragraph{Changed (B3a).} The \code{.itc\_pipe} format
+(Chapter~\ref{ch:datamodel}, Section 4.5) is specified as JSON rather
+than TOML, with design decision DD-28 recording why (no
+standard-library TOML writer in any Python version, no TOML null type
+against a meaningful \code{compute(fill=None)}, and nested replay
+arguments) and the reasoning that every required content item is kept:
+the creating version, the source index range, each call with its
+keyword arguments and attached comment (REQ-19), and a content hash
+that is reverified on load. REQ-53 gained the normative extraction
+contract: frame construction (\code{load}, \code{pivot}) is input
+preparation and is skipped when it leads the range, any other
+operation that records no replayable step raises
+\code{PipelineCompatibilityError}, and a range yielding no step raises
+rather than returning a pipeline that would apply as a silent no-op.
+REQ-54 gained the replay contract: the recorded call and comment
+reproduce the state hash, and an incompatible target raises with the
+underlying error's object and suggested fix preserved. The History-entry
+table gained the \code{step} field (replay metadata, excluded from the
+state hash, REQ-103 scope unchanged), and the \code{.itc} archive
+persists it at schema \code{itaca-itc/2} so a reopened archive can still
+lift its recipe. DD-28 also records the replay representation itself:
+structured step re-dispatch rather than re-parsing the History display
+strings.
+
 \paragraph{Added (docs adoption).} Non-functional requirement REQ-108
 (published documentation site on GitHub Pages, ProperDocs with markdown
 SRS chapters and a build-time-generated API reference, mirroring the

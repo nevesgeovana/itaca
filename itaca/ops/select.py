@@ -169,7 +169,7 @@ def select(
         operation=operation,
         comment=comment,
         history=history,
-        method="select",
+        call="select",
         # The method spells the target Frame with a capital F (REQ-20).
         replay_kwargs={"filters": dict(filters), "Frame": frame},
     )
@@ -209,4 +209,8 @@ def at(
         operation=f"at({arguments})",
         comment=comment,
         history=history,
+        call="at",
+        # VarFrame.at takes the coordinates as **kwargs, so the recorded
+        # mapping replays directly.
+        replay_kwargs=dict(coords),
     )

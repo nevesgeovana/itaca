@@ -47,7 +47,23 @@ and DD-27 records the sanctioned accessor per-instance cache write.
 OQ-25 (origin-tag reduction across collapsing and reshaping
 operations) was resolved and its four rules folded into Section 4.3.
 REQ-108 (published documentation site on GitHub Pages, mirroring
-pyflightstream, DD-23) was added as a draft requirement.\\
+pyflightstream, DD-23) was added as a draft requirement. M1 Phase B3a
+implemented the pipeline requirements and corrected the specification
+where it was wrong: Section 4.5 now specifies the \code{.itc\_pipe}
+serialization as JSON rather than TOML, with the reasons recorded in
+DD-28 (no standard-library TOML writer in any Python version, no TOML
+null type against a meaningful \code{compute(fill=None)}, and nested
+replay arguments); every content item the section required is kept,
+including the attached comment (REQ-19) and the content hash, which is
+now reverified on load. REQ-53 gained the normative extraction contract
+(frame construction is skipped as input preparation, any other
+step-less operation raises, and a range yielding no step raises rather
+than producing a silent no-op), and REQ-54 gained the replay contract
+(the recorded call and comment reproduce the state hash, and an
+incompatible target raises with the underlying object and fix
+preserved). The History-entry table gained the \code{step} field, replay
+metadata excluded from the state hash and persisted in the \code{.itc}
+archive at schema \code{itaca-itc/2}.\\
 \addlinespace
 0.1.1 & 2026-07-21 & Geovana Neves &
 REQ-98 and REQ-99 promoted from draft to stable after the M0

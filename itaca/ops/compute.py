@@ -174,6 +174,6 @@ def compute(
         operation=operation,
         comment=comment,
         history=history,
-        method="compute",
+        call="compute",
         replay_kwargs=replay,
     )

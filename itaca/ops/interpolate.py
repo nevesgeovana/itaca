@@ -331,10 +331,14 @@ def interpolate(
             operation=operation,
             comment=comment,
             history=history,
-            method="interpolate",
+            call="interpolate",
             # The method spells the selector axisTranslation (REQ-25).
+            # The explicit target grid must be recorded too: without it
+            # replay silently falls back to the derived default grid and
+            # reproduces a different frame.
             replay_kwargs={
                 "axisTranslation": axis_translation,
+                "mapping": (dict(mapping) if mapping else None),
                 "method": method,
                 "deg": deg,
                 "override": override,
@@ -380,7 +384,7 @@ def interpolate(
         operation=operation,
         comment=comment,
         history=history,
-        method="interpolate",
+        call="interpolate",
         replay_kwargs={
             "mapping": detail,
             "method": method,

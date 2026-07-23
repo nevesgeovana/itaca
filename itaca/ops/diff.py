@@ -143,7 +143,7 @@ def diff(
         operation=operation,
         comment=comment,
         history=history,
-        method="diff",
+        call="diff",
         replay_kwargs={
             "along": along,
             "window": window,

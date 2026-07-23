@@ -31,6 +31,16 @@ if TYPE_CHECKING:
 
 _SEP = b"\x1f"
 
+_PREPARATION_OPS = frozenset({"load", "pivot"})
+"""Operations that build the input frame rather than transform it.
+
+``to_pipeline`` omits these when they lead the requested range: they
+construct the frame a pipeline is applied *to*, so replaying them makes
+no sense. The set is an explicit allowlist rather than "records no
+step", because that test would also swallow a transform that simply was
+not wired for replay and silently change the result (REQ-53).
+"""
+
 
 @dataclass(frozen=True)
 class HistoryEntry:
@@ -61,6 +71,16 @@ class HistoryEntry:
     state_hash: str
     comment: str | None = None
     step: PipelineStep | None = None
+
+    @property
+    def replayable(self) -> bool:
+        """Whether this entry contributes a step to a Pipeline (REQ-54)."""
+        return self.step is not None
+
+    @property
+    def name(self) -> str:
+        """The operation name without its arguments, e.g. ``"smooth"``."""
+        return self.operation.split("(", 1)[0]
 
 
 @dataclass(frozen=True)
@@ -137,8 +157,10 @@ class History:
         Parameters
         ----------
         start : int or None, optional
-            First history index (1-based, inclusive). Defaults to the
-            first entry.
+            First history index, 1-based and inclusive: the number shown
+            by ``print(db.history)``. Defaults to the first entry. Note
+            that ``history[0]`` is 0-based positional indexing, a
+            different convention from this one.
         end : int or None, optional
             Last history index (1-based, inclusive). Defaults to the
             last entry.
@@ -146,20 +168,24 @@ class History:
         Returns
         -------
         Pipeline
-            The replayable steps in the requested range.
+            The replayable steps in the requested range. Frame
+            construction entries (``load`` and ``pivot``) are input
+            preparation: they are omitted when they lead the range, so
+            the pipeline is usually shorter than the range itself.
 
         Raises
         ------
         DataError
-            The range is empty or out of bounds.
+            The history is empty, or the range is out of bounds.
         PipelineCompatibilityError
-            The range spans a non-replayable operation once processing
-            has begun (a multi-input ``concat`` or a state-only entry
-            such as ``set_uncertainty``). Leading non-replayable entries
-            (frame construction such as ``load`` and ``pivot``, and
-            state setup) are treated as input preparation and skipped,
-            not replayed, so a full-history default does not raise on
-            them.
+            The range spans an operation that records no replayable step
+            and is not frame construction (a multi-input ``concat`` or
+            ``combine``), or the range yields no replayable step at all.
+            The latter happens on a draft-mode frame, where operations
+            record only with ``history=True``, and on a frame reopened
+            from a ``.itc`` archive written before steps were persisted;
+            it raises rather than returning a pipeline that would apply
+            as a silent no-op.
 
         Examples
         --------
@@ -175,32 +201,50 @@ class History:
         from itaca.core.pipeline import Pipeline
 
         count = len(self.entries)
+        if count == 0:
+            raise DataError(
+                "an empty History",
+                "to_pipeline was called on a VarFrame with no recorded operations",
+                "process the frame first; in draft mode pass history=True per "
+                "operation, or switch to production mode (REQ-10, REQ-53)",
+            )
         lo = 1 if start is None else start
         hi = count if end is None else end
-        if count == 0 or lo < 1 or hi > count or lo > hi:
+        if lo < 1 or hi > count or lo > hi:
             raise DataError(
                 f"history range start={start}, end={end}",
                 f"to_pipeline received a range outside 1..{count}",
                 "pass 1-based indices with start <= end within the history (REQ-53)",
             )
         steps: list[PipelineStep] = []
-        started = False
         for entry in self.entries[lo - 1 : hi]:
             if entry.step is not None:
                 steps.append(entry.step)
-                started = True
-            elif not started:
-                continue  # leading construction and setup: input preparation
-            else:
-                raise PipelineCompatibilityError(
-                    f"history entry [{entry.index}] {entry.operation}",
-                    "to_pipeline spans an operation that cannot be replayed "
-                    "onto a new VarFrame once processing has begun",
-                    "narrow the range to the replayable transforms; concat and "
-                    "state-only operations are not part of a reusable pipeline "
-                    "(REQ-54)",
-                )
-        return Pipeline(steps=tuple(steps))
+                continue
+            if not steps and entry.name in _PREPARATION_OPS:
+                continue  # frame construction: the input, never replayed
+            raise PipelineCompatibilityError(
+                f"history entry [{entry.index}] {entry.operation}",
+                "to_pipeline spans an operation that records no replayable "
+                "step, so the sequence cannot be reproduced faithfully",
+                "narrow the range to the replayable transforms; operations "
+                "that merge frames (concat, combine) are not part of a "
+                "reusable pipeline (REQ-54)",
+            )
+        if not steps:
+            raise PipelineCompatibilityError(
+                f"history range {lo}..{hi}",
+                "to_pipeline found no replayable operation in the range, so "
+                "the pipeline would apply as a silent no-op",
+                "in draft mode operations record only with history=True; a "
+                "frame reopened from an older .itc archive carries no replay "
+                "steps (REQ-10, REQ-53)",
+            )
+        return Pipeline(
+            steps=tuple(steps),
+            history_start=lo,
+            history_end=hi,
+        )
 
     @property
     def last(self) -> HistoryEntry | None:

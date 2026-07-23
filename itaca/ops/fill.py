@@ -199,7 +199,7 @@ def fill(
         operation=operation,
         comment=comment,
         history=history,
-        method="fill",
+        call="fill",
         replay_kwargs={
             "along": along,
             "method": method,

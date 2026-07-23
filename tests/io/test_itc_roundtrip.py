@@ -123,5 +123,6 @@ class TestGuards:
         rich_db.save(target)
         with zipfile.ZipFile(target) as archive:
             metadata = json.loads(archive.read("metadata.json"))
-        assert metadata["schema"] == "itaca-itc/1"
+        # Schema 2 adds the per-entry replay step to history.json (REQ-54).
+        assert metadata["schema"] == "itaca-itc/2"
         assert metadata["state_hash"] == rich_db.state_hash

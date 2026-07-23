@@ -159,7 +159,7 @@ def translate_moments(
         operation=operation,
         comment=comment,
         history=history,
-        method="translate_moments",
+        call="translate_moments",
         replay_kwargs={
             "to_point": to_point,
             "from_point": from_point,

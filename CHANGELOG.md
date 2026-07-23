@@ -13,17 +13,37 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   (REQ-53), `pipeline.apply(db_new)` replays the recorded sequence onto
   another VarFrame (REQ-54), and `pipeline.save(path)` plus
   `itc.load_pipeline(path)` round trip it through a human-readable,
-  version-controllable `.itc_pipe` file (REQ-55, schema
-  `itaca-itc_pipe/1`, atomic write). Replay re-dispatches structured
-  steps rather than re-parsing the History display strings: each
-  replayable operation records a `PipelineStep` (the method name and
-  its keyword call) as it derives, so a pipeline reconstructs the exact
-  calls and reproduces the state hash. Leading construction and setup
-  entries (`load`, `pivot`, `set_uncertainty`) are input preparation and
-  are skipped; a non-replayable operation appearing after processing has
-  begun raises `PipelineCompatibilityError`, as does applying a pipeline
-  to a frame that lacks a referenced variable. `itc.Pipeline` and
-  `itc.VarFrame` join the top-level exports.
+  version-controllable `.itc_pipe` file (REQ-55, SRS 4.5, schema
+  `itaca-itc_pipe/1`, atomic write). The file carries the creating
+  version, the source history index range, each call with its keyword
+  arguments and its comment (REQ-19), and a content hash reverified on
+  load, so a recipe edited after it was written raises
+  `HashMismatchError` instead of replaying something unintended.
+  Replay re-dispatches structured steps rather than re-parsing the
+  History display strings, which are not round-trippable: each
+  replayable operation records a `PipelineStep` (`call`, `kwargs`,
+  `comment`) as it derives, so a pipeline reconstructs the exact calls
+  and reproduces the state hash, including uncertainty and correlation
+  (DD-28). The encoding is JSON rather than the TOML the SRS first
+  named; DD-28 records why and SRS 4.5 was amended with it.
+* Replayable operations are an explicit allowlist (`REPLAYABLE_CALLS`),
+  validated when a `.itc_pipe` is read so a hand-edited recipe cannot
+  name an arbitrary method. Alongside the transforms it covers `at`,
+  `set_uncertainty`, `set_correlation`, `register_axis`, and
+  `declare_vector`, so uncertainty setup and the whole axes journey
+  replay instead of being dropped. Only frame construction (`load`,
+  `pivot`) is skipped, and only when it leads the range; any other
+  step-less operation raises `PipelineCompatibilityError`, as does a
+  range that yields no step at all (a draft-mode frame recorded without
+  `history=True`) rather than returning a silent no-op.
+* `HistoryEntry` gains `step` (the recorded `PipelineStep`, or `None`;
+  excluded from the state hash) with `replayable` and `name`
+  properties, and `History.append` a matching `step=` keyword. The
+  `.itc` archive persists the step at schema `itaca-itc/2`, so a
+  reopened archive can still lift its recipe; schema 1 archives stay
+  readable. `itc.Pipeline`, `itc.VarFrame`, and `itc.load_pipeline`
+  join the top-level exports, and `PipelineStep`, `REPLAYABLE_CALLS`,
+  and `PIPELINE_SCHEMA` are importable from `itaca.core.pipeline`.
 * M1 Phase B2, axes. The `Axis` type (exported as `itc.Axis`; constant
   orthogonal matrix or parametric `angles_from` with the AIAA R-004A
   Etkin wind/stability conventions, SME-accepted), the immutable

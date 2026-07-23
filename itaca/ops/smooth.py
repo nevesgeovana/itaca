@@ -226,6 +226,6 @@ def smooth(
         operation=operation,
         comment=comment,
         history=history,
-        method="smooth",
+        call="smooth",
         replay_kwargs={"along": along, "method": method, **knobs},
     )

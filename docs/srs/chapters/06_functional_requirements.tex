@@ -860,18 +860,38 @@ an UncFrame.
 \begin{reqbox}{REQ-53}{\stable}
 \textbf{Indexed history: export by range.}\\
 \code{db.history.to\_pipeline(start=None, end=None)} extracts a contiguous
-range of history entries (by index) as a reusable Pipeline object.
-Defaults to the full history. Examples:
+range of history entries (by index, 1-based and inclusive) as a reusable
+Pipeline object. Defaults to the full history. Examples:
 \code{db.history.to\_pipeline()},
 \code{db.history.to\_pipeline(start=2, end=7)},
 \code{db.history.to\_pipeline(start=10)}.
+
+Only operations that record a replayable step enter the Pipeline. Frame
+construction (\code{load} and \code{pivot}) is input preparation: it
+builds the frame a pipeline is applied \emph{to}, so it is omitted when
+it leads the requested range rather than replayed. Any other entry that
+records no replayable step (an operation that merges frames, such as
+\code{concat} or \code{combine}) raises
+\code{PipelineCompatibilityError} naming the operation and its index: a
+sequence with an unreproducible step cannot be replayed faithfully, and
+omitting it silently would change the result. A range that yields no
+replayable step at all raises for the same reason, rather than returning
+a Pipeline that would apply as a silent no-op; this is what a draft-mode
+frame produces when operations were recorded without
+\code{history=True} (REQ-10).
 \end{reqbox}
 
 \begin{reqbox}{REQ-54}{\stable}
 \textbf{Apply pipeline to a new VarFrame.}\\
 \code{pipeline.apply(db\_new)} applies the recorded sequence to a new
-VarFrame and returns the result. Missing variables raise
-\code{PipelineCompatibilityError}.
+VarFrame and returns the result. Each step re-dispatches the recorded
+call with its keyword arguments and its comment (DD-28), so a replay
+reproduces the state hash of the original processing. A step that cannot
+execute on the target frame raises \code{PipelineCompatibilityError},
+which names the failing step and preserves the underlying error's object
+and suggested fix; the commonest case is a missing variable, and a
+missing dimension or an undeclared axis or vector group are reported the
+same way.
 \end{reqbox}
 
 \begin{reqbox}{REQ-55}{\stable}

@@ -104,6 +104,6 @@ def average(
         operation=operation,
         comment=comment,
         history=history,
-        method="average",
+        call="average",
         replay_kwargs={"along": along},
     )

@@ -15,7 +15,7 @@ import dataclasses
 
 import numpy as np
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 import itaca as itc
@@ -145,13 +145,19 @@ def _fit_projection(x, deg):
 
 class TestOQ24Fitmodel:
     @given(
-        nodes=st.lists(st.floats(-2.0, 2.0), min_size=4, max_size=9, unique=True),
+        n=st.integers(min_value=4, max_value=9),
+        gaps=st.lists(st.floats(0.15, 0.5), min_size=8, max_size=8),
         deg=st.integers(min_value=1, max_value=3),
     )
     @settings(max_examples=40)
-    def test_projection_row_sums(self, nodes, deg):
-        x = np.sort(np.array(nodes))
-        assume(deg < len(x) and np.min(np.diff(x)) > 0.1)  # well-conditioned
+    def test_projection_row_sums(self, n, gaps, deg):
+        # The grid is built well-conditioned by construction (strictly
+        # increasing, minimum spacing 0.15) instead of filtering with
+        # assume(): a filter that rejects most inputs starves the
+        # Hypothesis engine, trips its filtering health check at random,
+        # and leaves the property far weaker than it looks. deg <= 3 < 4
+        # <= n holds by construction too, so no filtering is needed.
+        x = -1.0 + np.concatenate([[0.0], np.cumsum(gaps[: n - 1])])
         p = _fit_projection(x, deg)
         # c_0 absorbs a common bias; higher coefficients cancel it.
         assert np.isclose(p[0].sum(), 1.0, atol=1e-7)

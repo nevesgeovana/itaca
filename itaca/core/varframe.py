@@ -30,13 +30,13 @@ from itaca.core.errors import (
 )
 from itaca.core.history import History, compute_state_hash
 from itaca.core.historyframe import HistoryFrame
+from itaca.core.pipeline import PipelineStep, _axis_payload
 from itaca.core.provenance import Provenance, validate_mode
 from itaca.core.sentinels import NoDefault, no_default
 from itaca.core.uncframe import UncFrame
 from itaca.core.variable import Variable
 
 if TYPE_CHECKING:
-    from itaca.core.pipeline import PipelineStep
     from itaca.ops.diff import DiffIndexer
 
 _UNSET: object = object()
@@ -1178,6 +1178,11 @@ class VarFrame:
             comment=comment,
             history=history,
             axes=self.axes.with_axis(axis),
+            step=PipelineStep(
+                call="register_axis",
+                kwargs={"axis": _axis_payload(axis)},
+                comment=comment,
+            ),
         )
 
     def declare_vector(
@@ -1248,6 +1253,15 @@ class VarFrame:
             comment=comment,
             history=history,
             axes=new_axes,
+            step=PipelineStep(
+                call="declare_vector",
+                kwargs={
+                    "name": name,
+                    "components": list(components),
+                    "axis": axis,
+                },
+                comment=comment,
+            ),
         )
 
     def rotate(

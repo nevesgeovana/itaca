@@ -142,7 +142,7 @@ def fitmodel(
         operation=operation,
         comment=comment,
         history=history,
-        method="fitmodel",
+        call="fitmodel",
         replay_kwargs={"along": along, "deg": deg},
     )
 
@@ -257,6 +257,6 @@ def fitvalue(
         operation=operation,
         comment=comment,
         history=history,
-        method="fitvalue",
+        call="fitvalue",
         replay_kwargs={"coef_dims": coef_dims, "at": at},
     )
