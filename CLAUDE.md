@@ -78,6 +78,20 @@ milestone execution plan). Geovana keeps the non-delegable seats:
 product owner, domain expert, numerical analyst. The sister
 pyflightstream repository carries the same process (DD-23).
 
+Mandatory push and release gate (adopted 2026-07-23, after a
+pyflightstream release ran paraphrased manual checks instead of the
+specialist agents): "role-review" means invoking the `role-review`
+skill so the real reviewer agents run, never a hand-written
+paraphrase. A `git push` PreToolUse hook
+(`.claude/hooks/role_review_gate.py`) blocks every push until an
+attestation stamped by the skill names the exact commit being pushed;
+a milestone-release tag (`vX.Y.Z` or `--tags`) additionally requires
+the release attestation (full-scope review of the release diff). The
+attestation is written by `.claude/hooks/write_attestation.py` as the
+skill's closing step, in `.claude/.role_review_attestation.json`
+(local, gitignored). A commit made after attesting re-arms the gate:
+an unreviewed commit never ships.
+
 ## What Claude should do here
 
 * Follow the SRS requirement by requirement; cite REQ, DD, and OQ ids in

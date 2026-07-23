@@ -58,3 +58,34 @@ rework of the item.
 The session close lists, per work item: the passes that ran,
 findings fixed, findings registered, and questions raised to the
 author. A clean pass is recorded as clean; silence is not a record.
+
+## 6. Write the push attestation (mandatory, clears the git-push gate)
+
+The `git push` gate (`.claude/hooks/role_review_gate.py`) blocks every
+push until an attestation says these agent passes actually ran for the
+exact commit being pushed. It exists because a past pyflightstream
+release ran paraphrased manual checks instead of the agents; the
+attestation is the mechanical proof that the real agents ran, and the
+same protocol applies here per the shared review process (DD-23).
+
+As the closing step, after every applicable pass has run and every
+finding is fixed or registered, and after the reviewed work is
+committed (the attestation names the commit that will be pushed):
+
+```
+python .claude/hooks/write_attestation.py review architect,qa,vv,tech-writer,api-designer
+```
+
+Pass the passes you actually ran. For a milestone release tag (a
+`vX.Y.Z` push), also run the full-scope review of the release diff and
+write the release attestation:
+
+```
+python .claude/hooks/write_attestation.py release architect,qa,vv,tech-writer,api-designer
+```
+
+The script stamps the current HEAD into
+`.claude/.role_review_attestation.json` (local, gitignored). A commit
+made after attesting re-arms the gate until you re-review and
+re-attest: an unreviewed commit never ships. Never write the
+attestation without running the agents.

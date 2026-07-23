@@ -42,3 +42,6 @@ examples/output/
 
 # Local-only material (never committed)
 _private/
+
+# Role-review push-gate attestation (local session state, never versioned)
+.claude/.role_review_attestation.json
