@@ -580,3 +580,43 @@ discipline. SRS 4.5 was amended in the same change.
 because the nesting, ordering, and null rules above make it real format
 code of ours to maintain and test, for a file whose only job is faithful
 reproduction.
+
+## DD-29: The linter is pinned exactly and bumped deliberately
+
+**Date:** 2026-07-23
+**Status:** confirmed
+
+`ruff` is pinned to one exact version in the `[dev]` extra, and the
+`ruff-pre-commit` `rev` in `.pre-commit-config.yaml` is locked to that
+same version. Bumping it is a deliberate, reviewed change that moves
+both together, never an incidental floating upgrade.
+
+The reason is that ruff is not a library ITACA calls, it is a tool whose
+*output* is a gate. REQ-96 claims the pre-commit configuration is a
+local mirror of the CI lint job, and that claim is only true when both
+sides run the identical linter and formatter. A range spec broke it in
+practice: CI installed a ruff a year newer than the pinned hook, so
+commits passed locally and failed in CI, and a real lint failure stayed
+invisible on the author's machine. A version range expresses "any of
+these will do", which is the right contract for a library dependency
+and the wrong one for a formatter whose rule set changes between
+minor releases.
+
+This follows the precedent of DD-25 and DD-26 for dev-only tooling
+decisions, and the discipline is adopted from pyflightstream, which hit
+the same drift first (recorded in `PYFLIGHTSTREAM_ADOPTIONS.md`).
+`tests/test_tooling_config.py` enforces the pin and the hook rev
+against each other so they cannot silently diverge again.
+
+**Rejected alternative:** pinning only the pre-commit hook rev and
+leaving `[dev]` as a range. Rejected because the drift then simply
+moves to the CI side, which is the side the author does not run.
+
+**Open, deferred to the author:** REQ-83 is stable and states that
+ITACA declares explicit version *ranges* for every dependency, listing a
+minimum tested version and an upper bound; an exact pin is neither, and
+its ruff row still reads `>=0.5,<1.0`. By the authority chain the SRS
+wins over the code, so this decision is not final until REQ-83 is
+either amended to admit exact pins for output-defining tools or the pin
+is reverted. Recorded here so the contradiction is visible rather than
+silent; the details are staged for a dedicated session.
