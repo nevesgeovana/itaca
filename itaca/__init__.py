@@ -5,6 +5,7 @@ From data to wisdom. Import convention::
     import itaca as itc
 """
 
+from itaca.core.accessors import register_accessor
 from itaca.core.errors import ITACAError
 from itaca.core.provenance import set_mode, set_user
 from itaca.core.sentinels import no_default
@@ -20,6 +21,7 @@ __all__ = [
     "load",
     "no_default",
     "open",
+    "register_accessor",
     "set_mode",
     "set_user",
 ]

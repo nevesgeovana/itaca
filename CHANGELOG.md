@@ -24,6 +24,17 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   `.itc` format. `scipy` is a dev-only direction-cosine oracle
   (DD-26). New error leaves `AxisNotFoundError`, `VectorGroupError`,
   `RotationMatrixError`, `AccessorRegistrationError`.
+* `db.translate_moments(to_point, from_point=..., frame=...)`
+  (REQ-100): the rigid moment transfer `M' = M + r x F` on the
+  declared moment group, with the exact `[skew(r) | I]` Jacobian and
+  force-moment covariance when declared.
+* `itc.register_accessor(name)` (REQ-106): the sanctioned extension
+  point. A class decorator registering a `db.<name>` accessor
+  namespace, instantiated with the frame and cached per instance;
+  name collisions raise at registration, and an `AttributeError` from
+  the accessor's `__init__` is re-raised as `RuntimeError` so real
+  defects are never swallowed. The first foreseen consumer is the
+  pyflightstream exporter (DD-23).
 
 * M1 Phase B1, structural and numeric operations. `db.expand`
   (REQ-23, broadcast a new dimension), `itc.concat` (REQ-24,
