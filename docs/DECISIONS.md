@@ -477,3 +477,30 @@ propagation engine. Rejected because ITACA's two-component model,
 covariance handling, and provenance recording require an implementation
 that the library owns, and because the NumPy-only rule bars third-party
 runtime dependencies in `uncertainty/`.
+
+---
+
+## DD-26: scipy as a dev-only geometry test oracle (M1 axes)
+
+**Date:** 2026-07-23
+**Status:** confirmed
+
+The rotation machinery (REQ-38, REQ-101) builds direction-cosine
+matrices from the general formulation, composing elementary rotations
+in pure NumPy so that `core/` stays within the NumPy-only rule (DD-02,
+REQ-82) and ITACA owns the analytical sensitivities `dR/dangle` that
+the REQ-101 chain-rule uncertainty propagation requires. The `scipy`
+package (BSD license) enters the dev dependency group as an
+independent oracle: an oracle test tier cross-validates ITACA's
+direction-cosine matrices against `scipy.spatial.transform.Rotation`
+on random angles. It is never a runtime dependency, is never imported
+by library code, and its absence never affects any public behavior;
+the oracle exists only to catch defects in ITACA's own geometry. This
+mirrors DD-25 (`uncertainties` as a GUM oracle).
+
+**Rejected alternative:** adopting `scipy` as the runtime rotation
+engine. Rejected because it would breach the NumPy-only rule for a
+data-management core, pull in a heavy runtime dependency, and still
+not provide the analytical derivative terms that condition-dependent
+frames need; a hand-composed general formulation is textbook, small,
+and fully differentiable.

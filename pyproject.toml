@@ -42,6 +42,10 @@ dev = [
     "ruff>=0.5,<1.0",
     "mypy>=1.10,<2.0",
     "pre-commit>=3.7,<5.0",
+    # Dev-only test oracle for the direction-cosine geometry (DD-26);
+    # scipy is never a runtime dependency and is barred from library
+    # code by the NumPy-only import policy.
+    "scipy>=1.11,<2.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -70,6 +74,8 @@ convention = "numpy"
 "xarray".msg = "NumPy-only rule (REQ-82, DD-02): xarray is barred from core/, ops/, and uncertainty/"
 "dask".msg = "NumPy-only rule (REQ-82, DD-02): dask is barred from core/, ops/, and uncertainty/"
 "pandas".msg = "NumPy-only rule (REQ-82, DD-02): pandas is barred from core/, ops/, and uncertainty/; io/ uses it lazily"
+"scipy".msg = "Dev-only geometry oracle (DD-26): scipy is barred from library code; use it only under tests/oracle/"
+"uncertainties".msg = "Dev-only GUM oracle (DD-25): uncertainties is barred from library code; use it only under tests/oracle/"
 
 [tool.ruff.lint.per-file-ignores]
 # The NumPy-only ban targets core/, ops/, and uncertainty/ (REQ-82).

@@ -11,7 +11,9 @@ from pathlib import Path
 
 import itaca
 
-BANNED_TOP_LEVEL = {"xarray", "dask", "pandas"}
+# scipy and uncertainties are dev-only test oracles (DD-25, DD-26):
+# barred from library code, allowed only under tests/oracle/.
+BANNED_TOP_LEVEL = {"xarray", "dask", "pandas", "scipy", "uncertainties"}
 RESTRICTED_PACKAGES = ("core", "ops", "uncertainty")
 
 

@@ -34,61 +34,76 @@ from itaca.core.errors import (
 
 _Matrix = NDArray[np.float64]
 
-# Angle conventions the built-in and user parametric frames may use;
-# each maps its ordered angle names to a matrix builder and a
-# per-angle derivative builder.
-CONVENTIONS: tuple[str, ...] = ("stability", "wind")
+# A convention is a general direction-cosine matrix built by composing
+# elementary coordinate rotations (DD-26: pure-NumPy general
+# formulation, scipy is only a dev-only test oracle). Each convention
+# is an ordered sequence of (axis, angle-position) factors whose matrix
+# product, left to right, is the body-to-frame DCM. The angle-position
+# indexes into the frame's angles_from tuple.
+#
+#   stability:  Ry(alpha)                 (AIAA R-004A)
+#   wind:       Rz(beta) @ Ry(alpha)      (AIAA R-004A, Etkin order)
+_CONVENTION_SEQ: dict[str, tuple[tuple[int, int], ...]] = {
+    "stability": ((1, 0),),
+    "wind": ((2, 1), (1, 0)),
+}
+_CONVENTION_ANGLES: dict[str, tuple[str, ...]] = {
+    "stability": ("alpha",),
+    "wind": ("alpha", "beta"),
+}
+CONVENTIONS: tuple[str, ...] = tuple(_CONVENTION_SEQ)
 
 
-def _stability_matrix(alpha: float) -> _Matrix:
-    """Body-to-stability DCM: rotation by alpha about body y (AIAA R-004A)."""
-    ca, sa = np.cos(alpha), np.sin(alpha)
-    return np.array([[ca, 0.0, sa], [0.0, 1.0, 0.0], [-sa, 0.0, ca]], dtype=float)
+def _elementary(axis: int, theta: float) -> _Matrix:
+    """Elementary coordinate rotation about ``axis`` (0=x, 1=y, 2=z)."""
+    c, s = np.cos(theta), np.sin(theta)
+    if axis == 0:
+        return np.array([[1.0, 0.0, 0.0], [0.0, c, s], [0.0, -s, c]], dtype=float)
+    if axis == 1:
+        return np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]], dtype=float)
+    return np.array([[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]], dtype=float)
 
 
-def _d_stability_matrix(alpha: float) -> _Matrix:
-    ca, sa = np.cos(alpha), np.sin(alpha)
-    return np.array([[-sa, 0.0, ca], [0.0, 0.0, 0.0], [-ca, 0.0, -sa]], dtype=float)
+def _d_elementary(axis: int, theta: float) -> _Matrix:
+    """Differentiate the elementary rotation with respect to ``theta``."""
+    c, s = np.cos(theta), np.sin(theta)
+    if axis == 0:
+        return np.array([[0.0, 0.0, 0.0], [0.0, -s, c], [0.0, -c, -s]], dtype=float)
+    if axis == 1:
+        return np.array([[-s, 0.0, c], [0.0, 0.0, 0.0], [-c, 0.0, -s]], dtype=float)
+    return np.array([[-s, c, 0.0], [-c, -s, 0.0], [0.0, 0.0, 0.0]], dtype=float)
 
 
-def _wind_matrix(alpha: float, beta: float) -> _Matrix:
-    """Body-to-wind DCM: alpha then beta (AIAA R-004A, Etkin convention)."""
-    ca, sa = np.cos(alpha), np.sin(alpha)
-    cb, sb = np.cos(beta), np.sin(beta)
-    return np.array(
-        [
-            [ca * cb, sb, sa * cb],
-            [-ca * sb, cb, -sa * sb],
-            [-sa, 0.0, ca],
-        ],
-        dtype=float,
-    )
+def _compose_matrix(convention: str, values: Sequence[float]) -> _Matrix:
+    """Body-to-frame DCM: product of the convention's elementary factors."""
+    matrix = np.eye(3)
+    for axis, pos in _CONVENTION_SEQ[convention]:
+        matrix = matrix @ _elementary(axis, values[pos])
+    return matrix
 
 
-def _d_wind_matrix(alpha: float, beta: float) -> dict[str, _Matrix]:
-    ca, sa = np.cos(alpha), np.sin(alpha)
-    cb, sb = np.cos(beta), np.sin(beta)
-    d_alpha = np.array(
-        [
-            [-sa * cb, 0.0, ca * cb],
-            [sa * sb, 0.0, -ca * sb],
-            [-ca, 0.0, -sa],
-        ],
-        dtype=float,
-    )
-    d_beta = np.array(
-        [
-            [-ca * sb, cb, -sa * sb],
-            [-ca * cb, -sb, -sa * cb],
-            [0.0, 0.0, 0.0],
-        ],
-        dtype=float,
-    )
-    return {"alpha": d_alpha, "beta": d_beta}
+def _compose_derivatives(
+    convention: str, values: Sequence[float]
+) -> dict[int, _Matrix]:
+    """Per-angle sensitivities of the composed DCM (product rule)."""
+    factors = _CONVENTION_SEQ[convention]
+    grads: dict[int, _Matrix] = {}
+    for target in range(len(factors)):
+        matrix = np.eye(3)
+        for i, (axis, pos) in enumerate(factors):
+            block = (
+                _d_elementary(axis, values[pos])
+                if i == target
+                else _elementary(axis, values[pos])
+            )
+            matrix = matrix @ block
+        _, angle_pos = factors[target]
+        grads[angle_pos] = grads.get(angle_pos, np.zeros((3, 3))) + matrix
+    return grads
 
 
 def _convention_angles(convention: str) -> tuple[str, ...]:
-    return {"stability": ("alpha",), "wind": ("alpha", "beta")}[convention]
+    return _CONVENTION_ANGLES[convention]
 
 
 @dataclass(frozen=True, eq=False)
@@ -214,9 +229,8 @@ class Axis:
         if self.rotation_matrix is not None:
             return np.array(self.rotation_matrix, dtype=float)
         values = self._angle_values(angles)
-        if self.convention == "stability":
-            return _stability_matrix(values[0])
-        return _wind_matrix(values[0], values[1])
+        assert self.convention is not None
+        return _compose_matrix(self.convention, values)
 
     def d_matrix_d_angle(self, angles: Mapping[str, float]) -> dict[str, _Matrix]:
         """Analytical sensitivities ``dR/dangle`` at the given point.
@@ -226,14 +240,9 @@ class Axis:
         if self.rotation_matrix is not None:
             return {}
         values = self._angle_values(angles)
-        assert self.angles_from is not None
-        if self.convention == "stability":
-            return {self.angles_from[0]: _d_stability_matrix(values[0])}
-        grads = _d_wind_matrix(values[0], values[1])
-        return {
-            self.angles_from[0]: grads["alpha"],
-            self.angles_from[1]: grads["beta"],
-        }
+        assert self.angles_from is not None and self.convention is not None
+        by_position = _compose_derivatives(self.convention, values)
+        return {self.angles_from[pos]: grad for pos, grad in by_position.items()}
 
 
 def body_axis() -> Axis:
