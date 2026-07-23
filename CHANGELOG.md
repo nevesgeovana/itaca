@@ -8,6 +8,23 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Added
 
+* M1 Phase B2, axes. The `Axis` frame (constant orthogonal matrix or
+  parametric `angles_from` with the AIAA R-004A Etkin wind/stability
+  conventions, SME-accepted), the immutable `AxisRegistry`,
+  `db.register_axis` and `db.declare_vector(..., frame=...)` binding
+  each vector group to its source frame (REQ-107 draft), and
+  `db.rotate(target_axis, vector_groups=...)` (REQ-38, REQ-101):
+  each group transforms from its own source frame to the target,
+  composing through the canonical body axis, with condition-dependent
+  frames evaluated per grid point (angle read in the source
+  Dimension's unit). Uncertainty is the exact Jacobian applied to the
+  within-cell component covariance (declared correlation, OQ-23), and
+  angle uncertainty enters by the chain-rule `dR/dangle` term; origin
+  tags are preserved. The axis registry joins the state hash and the
+  `.itc` format. `scipy` is a dev-only direction-cosine oracle
+  (DD-26). New error leaves `AxisNotFoundError`, `VectorGroupError`,
+  `RotationMatrixError`, `AccessorRegistrationError`.
+
 * M1 Phase B1, structural and numeric operations. `db.expand`
   (REQ-23, broadcast a new dimension), `itc.concat` (REQ-24,
   concatenate along a shared dimension), `db.interpolate` (REQ-25,

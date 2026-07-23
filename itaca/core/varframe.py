@@ -1241,6 +1241,73 @@ class VarFrame:
             axes=new_axes,
         )
 
+    def rotate(
+        self,
+        target_axis: str,
+        *,
+        vector_groups: Sequence[str] | None = None,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Express detected vector groups in the target frame (REQ-38).
+
+        Each declared or default-named vector group is transformed from
+        its own source frame to ``target_axis``, composing through the
+        canonical body axis (REQ-107). Condition-dependent frames are
+        evaluated per grid point (REQ-101); the rotation is the exact
+        Jacobian, and angle uncertainty enters by the chain rule.
+
+        Parameters
+        ----------
+        target_axis : str
+            Name of the registered or built-in target frame.
+        vector_groups : sequence of str or None, optional
+            Restrict to these group names; by default every declared
+            group plus the auto-detected ``(FX, FY, FZ)`` and
+            ``(MX, MY, MZ)`` groups.
+        history : bool, optional
+            In draft mode, record only when True (REQ-10).
+        comment : str or None, optional
+            User comment for the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new VarFrame with the group components expressed in the
+            target frame. Uncertainty propagates through the rotation
+            (REQ-98, REQ-101); origin tags are preserved unchanged.
+
+        Raises
+        ------
+        AxisNotFoundError
+            The target or a group's source frame is not registered.
+        VectorGroupError
+            No vector group resolves, or a requested group is unknown.
+        DataError
+            A condition-dependent angle source lacks a unit.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> rows = [[0.0, 1.0, 0.0, 0.0]]
+        >>> db = itc.load(np.array(rows), names=["a", "FX", "FY", "FZ"]).pivot(
+        ...     dims=["a"]
+        ... )
+        >>> out = db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("body")
+        >>> float(out.vars["FX"].values[0])
+        1.0
+        """
+        from itaca.ops.rotate import rotate as _rotate
+
+        return _rotate(
+            self,
+            target_axis,
+            vector_groups=vector_groups,
+            history=history,
+            comment=comment,
+        )
+
     def set_uncertainty(
         self,
         spec: Mapping[str, float | str],
