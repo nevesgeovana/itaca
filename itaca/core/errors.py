@@ -8,7 +8,9 @@ the families are complete from M0.
 """
 
 __all__ = [
+    "AccessorRegistrationError",
     "AxesError",
+    "AxisNotFoundError",
     "AxisTranslationError",
     "ConcatOverlapError",
     "CorrelationKeyError",
@@ -28,7 +30,9 @@ __all__ = [
     "PivotError",
     "ProcessorError",
     "ProvenanceError",
+    "RotationMatrixError",
     "SelectionError",
+    "VectorGroupError",
     "UncertaintyCompatibilityError",
     "UncertaintyError",
     "UncertaintyKeyError",
@@ -220,3 +224,29 @@ class CorrelationMatrixError(UncertaintyError):
 
 class MissingDependencyError(DependencyError):
     """Optional dependency (pandas, matplotlib, plotly, SMT) is absent (REQ-84)."""
+
+
+# ---------------------------------------------------------------------------
+# AxesError leaves (M1)
+# ---------------------------------------------------------------------------
+
+
+class AxisNotFoundError(AxesError):
+    """db.rotate target axis is not registered (REQ-38)."""
+
+
+class VectorGroupError(AxesError):
+    """A vector group cannot be resolved from the naming convention (REQ-38)."""
+
+
+class RotationMatrixError(AxesError):
+    """An Axis matrix is not orthogonal, or its definition is ambiguous (REQ-101)."""
+
+
+# ---------------------------------------------------------------------------
+# RuntimeError-carrying leaf for accessors (M1, REQ-106)
+# ---------------------------------------------------------------------------
+
+
+class AccessorRegistrationError(ITACAError):
+    """register_accessor name collides with an existing attribute (REQ-106)."""
