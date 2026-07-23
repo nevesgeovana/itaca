@@ -63,6 +63,16 @@ stable may proceed.
   provenance. Employer-origin or proprietary data never enter this
   repository, in any form. `_private/` is gitignored for local staging.
 
+## Role passes (adopted 2026-07-23)
+
+Before a work item closes, the `role-review` skill has run its
+applicable reviewer passes (architect, QA, V&V, tech writer, API
+designer; charters in `.claude/agents/`) on the item's diff, and
+every finding is fixed or registered (OPEN_QUESTIONS.md or the
+milestone execution plan). Geovana keeps the non-delegable seats:
+product owner, domain expert, numerical analyst. The sister
+pyflightstream repository carries the same process (DD-23).
+
 ## What Claude should do here
 
 * Follow the SRS requirement by requirement; cite REQ, DD, and OQ ids in

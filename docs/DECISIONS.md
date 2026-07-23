@@ -397,3 +397,31 @@ overlap between the two packages recorded in OQ-16.
 the driver's post-processing layer into a second general framework. Rejected
 to avoid two competing frameworks by the same author and to keep each
 package's correctness surface small.
+
+---
+
+## DD-23: Co-development with pyflightstream
+
+**Date:** 2026-07-23
+**Status:** confirmed
+
+ITACA and pyflightstream are developed as consciously integrated
+sister libraries: each may generate requirements for the other, and
+each documents awareness of the other's architecture. This refines
+DD-22: the adapter that emits ITACA-compatible datasets lives in
+pyflightstream behind an optional extra; ITACA never imports
+pyflightstream and gains no solver-specific loader. Needs that
+pyflightstream's exporter cannot satisfy with the existing ITACA
+surface enter this repository as candidate requirements carrying a
+pyflightstream origin; ITACA requirements may cite pyflightstream as
+a consumer. Both repositories adopt the same role-based review
+process (reviewer charters in `.claude/agents/`, the `role-review`
+skill, the author holding the non-delegable seats), so a work item
+in either repository is reviewed by the same set of expertises.
+
+**Rejected alternative:** independent evolution with integration
+deferred until both libraries stabilize. Rejected because deferred
+integration lets each library ossify around the other's absence;
+requirement flow is cheapest while both APIs are young, and the
+version-aware driver produces exactly the provenance-rich run data
+the data layer is designed to receive.
