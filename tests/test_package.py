@@ -16,6 +16,12 @@ def test_import_convention() -> None:
     assert itc.__name__ == "itaca"
 
 
+def test_axis_is_top_level() -> None:
+    # Q-013.1: itc.Axis is exported so register_axis has a reachable type.
+    assert "Axis" in itc.__all__
+    assert itc.Axis is not None
+
+
 def test_version_is_semver() -> None:
     # REQ-92: semantic versioning; dev suffix allowed before release.
     assert re.fullmatch(r"\d+\.\d+\.\d+(\.dev\d+)?", itc.__version__)

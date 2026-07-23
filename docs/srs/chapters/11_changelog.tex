@@ -76,6 +76,12 @@ proper-rotation validation, angle unit from the Dimension or Variable
 metadata). The rotation propagation treats frame angles as mutually
 independent, rejecting a declared correlation that involves an angle
 rather than dropping it; the modeling question is recorded as OQ-26.
+Three B2 author-seat calls were resolved (queue Q-013): \code{Axis}
+is exported at the package top level; the axes surface standardizes on
+``axis'' for a coordinate system (REQ-107 \code{declare\_vector(axis=)},
+distinct from the \code{Frame=} selector of \code{select}); and
+\code{translate\_moments} gains \code{force} and \code{moment} group
+selectors (REQ-100).
 
 \section*{Document 0.1.1, 2026-07-21, M0 Uncertainty-Semantics Validation}
 

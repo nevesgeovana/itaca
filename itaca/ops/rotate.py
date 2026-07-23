@@ -42,10 +42,10 @@ _DEFAULT_GROUPS: dict[str, tuple[str, str, str]] = {
 def _resolve_groups(
     db: VarFrame, requested: Sequence[str] | None
 ) -> dict[str, tuple[tuple[str, str, str], str]]:
-    """Return name -> (components, source frame) for the groups to rotate."""
+    """Return name -> (components, source axis) for the groups to rotate."""
     resolved: dict[str, tuple[tuple[str, str, str], str]] = {}
     for name, comps in db.axes.vector_groups.items():
-        resolved[name] = (comps, db.axes.group_frame(name))  # type: ignore[assignment]
+        resolved[name] = (comps, db.axes.group_axis(name))  # type: ignore[assignment]
     for name, comps in _DEFAULT_GROUPS.items():
         if name not in resolved and all(c in db.vars for c in comps):
             resolved[name] = (comps, "body")

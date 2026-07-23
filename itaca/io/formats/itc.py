@@ -184,7 +184,7 @@ def save(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Path:
                     for axis in db.axes.axes.values()
                 ],
                 "vector_groups": [
-                    [name, list(comps), db.axes.group_frame(name)]
+                    [name, list(comps), db.axes.group_axis(name)]
                     for name, comps in db.axes.vector_groups.items()
                 ],
             }

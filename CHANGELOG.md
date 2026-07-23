@@ -8,11 +8,13 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Added
 
-* M1 Phase B2, axes. The `Axis` frame (constant orthogonal matrix or
-  parametric `angles_from` with the AIAA R-004A Etkin wind/stability
-  conventions, SME-accepted), the immutable `AxisRegistry`,
-  `db.register_axis` and `db.declare_vector(..., frame=...)` binding
-  each vector group to its source frame (REQ-107 draft), and
+* M1 Phase B2, axes. The `Axis` type (exported as `itc.Axis`; constant
+  orthogonal matrix or parametric `angles_from` with the AIAA R-004A
+  Etkin wind/stability conventions, SME-accepted), the immutable
+  `AxisRegistry`, `db.register_axis` and `db.declare_vector(...,
+  axis=...)` binding each vector group to its source axis system
+  (REQ-107 draft; the surface standardizes on "axis" for a coordinate
+  system, distinct from `select(Frame=)`), and
   `db.rotate(target_axis, vector_groups=...)` (REQ-38, REQ-101):
   each group transforms from its own source frame to the target,
   composing through the canonical body axis, with condition-dependent
@@ -24,10 +26,11 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   `.itc` format. `scipy` is a dev-only direction-cosine oracle
   (DD-26). New error leaves `AxisNotFoundError`, `VectorGroupError`,
   `RotationMatrixError`, `AccessorRegistrationError`.
-* `db.translate_moments(to_point, from_point=..., frame=...)`
-  (REQ-100): the rigid moment transfer `M' = M + r x F` on the
-  declared moment group, with the exact `[skew(r) | I]` Jacobian and
-  force-moment covariance when declared.
+* `db.translate_moments(to_point, from_point=..., axis=..., force=...,
+  moment=...)` (REQ-100): the rigid moment transfer `M' = M + r x F` on
+  the declared moment group, with the exact `[skew(r) | I]` Jacobian
+  and force-moment covariance when declared; `force`/`moment` select
+  declared groups by name.
 * `itc.register_accessor(name)` (REQ-106): the sanctioned extension
   point. A class decorator registering a `db.<name>` accessor
   namespace, instantiated with the frame and cached per instance;

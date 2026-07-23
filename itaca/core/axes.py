@@ -351,16 +351,14 @@ class AxisRegistry:
 
     axes: Mapping[str, Axis] = field(default_factory=dict)
     vector_groups: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
-    group_frames: Mapping[str, str] = field(default_factory=dict)
+    group_axes: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "axes", MappingProxyType(dict(self.axes)))
         object.__setattr__(
             self, "vector_groups", MappingProxyType(dict(self.vector_groups))
         )
-        object.__setattr__(
-            self, "group_frames", MappingProxyType(dict(self.group_frames))
-        )
+        object.__setattr__(self, "group_axes", MappingProxyType(dict(self.group_axes)))
 
     @classmethod
     def with_builtins(cls) -> AxisRegistry:
@@ -374,22 +372,22 @@ class AxisRegistry:
         Raises
         ------
         RotationMatrixError
-            A frame of the same name is already registered.
+            An axis of the same name is already registered.
         """
         if axis.name in self.axes:
             raise RotationMatrixError(
                 f"axis '{axis.name}'",
-                "a frame of that name is already registered",
+                "an axis of that name is already registered",
                 "choose a distinct axis name, or resolve the existing one",
             )
         return AxisRegistry(
             axes={**self.axes, axis.name: axis},
             vector_groups=self.vector_groups,
-            group_frames=self.group_frames,
+            group_axes=self.group_axes,
         )
 
     def with_vector_group(
-        self, name: str, components: Sequence[str], frame: str = "body"
+        self, name: str, components: Sequence[str], axis: str = "body"
     ) -> AxisRegistry:
         """Return a new registry declaring a named component triplet.
 
@@ -399,10 +397,10 @@ class AxisRegistry:
             Group name.
         components : sequence of str
             Exactly three component variable names (x, y, z).
-        frame : str, optional
-            The frame the components are currently expressed in;
+        axis : str, optional
+            The axis system the components are currently expressed in;
             defaults to the canonical body axis (REQ-107). It must be a
-            registered or built-in frame.
+            registered or built-in axis.
 
         Raises
         ------
@@ -410,7 +408,7 @@ class AxisRegistry:
             The group does not have exactly three components, or a
             group of the same name is already declared.
         AxisNotFoundError
-            ``frame`` is not registered or built in.
+            ``axis`` is not registered or built in.
         """
         comps = tuple(components)
         if len(comps) != 3:
@@ -425,17 +423,17 @@ class AxisRegistry:
                 "a group of that name is already declared",
                 "choose a distinct group name, or resolve the existing one (REQ-38)",
             )
-        if frame != "body":
-            self.resolve(frame)
+        if axis != "body":
+            self.resolve(axis)
         return AxisRegistry(
             axes=self.axes,
             vector_groups={**self.vector_groups, name: comps},
-            group_frames={**self.group_frames, name: frame},
+            group_axes={**self.group_axes, name: axis},
         )
 
-    def group_frame(self, name: str) -> str:
-        """Return the source frame declared for a vector group (REQ-107)."""
-        return self.group_frames.get(name, "body")
+    def group_axis(self, name: str) -> str:
+        """Return the source axis system declared for a vector group (REQ-107)."""
+        return self.group_axes.get(name, "body")
 
     def is_empty(self) -> bool:
         """Return True when nothing user-defined is stored (built-ins aside)."""
@@ -445,7 +443,7 @@ class AxisRegistry:
         """Deterministic tokens for the state hash (REQ-103).
 
         An empty registry yields no tokens, so a VarFrame that never
-        registers a custom frame keeps the state hash it had before the
+        registers a custom axis keeps the state hash it had before the
         axis registry existed.
         """
         tokens: list[str] = []
@@ -457,7 +455,7 @@ class AxisRegistry:
                 tokens.append(f"axis|{name}|P|{axis.convention}|{axis.angles_from}")
         for name in sorted(self.vector_groups):
             comps = self.vector_groups[name]
-            tokens.append(f"vg|{name}|{comps}|{self.group_frame(name)}")
+            tokens.append(f"vg|{name}|{comps}|{self.group_axis(name)}")
         return tokens
 
     def resolve(self, name: str) -> Axis:
@@ -475,6 +473,6 @@ class AxisRegistry:
         known = sorted({*self.axes, *_BUILTINS})
         raise AxisNotFoundError(
             f"axis '{name}'",
-            "an unregistered coordinate frame was referenced",
+            "an unregistered axis system was referenced",
             f"register it first, or use one of {known} (REQ-38)",
         )

@@ -3,7 +3,7 @@
 Usage example (TDD anchor)::
 
     import itaca as itc
-    db = db.declare_vector("force", ["FX", "FY", "FZ"], frame="rig")
+    db = db.declare_vector("force", ["FX", "FY", "FZ"], axis="rig")
     rotated = db.rotate("wind")
 
 Each declared vector group is transformed from its own source frame to
@@ -72,7 +72,7 @@ class TestConstantRotation:
         # A group already in the rig frame, rotated back to body, undoes M.
         rig = Axis(name="rig", rotation_matrix=_M90)
         staged = db.register_axis(rig).declare_vector(
-            "force", ["FX", "FY", "FZ"], frame="rig"
+            "force", ["FX", "FY", "FZ"], axis="rig"
         )
         out = staged.rotate("body")
         # rig (1,0,0) -> body = M^T @ (1,0,0) = (0,1,0)... wait check:
@@ -254,7 +254,7 @@ class TestAdvancedUncertainty:
         )
         out = (
             dataclasses.replace(db, uncertainty=unc)
-            .declare_vector("force", ["FX", "FY", "FZ"], frame="stability")
+            .declare_vector("force", ["FX", "FY", "FZ"], axis="stability")
             .rotate("body")
         )
         # R = L_body @ L_sb^T = L_sb^T; dR/da = (dL_sb/da)^T.
@@ -414,7 +414,7 @@ class TestSharedAngle:
         )
         out = (
             dataclasses.replace(db, uncertainty=unc)
-            .declare_vector("force", ["FX", "FY", "FZ"], frame="stability")
+            .declare_vector("force", ["FX", "FY", "FZ"], axis="stability")
             .rotate("wind")
         )
         # source stability = Ry(alpha), target wind at beta=0 = Ry(alpha);

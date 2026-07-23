@@ -531,16 +531,23 @@ unresolvable vector groups raise \code{VectorGroupError}.
 
 \begin{reqbox}{REQ-100}{\stable}
 \textbf{Moment reference-point transfer.}\\
-\code{db.translate\_moments(to\_point, from\_point=None, frame=None,
-comment=None)} transfers every declared moment vector group between
-reference points via
+\code{db.translate\_moments(to\_point, from\_point=None, axis=None,
+force=None, moment=None, comment=None)} transfers the declared moment
+vector group between reference points via
 $\mathbf{M}' = \mathbf{M} + \mathbf{r} \times \mathbf{F}$
-(Section~\ref{sec:moment-transfer}). The offset $\mathbf{r}$ is expressed
-in the stated frame (default: the current frame). The transfer requires a
-resolvable force vector group; otherwise \code{VectorGroupError} is
-raised. The Jacobian is exact; covariance between force and moment
-channels is included when declared. History records source point, target
-point, and frame.
+(Section~\ref{sec:moment-transfer}), with
+$\mathbf{r} = \mathrm{from\_point} - \mathrm{to\_point}$. The offset is
+expressed in the groups' own axis system; \code{axis} must match it
+(a differing offset axis is rejected). \code{force} and \code{moment}
+select declared groups by name for non-standard naming; by default the
+groups named \code{"force"} / \code{"moment"} or the
+\code{(FX, FY, FZ)} / \code{(MX, MY, MZ)} variables are used, and the
+force and moment groups must share one axis system. The transfer
+requires a resolvable force and moment group; otherwise
+\code{VectorGroupError} is raised. The Jacobian $[\,\text{skew}(\mathbf{r})
+\mid I\,]$ is exact; covariance between force and moment channels is
+included when declared. History records source point, target point,
+and axis.
 \end{reqbox}
 
 \begin{reqbox}{REQ-101}{\stable}
@@ -566,19 +573,22 @@ providing both or neither raises \code{RotationMatrixError}.
 \end{reqbox}
 
 \begin{reqbox}{REQ-107}{\draft}
-\textbf{Per-group source frames and multi-frame data.}\\
+\textbf{Per-group source axes and multi-axis data.}\\
 Loaded data may already carry vector quantities in more than one
-coordinate frame (for example rig-frame balance channels alongside
-tunnel-frame reference vectors). \code{db.declare\_vector(name,
-components=[...], frame=...)} therefore binds each vector group to the
-frame its components are currently expressed in; the frame defaults to
-the canonical body axis when omitted. \code{db.rotate(target\_axis)}
-transforms each declared group from its own source frame to the
+coordinate axis system (for example rig-axis balance channels
+alongside tunnel-axis reference vectors). \code{db.declare\_vector(name,
+components=[...], axis=...)} therefore binds each vector group to the
+axis system its components are currently expressed in; the axis
+defaults to the canonical body axis when omitted. \code{db.rotate(target\_axis)}
+transforms each declared group from its own source axis to the
 target, composing through the canonical body axis, so groups in
-different source frames are handled correctly in a single call. A
-group whose source frame is not registered raises
-\code{AxisNotFoundError}. The source frame of every group is recorded
-in History and is part of the VarFrame state hash (REQ-103).
+different source axes are handled correctly in a single call. A
+group whose source axis is not registered raises
+\code{AxisNotFoundError}. The source axis of every group is recorded
+in History and is part of the VarFrame state hash (REQ-103). The
+surface uses ``axis'' for a coordinate system throughout, distinct
+from the \code{Frame=} container selector of \code{db.select}
+(REQ-20).
 \end{reqbox}
 
 \section{Uncertainty Quantification}

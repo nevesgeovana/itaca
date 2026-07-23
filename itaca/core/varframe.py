@@ -1180,11 +1180,11 @@ class VarFrame:
         name: str,
         components: Sequence[str],
         *,
-        frame: str = "body",
+        axis: str = "body",
         history: bool = False,
         comment: str | None = None,
     ) -> VarFrame:
-        """Declare a named vector group and its source frame (REQ-38, REQ-107).
+        """Declare a named vector group and its source axis (REQ-38, REQ-107).
 
         Parameters
         ----------
@@ -1193,10 +1193,10 @@ class VarFrame:
         components : sequence of str
             Exactly three component variable names (x, y, z), each
             present in the VarFrame.
-        frame : str, optional
-            The frame the components are currently expressed in;
+        axis : str, optional
+            The axis system the components are currently expressed in;
             defaults to the canonical body axis (REQ-107). Must be a
-            registered or built-in frame.
+            registered or built-in axis.
         history : bool, optional
             In draft mode, record only when True (REQ-10).
         comment : str or None, optional
@@ -1213,7 +1213,7 @@ class VarFrame:
         VectorGroupError
             Not exactly three components, or a component is absent.
         AxisNotFoundError
-            ``frame`` is not registered.
+            ``axis`` is not registered.
 
         Examples
         --------
@@ -1224,7 +1224,7 @@ class VarFrame:
         ...     dims=["a"]
         ... )
         >>> out = db.declare_vector("force", ["FX", "FY", "FZ"])
-        >>> out.axes.group_frame("force")
+        >>> out.axes.group_axis("force")
         'body'
         """
         missing = [c for c in components if c not in self.vars]
@@ -1234,11 +1234,11 @@ class VarFrame:
                 f"declare_vector('{name}') names variables absent from the frame",
                 f"declare only present variables: {list(self.vars)} (REQ-38)",
             )
-        new_axes = self.axes.with_vector_group(name, components, frame)
+        new_axes = self.axes.with_vector_group(name, components, axis)
         return self._derive(
             operation=(
                 f"declare_vector(name='{name}', components={list(components)}, "
-                f"frame='{frame}')"
+                f"axis='{axis}')"
             ),
             comment=comment,
             history=history,
@@ -1253,18 +1253,18 @@ class VarFrame:
         history: bool = False,
         comment: str | None = None,
     ) -> VarFrame:
-        """Express detected vector groups in the target frame (REQ-38).
+        """Express detected vector groups in the target axis (REQ-38).
 
         Each declared or default-named vector group is transformed from
-        its own source frame to ``target_axis``, composing through the
-        canonical body axis (REQ-107). Condition-dependent frames are
+        its own source axis to ``target_axis``, composing through the
+        canonical body axis (REQ-107). Condition-dependent axes are
         evaluated per grid point (REQ-101); the rotation is the exact
         Jacobian, and angle uncertainty enters by the chain rule.
 
         Parameters
         ----------
         target_axis : str
-            Name of the registered or built-in target frame.
+            Name of the registered or built-in target axis.
         vector_groups : sequence of str or None, optional
             Restrict to these group names; by default every declared
             group plus the auto-detected ``(FX, FY, FZ)`` and
@@ -1278,13 +1278,13 @@ class VarFrame:
         -------
         VarFrame
             A new VarFrame with the group components expressed in the
-            target frame. Uncertainty propagates through the rotation
+            target axis. Uncertainty propagates through the rotation
             (REQ-98, REQ-101); origin tags are preserved unchanged.
 
         Raises
         ------
         AxisNotFoundError
-            The target or a group's source frame is not registered.
+            The target or a group's source axis is not registered.
         VectorGroupError
             No vector group resolves, or a requested group is unknown.
         DataError
@@ -1331,13 +1331,15 @@ class VarFrame:
         *,
         to_point: Sequence[float],
         from_point: Sequence[float] | None = None,
-        frame: str | None = None,
+        axis: str | None = None,
+        force: str | None = None,
+        moment: str | None = None,
         history: bool = False,
         comment: str | None = None,
     ) -> VarFrame:
         """Transfer declared moments to a new reference point (REQ-100).
 
-        Applies ``M' = M + r x F`` to every declared moment group, with
+        Applies ``M' = M + r x F`` to the moment group, with
         ``r = from_point - to_point`` (the rigid transfer
         ``M_B = M_A + (r_A - r_B) x F``).
 
@@ -1347,10 +1349,18 @@ class VarFrame:
             The new moment reference point ``[x, y, z]``.
         from_point : sequence of float or None, optional
             The current reference point; defaults to the origin.
-        frame : str or None, optional
-            The frame the offset is expressed in; recorded in History
-            (the offset and the force group are taken in the same
-            frame).
+        axis : str or None, optional
+            The axis system the offset is expressed in; must match the
+            force and moment groups' axis (they are all taken in one
+            axis system). ``None`` uses the groups' own axis.
+        force : str or None, optional
+            Name of the declared force group to transfer with; by
+            default the group named ``"force"`` or the ``(FX, FY, FZ)``
+            variables.
+        moment : str or None, optional
+            Name of the declared moment group to transfer; by default
+            the group named ``"moment"`` or the ``(MX, MY, MZ)``
+            variables.
         history : bool, optional
             In draft mode, record only when True (REQ-10).
         comment : str or None, optional
@@ -1369,7 +1379,8 @@ class VarFrame:
         VectorGroupError
             No resolvable force or moment group.
         DataError
-            A reference point is not length three.
+            A reference point is not length three, the groups are in
+            different axis systems, or ``axis`` differs from theirs.
 
         Examples
         --------
@@ -1391,7 +1402,9 @@ class VarFrame:
             self,
             to_point=to_point,
             from_point=from_point,
-            frame=frame,
+            axis=axis,
+            force=force,
+            moment=moment,
             history=history,
             comment=comment,
         )

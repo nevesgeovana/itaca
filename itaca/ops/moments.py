@@ -39,21 +39,33 @@ def _skew(r: _Array) -> _Array:
 
 
 def _group(
-    db: VarFrame, role: str, default: tuple[str, str, str]
+    db: VarFrame,
+    role: str,
+    default: tuple[str, str, str],
+    selected: str | None,
 ) -> tuple[tuple[str, str, str], str]:
-    """Resolve the components and source frame of the force/moment group.
+    """Resolve the components and source axis of the force/moment group.
 
-    A group declared under the role name (``"force"`` / ``"moment"``)
-    wins, honoring its per-group source frame (REQ-107); otherwise the
-    default-named ``(FX, FY, FZ)`` / ``(MX, MY, MZ)`` variables are used
-    in the body frame.
+    An explicit ``selected`` group name wins; otherwise a group
+    declared under the role name (``"force"`` / ``"moment"``), honoring
+    its per-group source axis (REQ-107); otherwise the default-named
+    ``(FX, FY, FZ)`` / ``(MX, MY, MZ)`` variables in the body axis.
     """
+    if selected is not None:
+        if selected not in db.axes.vector_groups:
+            raise VectorGroupError(
+                f"the {role} group '{selected}'",
+                "translate_moments could not find that declared group",
+                f"declare it with db.declare_vector, or drop {role}= (REQ-100)",
+            )
+        comps = db.axes.vector_groups[selected]
+        return comps, db.axes.group_axis(selected)  # type: ignore[return-value]
     if role in db.axes.vector_groups:
         comps = db.axes.vector_groups[role]
-        return comps, db.axes.group_frame(role)  # type: ignore[return-value]
+        return comps, db.axes.group_axis(role)  # type: ignore[return-value]
     for name, comps in db.axes.vector_groups.items():
         if tuple(comps) == default:
-            return default, db.axes.group_frame(name)
+            return default, db.axes.group_axis(name)
     if all(c in db.vars for c in default):
         return default, "body"
     raise VectorGroupError(
@@ -81,7 +93,9 @@ def translate_moments(
     *,
     to_point: Sequence[float],
     from_point: Sequence[float] | None = None,
-    frame: str | None = None,
+    axis: str | None = None,
+    force: str | None = None,
+    moment: str | None = None,
     history: bool = False,
     comment: str | None = None,
 ) -> VarFrame:
@@ -90,20 +104,21 @@ def translate_moments(
     See ``VarFrame.translate_moments`` for the full parameter
     description.
     """
-    force, force_frame = _group(db, "force", _FORCE)
-    moment, moment_frame = _group(db, "moment", _MOMENT)
-    if force_frame != moment_frame:
+    force_comps, force_axis = _group(db, "force", _FORCE, force)
+    moment_comps, moment_axis = _group(db, "moment", _MOMENT, moment)
+    if force_axis != moment_axis:
         raise DataError(
-            f"force frame '{force_frame}' and moment frame '{moment_frame}'",
-            "translate_moments needs the force and moment groups in the same frame",
-            "rotate them into a common frame first (REQ-100)",
+            f"force axis '{force_axis}' and moment axis '{moment_axis}'",
+            "translate_moments needs the force and moment groups in the "
+            "same axis system",
+            "rotate them into a common axis first (REQ-100)",
         )
-    if frame is not None and frame != force_frame:
+    if axis is not None and axis != force_axis:
         raise DataError(
-            f"frame='{frame}' against the group frame '{force_frame}'",
-            "translate_moments takes the offset in the group's own frame; "
-            "a differing offset frame is not rotated yet",
-            f"pass frame='{force_frame}' or None, or rotate the data first (REQ-100)",
+            f"axis='{axis}' against the group axis '{force_axis}'",
+            "translate_moments takes the offset in the group's own axis "
+            "system; a differing offset axis is not rotated yet",
+            f"pass axis='{force_axis}' or None, or rotate the data first (REQ-100)",
         )
     to_pt = _point(to_point, "to_point")
     from_pt = _point(from_point, "from_point")
@@ -112,14 +127,14 @@ def translate_moments(
 
     content = content_of(db)
     shape = db.shape
-    f = np.stack([content.values[c] for c in force], axis=-1)
-    m = np.stack([content.values[c] for c in moment], axis=-1)
+    f = np.stack([content.values[c] for c in force_comps], axis=-1)
+    m = np.stack([content.values[c] for c in moment_comps], axis=-1)
     # M' = M + r x F, per cell.
     transferred = m + np.einsum("kj,...j->...k", skew, f)
-    for i, comp in enumerate(moment):
+    for i, comp in enumerate(moment_comps):
         content.values[comp] = transferred[..., i]
 
-    channels = (*force, *moment)
+    channels = (*force_comps, *moment_comps)
     jac = np.hstack([skew, np.eye(3)])  # 3x6: M' = [S | I] @ [F; M]
     for label in ("systematic", "random"):
         component = getattr(content, label)
@@ -130,13 +145,13 @@ def translate_moments(
         cov = (u[..., :, None] * u[..., None, :]) * corr
         cov_m = np.einsum("ki,...ij,lj->...kl", jac, cov, jac)
         var = np.einsum("...kk->...k", cov_m)
-        for i, comp in enumerate(moment):
+        for i, comp in enumerate(moment_comps):
             component[comp] = np.sqrt(np.maximum(var[..., i], 0.0))
 
-    frame_note = f", frame='{frame}'" if frame is not None else ""
+    axis_note = f", axis='{axis}'" if axis is not None else ""
     operation = (
         f"translate_moments(to_point={list(to_pt)}, "
-        f"from_point={list(from_pt)}{frame_note})"
+        f"from_point={list(from_pt)}{axis_note})"
     )
     return rebuild(db, content, operation=operation, comment=comment, history=history)
 

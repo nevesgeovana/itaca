@@ -6,6 +6,7 @@ From data to wisdom. Import convention::
 """
 
 from itaca.core.accessors import register_accessor
+from itaca.core.axes import Axis
 from itaca.core.errors import ITACAError
 from itaca.core.provenance import set_mode, set_user
 from itaca.core.sentinels import no_default
@@ -15,6 +16,7 @@ from itaca.io.loader import load
 from itaca.ops.concat import concat
 
 __all__ = [
+    "Axis",
     "ITACAError",
     "__version__",
     "concat",

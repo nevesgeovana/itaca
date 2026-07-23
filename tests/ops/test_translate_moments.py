@@ -140,8 +140,8 @@ class TestDeclaredGroups:
         rig = Axis(name="rig", rotation_matrix=np.eye(3))
         staged = (
             db.register_axis(rig)
-            .declare_vector("force", ["FX", "FY", "FZ"], frame="rig")
-            .declare_vector("moment", ["MX", "MY", "MZ"], frame="rig")
+            .declare_vector("force", ["FX", "FY", "FZ"], axis="rig")
+            .declare_vector("moment", ["MX", "MY", "MZ"], axis="rig")
         )
         out = staged.translate_moments(to_point=[0.1, 0.0, 0.0])
         r = np.array([-0.1, 0.0, 0.0])
@@ -156,17 +156,37 @@ class TestDeclaredGroups:
         rig = Axis(name="rig", rotation_matrix=np.eye(3))
         staged = (
             db.register_axis(rig)
-            .declare_vector("force", ["FX", "FY", "FZ"], frame="rig")
-            .declare_vector("moment", ["MX", "MY", "MZ"], frame="body")
+            .declare_vector("force", ["FX", "FY", "FZ"], axis="rig")
+            .declare_vector("moment", ["MX", "MY", "MZ"], axis="body")
         )
-        with pytest.raises(DataError, match="same frame"):
+        with pytest.raises(DataError, match="same axis"):
             staged.translate_moments(to_point=[0.1, 0.0, 0.0])
 
     def test_mismatched_offset_frame_rejected(self, db: VarFrame) -> None:
         from itaca.core.errors import DataError
 
         with pytest.raises(DataError, match="offset"):
-            _declared(db).translate_moments(to_point=[0.1, 0.0, 0.0], frame="stability")
+            _declared(db).translate_moments(to_point=[0.1, 0.0, 0.0], axis="stability")
+
+    def test_force_moment_selectors(self) -> None:
+        # Non-standard group names, picked explicitly via force=/moment=.
+        rows = [[0.0, 1.0, 2.0, 3.0, 0.0, 0.0, 0.0]]
+        db = itc.load(
+            np.array(rows), names=["i", "TX", "TY", "TZ", "NX", "NY", "NZ"]
+        ).pivot(dims=["i"])
+        staged = db.declare_vector("thrust", ["TX", "TY", "TZ"]).declare_vector(
+            "torque", ["NX", "NY", "NZ"]
+        )
+        out = staged.translate_moments(
+            to_point=[0.1, 0.0, 0.0], force="thrust", moment="torque"
+        )
+        r = np.array([-0.1, 0.0, 0.0])
+        expected = np.cross(r, np.array([1.0, 2.0, 3.0]))
+        assert out.vars["NY"].values[0] == pytest.approx(expected[1])
+
+    def test_unknown_selected_group_rejected(self, db: VarFrame) -> None:
+        with pytest.raises(VectorGroupError, match="ghost"):
+            _declared(db).translate_moments(to_point=[0.1, 0.0, 0.0], force="ghost")
 
 
 class TestPartialAndRandom:

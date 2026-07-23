@@ -6,7 +6,7 @@ Usage example (TDD anchor)::
     import numpy as np
     db = itc.load(arr, names=["alpha", "FX", "FY", "FZ"]).pivot(dims=["alpha"])
     db = db.register_axis(Axis(name="rig", rotation_matrix=np.eye(3)))
-    db = db.declare_vector("aero_force", ["FX", "FY", "FZ"], frame="rig")
+    db = db.declare_vector("aero_force", ["FX", "FY", "FZ"], axis="rig")
 
 Registering a frame or declaring a vector group returns a new VarFrame,
 records History, and changes the state hash (axes are part of the
@@ -67,24 +67,24 @@ class TestDeclareVector:
     def test_declares_group_with_frame(self, db: VarFrame) -> None:
         out = db.register_axis(
             Axis(name="rig", rotation_matrix=np.eye(3))
-        ).declare_vector("aero_force", ["FX", "FY", "FZ"], frame="rig")
+        ).declare_vector("aero_force", ["FX", "FY", "FZ"], axis="rig")
         assert out.axes.vector_groups["aero_force"] == ("FX", "FY", "FZ")
 
     def test_frame_defaults_to_body(self, db: VarFrame) -> None:
         # REQ-107: an omitted frame is the canonical body axis.
         out = db.declare_vector("aero_force", ["FX", "FY", "FZ"])
-        assert out.axes.group_frame("aero_force") == "body"
+        assert out.axes.group_axis("aero_force") == "body"
 
     def test_source_frame_recorded(self, db: VarFrame) -> None:
         out = db.register_axis(
             Axis(name="rig", rotation_matrix=np.eye(3))
-        ).declare_vector("aero_force", ["FX", "FY", "FZ"], frame="rig")
-        assert out.axes.group_frame("aero_force") == "rig"
+        ).declare_vector("aero_force", ["FX", "FY", "FZ"], axis="rig")
+        assert out.axes.group_axis("aero_force") == "rig"
 
     def test_unknown_source_frame_rejected(self, db: VarFrame) -> None:
         # REQ-107: a group in an unregistered frame raises.
         with pytest.raises(AxisNotFoundError, match="tunnel"):
-            db.declare_vector("aero_force", ["FX", "FY", "FZ"], frame="tunnel")
+            db.declare_vector("aero_force", ["FX", "FY", "FZ"], axis="tunnel")
 
     def test_unknown_component_rejected(self, db: VarFrame) -> None:
         with pytest.raises(VectorGroupError, match="MZ"):
@@ -111,7 +111,7 @@ class TestAxesPersistence:
             ),
         )
         original = db.register_axis(rig).declare_vector(
-            "aero_force", ["FX", "FY", "FZ"], frame="rig"
+            "aero_force", ["FX", "FY", "FZ"], axis="rig"
         )
         path = original.save(tmp_path / "frames.itc")
         reopened = itc.open(path)
@@ -119,5 +119,5 @@ class TestAxesPersistence:
             reopened.axes.resolve("rig").matrix_at({}), rig.matrix_at({})
         )
         assert reopened.axes.vector_groups["aero_force"] == ("FX", "FY", "FZ")
-        assert reopened.axes.group_frame("aero_force") == "rig"
+        assert reopened.axes.group_axis("aero_force") == "rig"
         assert reopened.state_hash == original.state_hash
