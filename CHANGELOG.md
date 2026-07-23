@@ -8,6 +8,19 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Added
 
+* `itc.no_default` (REQ-105): typed no-default sentinel in
+  `core/sentinels.py`, an enum singleton whose type is expressible in
+  annotations, distinguishing an argument that was not passed from an
+  explicit `None`. Adopted by the M1 operation signatures as they
+  land.
+* Release workflow `.github/workflows/release.yml`: build, a
+  tag-to-version consistency check, and PyPI publish through trusted
+  publishing (OIDC, no stored token), triggered by `v*` tags (M1
+  plan Phase B0).
+* `docs/M1_EXECUTION_PLAN.md`: the approved M1 plan (v0.2.0
+  computation scope and stretch split, re-baseline of 2026-07-23);
+  the accompanying SRS document 0.2.0 changes are recorded in
+  `docs/srs/` Chapter 11 and the revision history.
 * `docs/SISTER_PYFLIGHTSTREAM.md`: the sister library page for the
   pyflightstream co-development (DD-22, DD-23), linked from the
   README design record.
