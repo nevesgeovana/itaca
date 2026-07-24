@@ -48,6 +48,37 @@ def git(repo: Path, *args: str) -> str:
     return done.stdout.strip()
 
 
+# pytest-cov starts coverage inside any Python subprocess that inherits
+# these, through its .pth hook. The hook script runs with cwd set to a
+# throwaway repository, so the child cannot find pyproject.toml and
+# starts coverage WITHOUT branch=true. Combining statement-only data
+# with the parent's branch data then aborts the whole run at teardown,
+# after every test has passed. That turned CI red on three legs while
+# the local Windows run stayed green, because the child wrote its
+# partial file into its own cwd here and into the repository root
+# there. The hook is not part of the measured package, so the correct
+# child environment is one that does not measure at all.
+_COVERAGE_SUBPROCESS_VARS = (
+    "COV_CORE_SOURCE",
+    "COV_CORE_CONFIG",
+    "COV_CORE_DATAFILE",
+    "COV_CORE_CONTEXT",
+    "COVERAGE_PROCESS_START",
+)
+
+
+def child_env(ledger: str | None = None) -> dict[str, str]:
+    """The environment a hook subprocess runs in."""
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k != LEDGER_ENV and k not in _COVERAGE_SUBPROCESS_VARS
+    }
+    if ledger is not None:
+        env[LEDGER_ENV] = ledger
+    return env
+
+
 def judge(repo: Path, command: str, ledger: str | None = None) -> tuple[str, str]:
     """Run the hook on ``command`` and return (decision, reason).
 
@@ -56,9 +87,7 @@ def judge(repo: Path, command: str, ledger: str | None = None) -> tuple[str, str
     a ledger outside the repository, and a real open incident would then
     fail tests that are not about incidents at all.
     """
-    env = {k: v for k, v in os.environ.items() if k != LEDGER_ENV}
-    if ledger is not None:
-        env[LEDGER_ENV] = ledger
+    env = child_env(ledger)
     done = subprocess.run(
         [sys.executable, str(HOOK)],
         input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}}),
@@ -579,3 +608,26 @@ def test_the_review_deny_names_the_ref_that_is_behind_head(repo: Path) -> None:
     # Naming HEAD here is the loop: the writer would stamp HEAD, which
     # does not cover the tag, and the same denial repeats.
     assert "<passes,that,ran> v0.1.0" in reason, reason
+
+
+def test_the_hook_subprocess_does_not_inherit_coverage_measurement() -> None:
+    """A child that measures without branch data aborts the whole run.
+
+    This is the defect that turned CI red on every test leg of commit
+    48009bc while the local run stayed green: the failure is in
+    teardown, after all tests pass, so nothing in the suite pointed at
+    it. The guard asserts the contract directly rather than waiting for
+    a platform where the partial file lands somewhere fatal.
+    """
+    env = child_env()
+    leaked = [k for k in env if k.startswith("COV_CORE_") or "COVERAGE" in k]
+    assert not leaked, f"hook subprocesses would start coverage: {leaked}"
+
+
+def test_no_partial_coverage_file_survives_a_hook_run(repo: Path) -> None:
+    """The observable symptom, pinned where a future change would show."""
+    root = Path(__file__).resolve().parents[1]
+    before = set(root.glob(".coverage.*"))
+    add_commit(repo, "one")
+    decide(repo, f"{PUSH} origin main")
+    assert not set(root.glob(".coverage.*")) - before
