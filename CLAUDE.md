@@ -127,11 +127,11 @@ push and denied before the attestation runs.
 A defect is fixed at its **structural cause on its first occurrence**,
 not on its second. The fix is not complete until it carries a guard
 that makes recurrence impossible and the evidence that the guard
-blocks the original failure when re-run. Documentation is not a guard:
-a note, a comment, or a line in this file records a guard, and if the
-only enforcement is that someone reads and complies, the failure
-recurs. A guard nobody tried to break is a guess, so mutate the code
-it protects and show the guard fails.
+blocks the original failure when re-run. The canonical statement of the
+rule, including why documentation is not a guard and why a guard must be
+proven by mutation, is the shared ledger's own README (located by
+`ITACA_INCIDENT_LEDGER`); this section mirrors it and does not restate
+it, so the two cannot drift.
 
 Incidents are recorded in the shared ledger with the sister
 repository, located by the `ITACA_INCIDENT_LEDGER` environment

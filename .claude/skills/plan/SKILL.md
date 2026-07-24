@@ -81,8 +81,16 @@ writes an entry):
 
 After writing, validate the folder so a malformed entry surfaces now
 rather than in a later session. The checker for the one-file-per-entry
-shape is `check_plan_entries.py` (**not** `check_plan.py`, which
-validates the superseded CSV shape and does not apply to this folder).
+shape is the shared-kit `check_plan_kit.py`. It supersedes this repo's
+former `check_plan_entries.py` and the sister repository's `check_plan.py`:
+both were live one-file-per-entry folder validators (neither a CSV
+validator), and the only reason two could not coexist was that their
+status and priority vocabularies conflicted. That conflict is the
+coordination decision `COORD-vocab`, settled before the kit vendored a
+single checker; `check_plan_kit.py` keeps every strict guard this repo
+had (timestamp id, required `ref`, dropped-must-say-why, reject-unknown)
+and widens the vocabulary to the union of both, so every existing itaca
+entry still validates.
 
 Resolve the checker from configuration, never from a machine-absolute
 literal in this committed file. This mirrors exactly how the incident
@@ -94,9 +102,9 @@ every other clone, with a remedy the reader cannot perform.
 The environment variable is `ITACA_PLAN_VALIDATOR`. Read it; never
 assume a path.
 
-- It names the directory holding `check_plan_entries.py`, or the
-  checker file itself. If it points at a directory, look for
-  `check_plan_entries.py` inside it.
+- It names the directory holding `check_plan_kit.py`, or the checker
+  file itself. If it points at a directory, look for `check_plan_kit.py`
+  inside it.
 - **Unset means the check is skipped**, not failed: a clone that never
   configured the validator can still work, exactly as an unset incident
   ledger does not apply. Say plainly in the session record that the
@@ -109,7 +117,7 @@ When it is set and readable, run it against the ledger folder, for
 example:
 
 ```
-python "$ITACA_PLAN_VALIDATOR/check_plan_entries.py" _private/plan
+python "$ITACA_PLAN_VALIDATOR/check_plan_kit.py" _private/plan
 ```
 
 or, when the variable names the file directly:
@@ -124,8 +132,10 @@ empty body, an id that does not match the filename or the timestamp
 shape, or a repeated id). Fix the entry and re-run; a validator that is
 run and ignored is the same as no validator.
 
-If building this surfaces that `check_plan_entries.py` should become a
-stamped kit artifact vendored at a repo-relative path (it is already
-named as kit in the coordination MIGRATION_PENDING), register that as a
-note so the kit build picks it up, and a repo-relative fallback can then
-sit beside the environment variable.
+`check_plan_kit.py` is now a stamped shared-kit artifact: its canonical
+master lives at the coordination level and the copy this skill runs is a
+derived, drift-pinned vendoring of it. A change to the checker is made in
+the kit and re-vendored, never hand-edited here. Its mutation companion
+`check_plan_kit_mutations.py` sits beside it and is exercised by
+`tests/test_plan_validator.py`, so a checker that silently stopped
+failing is caught by the suite.
