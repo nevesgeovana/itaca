@@ -236,11 +236,11 @@ class History:
                 f"history range {lo}..{hi}",
                 "to_pipeline found no replayable operation in the range, so "
                 "the pipeline would apply as a silent no-op",
-                "re-run the processing in draft mode with history=True per "
-                "operation, or switch to production mode, and lift the "
-                "pipeline from that frame; a frame reopened from a pre-0.2.0 "
-                ".itc archive carries no replay steps, so re-export the "
-                "archive with this version first (REQ-10, REQ-53)",
+                "apply at least one replayable operation before lifting a "
+                "pipeline; if you did, either the frame is in draft mode and "
+                "the operations ran without history=True, or it was reopened "
+                "from a pre-0.2.0 .itc archive that carries no replay steps, "
+                "which needs re-exporting with this version (REQ-10, REQ-53)",
             )
         from itaca.core.version import __version__
 

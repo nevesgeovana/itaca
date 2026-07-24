@@ -141,9 +141,10 @@ def test_a_blanket_ref_push_cannot_be_scoped(gate: ModuleType, command: str) -> 
     the honest answer; the deny message asks for the ref by name.
     """
     _, _, args = gate._find_git_push(command)
-    commits, problem = gate._push_scope(args, Path("."))
+    commits, problem, fix = gate._push_scope(args, Path("."))
     assert commits == []
     assert "cannot enumerate" in problem, command
+    assert fix, command
 
 
 def test_the_c_option_target_is_extracted(gate: ModuleType) -> None:

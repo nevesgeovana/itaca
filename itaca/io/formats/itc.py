@@ -54,9 +54,23 @@ def _steps_digest(entries: list[dict[str, Any]]) -> str:
     the state hash still matched. This digest closes that gap without
     widening REQ-103 scope.
     """
-    canonical = json.dumps(
-        [entry.get("step") for entry in entries], sort_keys=True, allow_nan=False
-    )
+    try:
+        canonical = json.dumps(
+            [entry.get("step") for entry in entries], sort_keys=True, allow_nan=False
+        )
+    except (TypeError, ValueError) as exc:
+        # REQ-35 admits any scalar fill, including a non-finite one, and
+        # it is recorded in the replay kwargs. Only persisting it can
+        # fail, and it must fail with the three parts, not with the
+        # stdlib ValueError the encoder raises.
+        raise DataError(
+            "archive replay steps",
+            "a recorded replay argument has no RFC 8259 JSON "
+            f"representation, so the archive cannot be written ({exc})",
+            "pass a finite number or a JSON-native value for that "
+            "argument; the archive must stay readable by any JSON tool "
+            "(REQ-70)",
+        ) from exc
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -319,6 +333,18 @@ def open_itc(path: str | Path) -> VarFrame:
             f"itc.open could not read it ({error.__class__.__name__})",
             "check the path; .itc files are written by db.save (REQ-70)",
         ) from error
+    # Answer the schema question before reconstructing anything. Parsing
+    # first meant an archive this build cannot read failed with a message
+    # about a bad replay step, sending the reader to re-export a file
+    # whose only problem was being newer than their ITACA.
+    schema = metadata.get("schema")
+    if schema not in _READABLE_SCHEMAS:
+        raise DataError(
+            f"archive '{target}' with schema {schema!r}",
+            "itc.open read an unknown .itc schema",
+            f"this build reads {sorted(_READABLE_SCHEMAS)}; upgrade ITACA to "
+            "open a newer archive (REQ-70)",
+        )
     dims = {
         entry["name"]: Dimension(
             name=entry["name"],
@@ -403,31 +429,40 @@ def open_itc(path: str | Path) -> VarFrame:
         correlation=correlation,
         axes=axes,
     )
-    schema = metadata.get("schema")
-    if schema not in _READABLE_SCHEMAS:
+    # The digest requirement follows what the archive CARRIES, never what
+    # it claims to be. The schema string is ordinary metadata that no
+    # digest covers, so gating the check on it meant an editor could
+    # rewrite the schema to 1, keep the poisoned steps, and skip the
+    # check entirely while the state hash still matched, because steps
+    # are deliberately outside REQ-103. Three review passes found that
+    # independently, which is how load-bearing a version field looks
+    # when it is asked to carry integrity.
+    carries_steps = any(
+        isinstance(entry, dict) and entry.get("step") is not None
+        for entry in history_payload
+    )
+    recorded_steps = metadata.get("steps_hash")
+    if (carries_steps or schema != "itaca-itc/1") and not isinstance(
+        recorded_steps, str
+    ):
         raise DataError(
-            f"archive '{target}' with schema {schema!r}",
-            "itc.open read an unknown .itc schema",
-            f"this build reads {sorted(_READABLE_SCHEMAS)}; upgrade ITACA to "
-            "open a newer archive (REQ-70)",
+            f"archive '{target}'",
+            "itc.open read an archive that carries replay steps but has no "
+            "'steps_hash' in metadata.json, so its stored recipe cannot be "
+            "verified",
+            "a genuine schema 1 archive carries no replay steps; re-export "
+            "this one from the source data (REQ-54)",
         )
-    if schema != "itaca-itc/1":
-        recorded_steps = metadata.get("steps_hash")
-        if not isinstance(recorded_steps, str):
-            raise DataError(
-                f"archive '{target}'",
-                "itc.open read a schema 2 archive with no 'steps_hash', so its "
-                "replay steps cannot be verified",
-                "re-export the archive from the source data (REQ-54)",
-            )
-        if recorded_steps != _steps_digest(history_payload):
-            raise HashMismatchError(
-                f"archive '{target}'",
-                "itc.open found drift between the recorded and the recomputed "
-                "replay steps, so the stored recipe was modified",
-                "the archive was edited after it was written; re-export it "
-                "from the source data (REQ-54)",
-            )
+    if isinstance(recorded_steps, str) and recorded_steps != _steps_digest(
+        history_payload
+    ):
+        raise HashMismatchError(
+            f"archive '{target}'",
+            "itc.open found drift between the recorded and the recomputed "
+            "replay steps, so the stored recipe was modified",
+            "the archive was edited after it was written; re-export it "
+            "from the source data (REQ-54)",
+        )
     recorded_state = metadata.get("state_hash")
     if not isinstance(recorded_state, str):
         raise DataError(

@@ -108,11 +108,9 @@ persists it at schema \code{itaca-itc/2} so a reopened archive can still
 lift its recipe. The archive section (Section~\ref{sec:itc-archive}) was
 amended to match, naming both schema versions, the \code{step} member of
 \code{history.json}, and the \code{steps\_hash} digest in
-\code{metadata.json}. That digest covers the recipe while the REQ-103
-state hash covers the recovered data: without it an edited step passes
-the state check, because the stored data still matches itself, and the
-edited recipe then steers the next replay. DD-28 also records the replay
-representation itself:
+\code{metadata.json}, with the scope boundary against the REQ-103 state
+hash stated there and recorded in DD-30. REQ-103 scope is unchanged.
+DD-28 also records the replay representation itself:
 structured step re-dispatch rather than re-parsing the History display
 strings.
 

@@ -192,6 +192,18 @@ def _thaw(value: Any) -> Any:
     return value
 
 
+def _sibling(source: Path) -> str:
+    """Name the other reader when the suffix says which one was wanted.
+
+    A workflow now produces two suffixes, and the suffix is a free,
+    certain signal. Which fix a user saw must not depend on whether the
+    bytes happened to decode as UTF-8, so both read failures use this.
+    """
+    if source.suffix == ".itc":
+        return "; this looks like a .itc archive, which itc.open reads"
+    return ""
+
+
 def _reject_unserializable(position: int, step: PipelineStep) -> None:
     """Raise a three-part error for a step that cannot be written."""
     for name, value in step.kwargs.items():
@@ -272,8 +284,10 @@ class PipelineStep:
             The frame to apply the recorded call to.
         history : bool, optional
             In draft mode, record the replayed operation only when True
-            (REQ-10). A frame replayed with the default carries no
-            History, so a pipeline cannot be lifted from it afterwards.
+            (REQ-10); in production mode every replayed operation is
+            recorded either way. A draft-mode replay left at the default
+            appends no entry for these steps, so no pipeline can be
+            lifted from the result.
 
         Returns
         -------
@@ -333,6 +347,13 @@ class Pipeline:
         this pipeline was lifted from (SRS Chapter 4, the .itc_pipe section).
     itaca_version : str, optional
         The ITACA version that created the pipeline.
+
+    Raises
+    ------
+    DataError
+        ``steps`` is empty. Applying such a pipeline would return the
+        target unchanged and unrecorded, so it is refused where it is
+        built, where it is constructed, and where it is read.
 
     Examples
     --------
@@ -429,8 +450,10 @@ class Pipeline:
             reference.
         history : bool, optional
             In draft mode, record each replayed operation only when True
-            (REQ-10). A frame replayed with the default carries no
-            History, so a pipeline cannot be lifted from it afterwards.
+            (REQ-10); in production mode every replayed operation is
+            recorded either way. A draft-mode replay left at the default
+            appends no entry for these steps, so no pipeline can be
+            lifted from the result.
 
         Returns
         -------
@@ -492,6 +515,11 @@ class Pipeline:
         comment, and a content hash. The write is atomic (temp file plus
         ``os.replace``).
 
+        Readable for review and for diffing in version control, not for
+        hand editing: the content hash rejects any change made after the
+        write, so a step is altered by re-running the operation and
+        lifting a new pipeline.
+
         Parameters
         ----------
         path : str or path-like
@@ -552,10 +580,13 @@ def load_pipeline(path: str | os.PathLike[str]) -> Pipeline:
     Raises
     ------
     DataError
-        The file is unparseable, its schema is unknown, its payload is
-        malformed, or it names a call that is not replayable.
+        The file is missing or unreadable, unparseable, its schema is
+        unknown, its payload is malformed, it records no steps, or it
+        names a call that is not replayable.
     HashMismatchError
-        The content hash does not match the payload.
+        The content hash does not match the payload. The file is
+        readable for review and diffing, not for hand editing: change a
+        step by re-running the operation and lifting a new pipeline.
 
     Examples
     --------
@@ -575,21 +606,25 @@ def load_pipeline(path: str | os.PathLike[str]) -> Pipeline:
         raise DataError(
             f"file '{source}'",
             "load_pipeline could not parse the .itc_pipe JSON",
-            "pass a file written by Pipeline.save (REQ-55)",
+            f"pass a file written by Pipeline.save (REQ-55){_sibling(source)}",
         ) from exc
     except (OSError, UnicodeDecodeError) as exc:
         # A missing path and a binary file are the two likeliest first-try
-        # mistakes, and both used to escape as stdlib exceptions. The
-        # suffix says which reader the caller wanted, so name it.
-        sibling = (
-            "; this looks like a .itc archive, which itc.open reads"
-            if source.suffix == ".itc"
-            else ""
-        )
+        # mistakes, and both used to escape as stdlib exceptions. They
+        # need different remedies: a typo wants "check the path", not
+        # "re-save your pipeline", which reads as if the file were the
+        # wrong kind when it is simply not there.
+        if not source.exists():
+            raise DataError(
+                f"file '{source}'",
+                f"load_pipeline could not find it ({type(exc).__name__})",
+                "check the path; .itc_pipe files are written by Pipeline.save (REQ-55)",
+            ) from exc
         raise DataError(
             f"file '{source}'",
             f"load_pipeline could not read it ({type(exc).__name__}: {exc})",
-            f"pass a .itc_pipe file written by Pipeline.save (REQ-55){sibling}",
+            f"pass a .itc_pipe file written by Pipeline.save "
+            f"(REQ-55){_sibling(source)}",
         ) from exc
     _require(
         isinstance(payload, dict),
@@ -644,7 +679,10 @@ def load_pipeline(path: str | os.PathLike[str]) -> Pipeline:
             call in REPLAYABLE_CALLS,
             source,
             f"read step {index} naming {call!r}, which is not replayable",
-            f"expected one of {sorted(REPLAYABLE_CALLS)} (REQ-54)",
+            "re-extract the recipe with db.history.to_pipeline().save(path); "
+            "the replayable operations are fixed and the file is not "
+            "hand-editable, so correcting the name in place will fail the "
+            "content hash (REQ-54)",
         )
         kwargs = entry.get("kwargs", {})
         _require(

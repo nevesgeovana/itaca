@@ -641,8 +641,11 @@ def test_translate_moments_replays_on_a_different_frame() -> None:
 
 def test_load_pipeline_names_a_missing_file(tmp_path: Path) -> None:
     """The likeliest first-try mistake must not surface as FileNotFoundError."""
-    with pytest.raises(DataError, match="could not read"):
+    with pytest.raises(DataError, match="could not find") as excinfo:
         itc.load_pipeline(tmp_path / "absent.itc_pipe")
+    # A typo wants "check the path", not advice about the other reader.
+    assert "check the path" in excinfo.value.fix
+    assert "itc.open" not in excinfo.value.fix
 
 
 def test_load_pipeline_names_a_binary_file(tmp_path: Path) -> None:
@@ -688,5 +691,9 @@ def test_a_pipeline_with_no_steps_is_refused_at_both_ends(tmp_path: Path) -> Non
         ),
         encoding="utf-8",
     )
-    with pytest.raises(DataError, match="no steps"):
+    with pytest.raises(DataError, match="silent no-op") as excinfo:
         itc.load_pipeline(target)
+    # The reader's own guard must fire, naming the file. Without it the
+    # constructor still raises "no steps", so matching that phrase alone
+    # could not tell the two ends apart.
+    assert str(target) in excinfo.value.obj

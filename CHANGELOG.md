@@ -132,12 +132,13 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 * `.itc` archives are now written at schema `itaca-itc/2`, which adds
   the per-entry replay step to `history.json` and a `steps_hash` digest
   to `metadata.json`, so a reopened archive can still lift its recipe
-  and an edited recipe is detected. The state hash of REQ-103 keeps its
-  scope: it covers the recovered data, while `steps_hash` covers the
-  steps, and without the second digest an edited step passes the first
-  check and then steers the next replay. This build reads schema 1 and
-  2; v0.1.0 cannot open an archive written by v0.2.0, which is a
-  forward-compatibility break for files already written.
+  and an edited recipe is detected. REQ-103 keeps its scope; the
+  boundary between the two digests is specified in the archive section
+  of SRS Chapter 4 and recorded in DD-30. The digest requirement
+  follows what an archive carries, not what its schema string declares,
+  so downgrading that string does not skip the check. This build reads
+  schema 1 and 2, so archives written by v0.1.0 still open; a v0.1.0
+  install cannot open an archive written by v0.2.0.
 
 ### Deprecated
 

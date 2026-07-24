@@ -2,8 +2,14 @@
 """Write the role-review or release attestation that clears the push gate.
 
 Usage:
-    python .claude/hooks/write_attestation.py review <passes>
-    python .claude/hooks/write_attestation.py release <passes>
+    python .claude/hooks/write_attestation.py review <passes> [<ref>]
+    python .claude/hooks/write_attestation.py release <passes> [<ref>]
+
+<ref> is the branch, tag, or commit being attested, defaulting to HEAD.
+It exists because the gate scopes by the ref being pushed while this
+script scoped by HEAD: pushing a tag that sits behind HEAD then denied
+with a message naming a command that could not clear it, because the
+command kept stamping HEAD. Pass the same ref you are about to push.
 
 <passes> is a comma-separated list of the reviewer passes that actually
 ran (architect,qa,vv,tech-writer,api-designer). The attestation stamps
@@ -47,7 +53,8 @@ def main() -> int:
     """Stamp the current HEAD into the attestation for the given kind."""
     if len(sys.argv) < 2 or sys.argv[1] not in KINDS:
         print(
-            f"usage: write_attestation.py {'|'.join(KINDS)} <comma,separated,passes>",
+            f"usage: write_attestation.py {'|'.join(KINDS)} "
+            "<comma,separated,passes> [<ref>]",
             file=sys.stderr,
         )
         return 2
@@ -58,14 +65,16 @@ def main() -> int:
         if p.strip()
     ]
 
+    ref = sys.argv[3] if len(sys.argv) > 3 else "HEAD"
+
     top = _git(Path.cwd(), "rev-parse", "--show-toplevel")
     if not top:
         print("not a git repository", file=sys.stderr)
         return 1
     root = Path(top)
-    head = _git(root, "rev-parse", "HEAD")
+    head = _git(root, "rev-list", "-n", "1", ref)
     if not head:
-        print("could not resolve HEAD", file=sys.stderr)
+        print(f"could not resolve {ref}", file=sys.stderr)
         return 1
     # The commits this attestation covers: everything reachable from HEAD
     # that is not yet on any remote, which is exactly what the next push
@@ -99,7 +108,7 @@ def main() -> int:
     att_path.parent.mkdir(parents=True, exist_ok=True)
     att_path.write_text(json.dumps(att, indent=2) + "\n", encoding="utf-8")
     print(
-        f"{kind} attestation written for {head[:12]}, covering "
+        f"{kind} attestation written for {ref} at {head[:12]}, covering "
         f"{len(commits)} unpushed commit(s)"
         + (f" (passes: {', '.join(passes)})" if passes else "")
     )

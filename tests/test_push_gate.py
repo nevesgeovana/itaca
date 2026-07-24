@@ -320,12 +320,12 @@ def test_the_deny_names_the_range_to_review(repo: Path) -> None:
     A reader who follows the role-review skill default reviews the last
     commit, which is the wrong scope for this denial and re-arms the gate.
     """
-    first = add_commit(repo, "one")
-    add_commit(repo, "two")
+    add_commit(repo, "one")
+    tip = add_commit(repo, "two")
     decision, reason = judge(repo, f"{PUSH} origin main")
     assert decision == "deny"
     assert "ROLE-REVIEW GATE" in reason
-    assert f"{first}^.." in reason, reason
+    assert f"{tip} --not --remotes" in reason, reason
 
 
 def test_the_fail_closed_reason_does_not_offer_to_disable_the_gate() -> None:
@@ -370,3 +370,148 @@ def _pushed(repo: Path) -> list[str]:
     """The commits a push from ``repo`` would make new."""
     listed = git(repo, "rev-list", "HEAD", "--not", "--remotes")
     return [c for c in listed.splitlines() if c]
+
+
+@pytest.mark.parametrize(
+    "form",
+    ["--follow-tag", "--tag", "--mirro", "--al", "--delet", "--prune"],
+)
+def test_an_abbreviated_blanket_option_is_still_refused(repo: Path, form: str) -> None:
+    """Git accepts any unambiguous prefix of a long option.
+
+    A refusal keyed on exact spellings moved the hole rather than
+    closing it: `--follow-tag` runs, and it published an unattested tag
+    four keystrokes short of the spelling the gate knew.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    attest(repo, [head], kind="release")
+    decision, reason = judge(repo, f"{PUSH} {form} origin main")
+    assert decision == "deny", form
+    assert "cannot determine" in reason, form
+
+
+@pytest.mark.parametrize(
+    "option",
+    ["-u", "--force-with-lease", "-q", "--atomic", "--dry-run", "-o ci.skip"],
+)
+def test_an_ordinary_option_does_not_block_an_attested_push(
+    repo: Path, option: str
+) -> None:
+    """The positive control the refusal needs.
+
+    Widening the refusal is the natural fix for the abbreviation hole,
+    and without this the suite cannot tell a correct widening from a
+    gate that blocks every real push.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    assert decide(repo, f"{PUSH} {option} origin main") == "allow", option
+
+
+@pytest.mark.parametrize(
+    "spec",
+    ["v9.9.9:v9.9.9", "refs/tags/v9.9.9:refs/tags/v9.9.9", "HEAD:refs/tags/v9.9.9"],
+)
+def test_a_tag_written_as_a_refspec_is_still_release_grade(
+    repo: Path, spec: str
+) -> None:
+    """The form a blocked operator reaches for next.
+
+    Release classification matched the whole token, so a colon refspec
+    scoped correctly, passed the review gate, and skipped the release
+    attestation for a syntax git treats as equivalent.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    git(repo, "tag", "v9.9.9")
+    assert decide(repo, f"{PUSH} origin {spec}") == "deny", spec
+    attest(repo, [head], kind="release")
+    assert decide(repo, f"{PUSH} origin {spec}") == "allow", spec
+
+
+def test_a_configured_push_refspec_makes_a_bare_push_unscopable(repo: Path) -> None:
+    """`git push origin` does not always mean the current branch.
+
+    Under push.default=matching, or with remote.<name>.push configured,
+    a bare push sends every matching branch while the gate scoped HEAD
+    alone, so unattested commits on any other branch shipped.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    assert decide(repo, f"{PUSH} origin") == "allow"
+    git(repo, "config", "push.default", "matching")
+    decision, reason = judge(repo, f"{PUSH} origin")
+    assert decision == "deny"
+    assert "cannot determine" in reason
+    git(repo, "config", "push.default", "simple")
+    git(repo, "config", "remote.origin.push", "refs/heads/*:refs/heads/*")
+    assert decide(repo, f"{PUSH} origin") == "deny"
+
+
+def test_a_multi_ref_push_scopes_every_ref(repo: Path) -> None:
+    """The release-day form: branch and tag in one command."""
+    head = add_commit(repo, "one")
+    git(repo, "branch", "side")
+    git(repo, "checkout", "-q", "side")
+    unattested = add_commit(repo, "unreviewed")
+    git(repo, "checkout", "-q", "main")
+    attest(repo, [head])
+    decision, reason = judge(repo, f"{PUSH} origin main side")
+    assert decision == "deny"
+    assert unattested[:12] in reason
+
+
+def test_a_deletion_deny_does_not_prescribe_pushing_the_ref(repo: Path) -> None:
+    """A fix that cannot reach the goal is not a fix.
+
+    Telling a user who wants to remove a remote ref to push one by name
+    is unactionable, and every unscopable case shared that one sentence.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    _, reason = judge(repo, f"{PUSH} origin :main")
+    assert "author decision" in reason
+    assert "Push the branch or tag by name" not in reason
+
+
+def test_the_deny_range_command_is_one_git_can_run(repo: Path) -> None:
+    """A synthesized `<oldest>^..<tip>` dies on a root commit.
+
+    The reason must print the expression the gate itself computed, not
+    a range reconstructed from list positions.
+    """
+    add_commit(repo, "one")
+    _, reason = judge(repo, f"{PUSH} origin main")
+    assert "--not --remotes" in reason
+    assert "^.." not in reason
+
+
+def test_an_unreadable_incident_file_gets_the_repair_remedy(
+    repo: Path, tmp_path: Path
+) -> None:
+    """The two incident classes must stay separable from checker output."""
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    ledger = stub_ledger(tmp_path / "ledger", 1, "UNREADABLE header in INC-2 for")
+    decision, reason = judge(repo, f"{PUSH} origin main", ledger=ledger)
+    assert decision == "deny"
+    assert "could not be consulted" in reason
+    assert "incident-analyst" not in reason
+
+
+def test_the_identity_ignores_other_tables_and_inline_comments(
+    repo: Path, tmp_path: Path
+) -> None:
+    """A prefix match on a raw line is not a TOML parser."""
+    head = add_commit(repo, "one")
+    (repo / "pyproject.toml").write_text(
+        '[tool.poetry]\nname = "wrong"\n\n[project]\nname = "itaca"  # published\n',
+        encoding="utf-8",
+    )
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "pyproject")
+    attest(repo, [*_pushed(repo), head])
+    ledger = stub_ledger(tmp_path / "ledger", 1, "queried")
+    _, reason = judge(repo, f"{PUSH} origin main", ledger=ledger)
+    assert "queried itaca\n" in reason or "queried itaca " in reason, reason

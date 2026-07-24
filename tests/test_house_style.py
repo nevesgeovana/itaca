@@ -8,7 +8,9 @@ Also guards the SRS against a dropped LaTeX control sequence, which is
 invisible in a green build: a substitution that ate the backslash of
 ``\\ref`` leaves ``Section~ef{sec:itc-pipe}``, which compiles without a
 warning (``\\ref`` was never called, so nothing is undefined) and ships
-a document whose own correction notice points nowhere.
+a document whose own correction notice points nowhere. Every SRS
+cross-reference opens a brace on a labeled target, so the guard checks
+that each one is reached by a real reference command.
 """
 
 import re
@@ -56,7 +58,7 @@ def test_no_em_or_en_dashes_anywhere() -> None:
     assert not offenders, f"forbidden dash characters found: {offenders}"
 
 
-# Every cross-reference in the SRS opens a brace on a labelled target.
+# Every cross-reference in the SRS opens a brace on a labeled target.
 # The failure this catches is a substitution that wrote "\ref" into a
 # non-raw Python string: "\r" is a carriage return, so the command
 # collapses to "ef{sec:...}", which LaTeX typesets literally and never

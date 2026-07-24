@@ -6,10 +6,12 @@ paraphrased checks instead of invoking the specialist reviewer agents,
 because "role-review" was read as a text instruction rather than the
 skill that spawns the agents. Documentation alone did not prevent it.
 This hook makes the protocol mechanical: a git push is blocked until an
-attestation says the role-review skill (the real agents) ran for the
-exact commit being pushed, and a release-grade push (a version tag or
---tags/--follow-tags) additionally requires the release attestation
-(full-scope audit plus the role-review sweep of every item).
+attestation covers every commit the push makes new, including each ref
+it sends, and an explicit version tag additionally requires the release
+attestation (full-scope audit plus the role-review sweep of every
+item). The blanket forms (--all, --mirror, --tags, --follow-tags, and
+deletions) are denied outright, because what they send cannot be
+resolved without asking the remote.
 
 The hook cannot itself run the agents (subagents are the model's to
 invoke). It blocks and tells the model what to run; the skills write
@@ -32,14 +34,21 @@ bypass holes in v1):
   the bare ``Bash|PowerShell`` matcher with no ``if`` glob, because the
   permission-rule glob ``Bash(git push*)`` is prefix-anchored and would
   itself miss the compound forms above.
-- Fails CLOSED: once the command looks like a git push, any error
-  (unreadable stdin, missing git, unresolvable HEAD, malformed
-  attestation) denies with an explanation. Only genuinely out-of-scope
-  calls (not a push, not a git repo) allow silently.
-- Release-grade detection reads the refs being pushed (an explicit
-  ``vX...`` tag argument, or --tags/--follow-tags), NOT substrings of
-  the whole command (so a branch named ``fix/v1.2.3`` is not a false
-  release) and NOT tags that merely happen to sit at HEAD.
+- Fails CLOSED: once the command is recognized as a git push, any error
+  (missing git, unresolvable ref, malformed attestation, an unexpected
+  exception) denies with an explanation. A payload that does not parse
+  is the one exception and allows silently: with no command text there
+  is no push to confirm, and denying would block unrelated tools.
+- Options are an ALLOWLIST. Anything with a leading dash that is not
+  known to be ref-neutral makes the scope unresolvable and denies,
+  because git accepts unambiguous prefixes: a denylist that named
+  --follow-tags let ``--follow-tag`` through and published an
+  unattested tag.
+- Release-grade detection reads the refs being pushed, on either side
+  of a refspec, so ``origin v1.2.3`` and ``origin HEAD:refs/tags/v1.2.3``
+  are both caught. It does NOT substring-match the whole command (a
+  branch named ``fix/v1.2.3`` is not a release) and does NOT count tags
+  that merely happen to sit at HEAD.
 
 The attestation path is duplicated in write_attestation.py:ATTESTATION
 and .gitignore; a rename must touch all three.
@@ -278,61 +287,164 @@ def _blocking_incidents(repo_name: str) -> tuple[bool, str, str]:
     return True, "unreachable" if "UNREADABLE" in detail else "incident", detail
 
 
-# Options that send refs the gate cannot enumerate offline. --tags and
-# --follow-tags are the sharp ones: there is no way to tell which tags the
-# remote already has without talking to it, so a scope computed from local
-# state silently omits the tag being published. --follow-tags is the
-# ordinary release command, and it shipped an unattested tag while every
-# test stayed green.
-UNSCOPABLE_OPTIONS = frozenset(
-    {"--all", "--mirror", "--tags", "--follow-tags", "--delete", "-d"}
+# Options that cannot add a ref to what the push sends. Everything else
+# with a leading dash makes the scope unresolvable.
+#
+# The polarity matters and was learned the hard way. A denylist of
+# {--all, --mirror, --tags, --follow-tags} looked complete and was not:
+# git's parse-options accepts any unambiguous prefix, so `--follow-tag`
+# and `--tag` run normally, matched nothing in the list, fell through to
+# the HEAD fallback, and published a tag no attestation covered. A
+# denylist can only catch what someone thought of; an allowlist fails
+# closed on what nobody did.
+SAFE_OPTIONS = frozenset(
+    {
+        "-u",
+        "--set-upstream",
+        "-f",
+        "--force",
+        "--force-with-lease",
+        "--force-if-includes",
+        "-q",
+        "--quiet",
+        "-v",
+        "--verbose",
+        "--atomic",
+        "--no-atomic",
+        "--dry-run",
+        "-n",
+        "--porcelain",
+        "--progress",
+        "--no-progress",
+        "--verify",
+        "--no-verify",
+        "--thin",
+        "--no-thin",
+        "--ipv4",
+        "--ipv6",
+        "-4",
+        "-6",
+    }
 )
+# Options that consume the following token as their value, so that token
+# is not a refspec and must not be read as one.
+VALUE_OPTIONS = frozenset({"-o", "--push-option", "--receive-pack", "--exec", "--repo"})
 
 
-def _push_scope(args_after_push: list[str], root: Path) -> tuple[list[str], str]:
+def _push_scope(args_after_push: list[str], root: Path) -> tuple[list[str], str, str]:
     """Resolve the commits this push sends, or say why it cannot.
 
-    Returns ``(commits, problem)``. A non-empty ``problem`` means the
-    gate could not determine what the push sends and must deny: a guard
-    that guesses at its own scope is not a guard.
+    Returns ``(commits, problem, fix)``. A non-empty ``problem`` means
+    the gate could not determine what the push sends and must deny: a
+    guard that guesses at its own scope is not a guard. ``fix`` is the
+    remedy for that specific problem, because one shared remedy told a
+    user deleting a remote ref to push one.
 
     The first non-option token is the remote; the rest are refspecs,
-    whose source side (before ``:``) is resolved locally. With no
-    refspec the push sends the current branch, so the scope is HEAD.
+    whose source side (before ``:``) is resolved locally.
     """
     tokens = [_unquote(raw) for raw in args_after_push]
-    for tok in tokens:
-        if tok in UNSCOPABLE_OPTIONS:
-            return [], f"the {tok} form sends refs the gate cannot enumerate"
+    positional: list[str] = []
+    index = 0
+    while index < len(tokens):
+        tok = tokens[index]
+        index += 1
+        if not tok.startswith("-"):
+            positional.append(tok)
+            continue
+        name = tok.split("=", 1)[0]
+        if name in VALUE_OPTIONS:
+            if "=" not in tok:
+                index += 1  # its value is not a refspec
+            continue
+        if name in SAFE_OPTIONS:
+            continue
+        return (
+            [],
+            f"{tok} may add refs the gate cannot enumerate without asking the remote",
+            "push the branch or the tag by name, one command each (for "
+            "example `origin main`, then `origin v0.2.0`, which is "
+            "release-grade and needs the release attestation). If you meant "
+            "to delete or rewrite a published ref, that is an author "
+            "decision, not something an attestation covers.",
+        )
 
-    positional = [t for t in tokens if not t.startswith("-")]
-    # The first positional is the remote (a name or a URL), never a ref.
+    remote = positional[0] if positional else "origin"
     refspecs = positional[1:]
     if not refspecs:
+        # A bare push does not always mean the current branch. Under
+        # push.default=matching, or with remote.<name>.push configured,
+        # it sends every matching branch, and the gate would scope HEAD
+        # alone while unattested commits on other branches shipped.
+        configured = _git(root, "config", "--get-all", f"remote.{remote}.push")
+        default = _git(root, "config", "--get", "push.default") or "simple"
+        if configured or default in ("matching", "nothing"):
+            reason = (
+                f"remote.{remote}.push is configured"
+                if configured
+                else f"push.default is {default!r}"
+            )
+            return (
+                [],
+                f"this push names no ref and {reason}, so which refs it "
+                "sends is decided by configuration the command does not show",
+                "name the branch or the tag explicitly (for example "
+                "`origin main`) so the gate can resolve what is being sent.",
+            )
         head = _git(root, "rev-parse", "HEAD")
-        return ([head] if head else []), ("" if head else "HEAD does not resolve")
+        if not head:
+            return [], "HEAD does not resolve", "make at least one commit."
+        return [head], "", ""
 
     commits: list[str] = []
     for spec in refspecs:
         source = spec.lstrip("+").split(":", 1)[0]
         if not source:
-            return [], f"the refspec {spec!r} deletes a remote ref"
+            return (
+                [],
+                f"the refspec {spec!r} deletes a published remote ref",
+                "removing a published ref is an author decision, not "
+                "something a review attestation covers. Stop and confirm it "
+                "with Geovana.",
+            )
         commit = _git(root, "rev-list", "-n", "1", source)
         if not commit:
-            return [], f"the ref {source!r} does not resolve in this checkout"
+            return (
+                [],
+                f"the ref {source!r} does not resolve in this checkout",
+                "check the spelling, or create the branch or tag locally "
+                "before pushing it.",
+            )
         commits.append(commit)
-    return commits, ""
+    return commits, "", ""
+
+
+def _release_refs(args_after_push: list[str]) -> list[str]:
+    """Return the version tags this push names, on either side of a refspec.
+
+    Both sides are read because ``origin v0.2.0:refs/tags/v0.2.0`` and
+    ``origin HEAD:refs/tags/v0.2.0`` publish the same tag as the bare
+    ``origin v0.2.0`` form, and matching the whole token missed both.
+    """
+    tokens = [_unquote(raw) for raw in args_after_push]
+    positional = [t for t in tokens if not t.startswith("-")]
+    named: list[str] = []
+    for spec in positional[1:]:
+        for side in spec.lstrip("+").split(":"):
+            if VERSION_TAG_TOKEN.match(side):
+                named.append(side)
+    return named
 
 
 def _is_release_push(args_after_push: list[str]) -> bool:
     """Classify a push as release-grade from the refs it names.
 
-    Release-grade when an argument is an explicit version tag. The
-    --tags forms never reach this question: they are refused earlier as
+    Release-grade when an argument names an explicit version tag. The
+    blanket forms never reach this question: they are refused earlier as
     unscopable, which is also what stops them from publishing a tag the
     release attestation never covered.
     """
-    return any(VERSION_TAG_TOKEN.match(_unquote(raw)) for raw in args_after_push)
+    return bool(_release_refs(args_after_push))
 
 
 def _repo_identity(root: Path) -> str:
@@ -353,12 +465,18 @@ def _repo_identity(root: Path) -> str:
             if stripped.startswith("[") and stripped.endswith("]"):
                 section = stripped
                 continue
-            if section == "[project]" and stripped.startswith("name"):
-                _, sep, value = stripped.partition("=")
-                if sep:
-                    name = value.strip().strip("\"'")
-                    if name:
-                        return name
+            if section != "[project]":
+                continue
+            key, sep, value = stripped.partition("=")
+            if not sep or key.strip() != "name":
+                continue
+            # Strip an inline comment before unquoting: a raw prefix
+            # match turned `name = "itaca"  # published` into the whole
+            # tail, which then queried an unknown repository.
+            value = value.split("#", 1)[0].strip()
+            name = value.strip("\"'")
+            if name:
+                return name
     except OSError:
         pass
     return root.name
@@ -409,16 +527,14 @@ def main() -> None:
         # The refs this push actually sends, resolved from the command.
         # Scoping from HEAD instead let a push of any other ref clear the
         # gate whenever HEAD happened to be attested.
-        targets, problem = _push_scope(args_after_push, root)
+        targets, problem, remedy = _push_scope(args_after_push, root)
         if problem:
             _decide(
                 "deny",
                 "role-review gate: the gate cannot determine which commits "
-                f"this push sends, because {problem}. Push the branch or tag "
-                "by name (for example `origin main` or `origin v0.2.0`) so "
-                "the gate can resolve the ref and check it against the "
-                "attestation. Refusing is deliberate: a guard that guesses "
-                "at its own scope proves nothing.",
+                f"this push sends, because {problem}. {remedy} Refusing is "
+                "deliberate: a guard that guesses at its own scope proves "
+                "nothing.",
             )
 
         att_path = root / ATTESTATION
@@ -483,11 +599,14 @@ def main() -> None:
         if missing:
             listed = ", ".join(c[:12] for c in missing[:8])
             more = f" and {len(missing) - 8} more" if len(missing) > 8 else ""
-            # Name the range. The role-review skill defaults to the last
-            # commit when given nothing, which is the wrong scope for this
-            # denial, so a reader who obeys the message literally re-arms
-            # the gate instead of clearing it.
-            span = f"{in_scope[-1]}^..{in_scope[0]}"
+            # Name the range with the expression the gate itself computed.
+            # The role-review skill defaults to the last commit when given
+            # nothing, which is the wrong scope for this denial, so a
+            # reader who obeys the message literally re-arms the gate. An
+            # earlier version synthesized `<oldest>^..<tip>` from list
+            # positions, which dies on a root commit and crosses refs on a
+            # multi-ref push.
+            span = f"{targets[0]} --not --remotes"
             _decide(
                 "deny",
                 f"ROLE-REVIEW GATE: {len(missing)} of the {len(in_scope)} commit(s) in "
@@ -503,6 +622,10 @@ def main() -> None:
             )
 
         if is_release:
+            # The tag the operator must pass to the writer, so the
+            # prescribed command stamps the ref being pushed rather than
+            # HEAD, which a tag behind HEAD would never match.
+            release_ref = (_release_refs(args_after_push) or ["<tag>"])[0]
             release = att.get("release") or {}
             rel_covered = set(
                 release.get("commits")
@@ -520,7 +643,9 @@ def main() -> None:
                     "diff (every applicable pass, full scope, not the last item only), "
                     "fix or register every finding, then write the release attestation "
                     "with `python .claude/hooks/write_attestation.py release "
-                    "<passes,that,ran>`, and only then push the tag.",
+                    f"<passes,that,ran> {release_ref}`, and only then push the tag. "
+                    "Pass the ref: the writer stamps HEAD by default, and a tag that "
+                    "sits behind HEAD would never become covered.",
                 )
 
         # Attestation covers the pushed commit: let the normal permission

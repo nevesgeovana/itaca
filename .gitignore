@@ -12,7 +12,13 @@ venv/
 .ruff_cache/
 .hypothesis/
 .coverage
+# The hook tests spawn subprocesses, so a parallel coverage run drops
+# .coverage.<host>.<pid>.<n> files in the repository root.
+.coverage.*
 coverage.xml
+# Mutation-testing backups. A run that is interrupted leaves these
+# behind, and a stray backup must never be committable.
+*.mutbak
 htmlcov/
 
 # LaTeX build artifacts (docs/srs)

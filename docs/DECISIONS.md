@@ -628,3 +628,58 @@ wins over the code, so this decision is not final until REQ-83 is
 either amended to admit exact pins for output-defining tools or the pin
 is reverted. Recorded here so the contradiction is visible rather than
 silent; the details are staged for a dedicated session.
+
+---
+
+## DD-30: The archive carries a second digest for the replay recipe
+
+**Date:** 2026-07-23
+**Status:** confirmed
+
+The `.itc` archive at schema `itaca-itc/2` carries `steps_hash` in
+`metadata.json`, a SHA-256 over the recorded replay steps, alongside the
+REQ-103 state hash.
+
+REQ-103's state hash covers the recovered state: the data together with
+the ordered operation sequence and its comments. It deliberately
+excludes the structured replay arguments, because those are provenance
+metadata rather than frame state, and widening REQ-103 to swallow them
+would change what a state hash means for every frame, including frames
+that carry no recipe at all.
+
+Schema 2 makes the archive recipe-bearing, and that exclusion becomes a
+gap: an edited replay argument leaves the operation text and the stored
+data matching themselves, so the state check passes, and the edited
+recipe then steers the next `to_pipeline().apply(...)`. The second
+digest closes the gap without moving the REQ-103 boundary.
+
+The requirement follows what an archive **carries**, never what it
+**declares**. The schema string is ordinary metadata that no digest
+covers, so it cannot gate an integrity check: any archive carrying a
+replay step is refused unless `steps_hash` is present and matches,
+whichever schema it names. The first implementation gated the check on
+`schema != "itaca-itc/1"`, which meant rewriting one string and dropping
+the digest skipped verification entirely while the state hash still
+validated. Three independent review passes found that hole in the same
+sitting, which is what a version field looks like when it is asked to
+carry integrity.
+
+**Rejected alternative:** widening REQ-103 to include the replay steps.
+Rejected because it changes a published guarantee for every frame in
+order to protect a property only recipe-bearing archives have, and it
+would make two frames with identical data and identical operations hash
+differently on an argument the state does not depend on.
+
+**Rejected alternative:** trusting the schema field and refusing to read
+schema 1 archives at all. Rejected because the compatibility promise to
+v0.1.0 files is worth keeping, and because it would still rest the
+integrity decision on an unauthenticated field.
+
+**Note on DD-28.** DD-28's encoding claim was corrected in place on
+2026-07-23, before this decision log had ever been pushed, to say what
+the JSON encoding actually does with nested containers and non-finite
+floats rather than claiming no lossy encoding. Entries are append-only
+once published; whether "published" begins at authoring or at the first
+push is a question for the author, and it is registered rather than
+settled here. The correction is recorded in this note so the log
+documents its own edit instead of quietly carrying a rewritten claim.

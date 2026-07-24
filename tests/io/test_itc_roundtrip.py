@@ -179,3 +179,88 @@ class TestGuards:
                 out.writestr(item, data)
         with pytest.raises(DataError, match="no 'state_hash'"):
             itc.open(broken)
+
+    def test_a_schema_downgrade_cannot_disable_the_steps_check(
+        self, rich_db: VarFrame, tmp_path: Path
+    ) -> None:
+        """The schema string is not covered by any digest, so it cannot gate one.
+
+        Rewriting metadata.json's schema to 1 while keeping the poisoned
+        step members skipped the recipe digest entirely, and the state
+        hash still matched because steps are deliberately outside it.
+        The tampered recipe then loaded and would steer the next replay.
+        Three review passes found this independently.
+        """
+        target = tmp_path / "campaign.itc"
+        rich_db.save(target)
+        forged = tmp_path / "forged.itc"
+        with (
+            zipfile.ZipFile(target) as source,
+            zipfile.ZipFile(forged, "w", zipfile.ZIP_DEFLATED) as out,
+        ):
+            for item in source.namelist():
+                data = source.read(item)
+                if item == "metadata.json":
+                    metadata = json.loads(data)
+                    metadata["schema"] = "itaca-itc/1"
+                    metadata.pop("steps_hash", None)
+                    data = json.dumps(metadata).encode()
+                out.writestr(item, data)
+        with pytest.raises(DataError, match="carries replay steps"):
+            itc.open(forged)
+
+    def test_a_missing_steps_hash_is_refused(
+        self, rich_db: VarFrame, tmp_path: Path
+    ) -> None:
+        """The schema 2 digest must be present, not merely checked when there."""
+        target = tmp_path / "campaign.itc"
+        rich_db.save(target)
+        broken = tmp_path / "nodigest.itc"
+        with (
+            zipfile.ZipFile(target) as source,
+            zipfile.ZipFile(broken, "w", zipfile.ZIP_DEFLATED) as out,
+        ):
+            for item in source.namelist():
+                data = source.read(item)
+                if item == "metadata.json":
+                    metadata = json.loads(data)
+                    metadata.pop("steps_hash")
+                    data = json.dumps(metadata).encode()
+                out.writestr(item, data)
+        with pytest.raises(DataError, match="no 'steps_hash'"):
+            itc.open(broken)
+
+    def test_an_edited_replay_step_is_detected(
+        self, rich_db: VarFrame, tmp_path: Path
+    ) -> None:
+        """The digest exists for exactly this, and nothing exercised it."""
+        target = tmp_path / "campaign.itc"
+        rich_db.save(target)
+        poisoned = tmp_path / "poisoned.itc"
+        with (
+            zipfile.ZipFile(target) as source,
+            zipfile.ZipFile(poisoned, "w", zipfile.ZIP_DEFLATED) as out,
+        ):
+            for item in source.namelist():
+                data = source.read(item)
+                if item == "history.json":
+                    entries = json.loads(data)
+                    for entry in entries:
+                        step = entry.get("step")
+                        if step and step.get("call") == "compute":
+                            step["kwargs"]["expression"] = "CT2 = CT * 1000"
+                    data = json.dumps(entries).encode()
+                out.writestr(item, data)
+        with pytest.raises(HashMismatchError, match="recipe"):
+            itc.open(poisoned)
+
+    def test_a_non_finite_replay_argument_is_named_at_save(
+        self, tmp_path: Path
+    ) -> None:
+        """db.save must not raise a bare ValueError on a legal fill (REQ-35)."""
+        csv = tmp_path / "run.csv"
+        csv.write_text("alpha,CT\n0.0,1.0\n2.0,3.0\n", encoding="utf-8")
+        db = itc.load(csv, dims=["alpha"])
+        db = db.compute("CT2 = CT * 2", where="CT > 2", fill=float("inf"))
+        with pytest.raises(DataError, match="no RFC 8259 JSON representation"):
+            db.save(tmp_path / "campaign.itc")

@@ -442,12 +442,20 @@ archive (Section~\ref{sec:itc-pipe}). A build reads both, and writes
 the current one. Schema 2 carries a second integrity digest,
 \code{steps\_hash} in \code{metadata.json}, computed over the recorded
 steps. It is separate from the state hash of REQ-103, whose scope is
-unchanged: the state hash covers the recovered data, while
-\code{steps\_hash} covers the recipe. Without it an edited step passes
-the state check, because the stored data still matches itself, and the
-edited recipe then steers the next replay. Loading refuses a schema 2
-archive whose \code{steps\_hash} is absent or does not match, and
-refuses any archive with no state hash.
+unchanged: the state hash covers the recovered state, the data together
+with the ordered operation sequence and its comments, while
+\code{steps\_hash} covers the structured replay arguments, which the
+state hash deliberately excludes. Without the second digest an edited
+argument passes the state check, because the operation text and the
+stored data still match themselves, and the edited recipe then steers
+the next replay.
+
+The digest requirement follows what an archive carries, never what it
+declares. The schema string is ordinary metadata that no digest covers,
+so it cannot gate an integrity check: an archive carrying any replay
+step is refused unless \code{steps\_hash} is present and matches,
+whichever schema it names, and a schema 2 archive is refused without it
+in every case. An archive with no state hash is refused as well.
 
 \begin{table}[H]
 \centering

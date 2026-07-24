@@ -75,7 +75,8 @@ applicable reviewer passes (architect, QA, V&V, tech writer, API
 designer; charters in `.claude/agents/`) on the item's diff, and
 every finding is fixed or registered (`docs/OPEN_QUESTIONS.md` for
 design questions, the milestone execution plan for approved scope, or
-the working plan ledger, one file per entry, for everything else).
+the working plan ledger in `_private/plan/`, one file per entry, whose
+format is defined in `_private/plan/README.md`, for everything else).
 Geovana keeps the non-delegable seats:
 product owner, domain expert, numerical analyst. The sister
 pyflightstream repository carries the same process (DD-23).

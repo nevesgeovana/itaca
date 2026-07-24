@@ -66,10 +66,9 @@ metadata excluded from the state hash and persisted in the \code{.itc}
 archive at schema \code{itaca-itc/2}. Section~\ref{sec:itc-archive} was
 amended to match: it now names both schema versions, the \code{step}
 member of \code{history.json}, and the \code{steps\_hash} digest in
-\code{metadata.json}, which covers the recipe while the REQ-103 state
-hash covers the recovered data. Without the second digest an edited
-step passes the state check and then steers the next replay. The
-scope of REQ-103 is unchanged.\\
+\code{metadata.json}, with the scope boundary against the REQ-103 state
+hash stated there and the reasoning recorded in DD-30. The scope of
+REQ-103 is unchanged.\\
 \addlinespace
 0.1.1 & 2026-07-21 & Geovana Neves &
 REQ-98 and REQ-99 promoted from draft to stable after the M0
