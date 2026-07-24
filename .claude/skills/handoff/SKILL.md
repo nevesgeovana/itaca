@@ -28,6 +28,11 @@ log companions) and the public surface live in the repository; the
 closing commit covers only repository changes, never the session
 documents.
 
+This skill owns `_private/NEXT_SESSION.md`: `out` and `in` are its only
+writers. The plan skill's `next` produces the proposed window but does
+not write the file; `out` draws that window in when it refreshes the
+forward prompt, so the forward prompt has one owning skill.
+
 All handoff content obeys the workspace guards: English only, American
 English with Z, no em dashes or en dashes anywhere, no employer or
 proprietary data, and no copy of a fact that already has a home. What is
@@ -60,9 +65,11 @@ with:
    entry via `/plan`.
 6. The single highest-value next action, and why it is next.
 
-Then refresh `_private/NEXT_SESSION.md` so the next session opens
-against a current forward prompt, and commit the repository-side changes
-of the session (the session documents themselves are not committed).
+Then refresh `_private/NEXT_SESSION.md` from the window proposed by
+`/plan next` (or the current ledger state if none was proposed) so the
+next session opens against a current forward prompt, and commit the
+repository-side changes of the session (the session documents themselves
+are not committed).
 
 ### Public-surface pause point (confirm before the closing commit)
 

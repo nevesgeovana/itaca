@@ -2,6 +2,8 @@
 name: role-review
 description: Run the role-based reviewer passes (architect, QA, V&V, tech writer, API designer) on a work item's diff and drive every finding to fixed or registered. Use before closing any work item; the development rules cite this skill.
 argument-hint: "[git range | staged | last-commit]"
+allowed-tools: Task, Bash, Read, Write, Edit, Grep, Glob
+disable-model-invocation: false
 ---
 
 Role-based review per the team-role model adopted 2026-07-23 (DD-23
@@ -26,7 +28,7 @@ reviewers receive both and read the repository themselves.
 |---|---|
 | architect-reviewer | public API; new or moved modules; imports (NumPy-only core rule); dependencies; anything contradicting a DD |
 | qa-engineer | anything under `itaca/` or `tests/` |
-| vv-engineer | requirement implementation status; `docs/srs/`; uncertainty mathematics; draft-tagged requirements (REQ-101, the OQ-18 row of REQ-98); guarantee claims |
+| vv-engineer | requirement implementation status; `docs/srs/`; uncertainty mathematics; draft-tagged requirements (REQ-104 to REQ-106, the OQ-18 row of REQ-98); guarantee claims |
 | tech-writer | public API, docstrings, README, CHANGELOG, `examples/`, SRS prose |
 | api-designer | new or changed public signatures; error messages; examples |
 

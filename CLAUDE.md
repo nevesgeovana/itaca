@@ -36,8 +36,9 @@ checkpoint (2026-07-21, SRS document 0.1.1) and are stable; the
 smooth and diff row of REQ-98 remains provisional pending OQ-18
 (revisit during v0.2.0). REQ-101 (condition-dependent axes) was
 validated as written by Geovana (2026-07-23, ultraplan Batch A,
-Q-003): implement fully in M1 phase B2; the reqbox moves
-draft-to-stable through the SRS process once implemented and tested.
+Q-003) and promoted from draft to stable in the SRS (reqbox and
+revision history); its specification is frozen and it is implemented
+fully in M1 phase B2.
 REQ-104, REQ-105, and REQ-106 entered as draft with ids confirmed by
 Geovana (Q-002); their code is unblocked in the M1 windows. Do not
 freeze draft implementations without her confirmation; everything
@@ -52,9 +53,9 @@ tagged stable may proceed.
 * `core/`, `ops/`, and `uncertainty/` import only NumPy and the standard
   library. No xarray, dask, or pandas there, enforced by a ruff
   import-policy rule and a guard test.
-* Every operation returns a new object, records itself in History, and
-  declares its UncFrame effect (REQ-98). Arrays are read-only
-  (`writeable=False`, REQ-102).
+* Every operation returns a new object and records itself in History
+  (REQ-18), and declares its UncFrame effect (REQ-98). Arrays are
+  read-only (`writeable=False`, REQ-102).
 * Type hints everywhere public; `mypy --strict` on the public API.
   NumPy-format docstrings with Parameters, Returns, Raises, Examples.
 * Lint and format with ruff (`ruff check`, `ruff format`). Conventional
@@ -82,7 +83,11 @@ product owner, domain expert, numerical analyst. The sister
 pyflightstream repository carries the same process (DD-23).
 Session planning, closure, and periodic audit run through the plan,
 handoff, and audit skills in `.claude/skills/` (session documents in
-`_private/`, never committed).
+`_private/`, never committed). The plan ledger is validated by the
+checker named in the `ITACA_PLAN_VALIDATOR` environment variable (the
+plan skill holds the mechanism): unset skips validation, set but
+unreachable is a configuration error, exactly as `ITACA_INCIDENT_LEDGER`
+locates the incident checker.
 
 Mandatory push and release gate (adopted 2026-07-23, after a
 pyflightstream release ran paraphrased manual checks instead of the

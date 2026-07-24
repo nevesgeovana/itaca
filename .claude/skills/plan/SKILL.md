@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Planning state over the itaca plan ledger and the milestone map. Report progress, add agreed items, or propose the next work window, then validate the ledger. Use when the author asks for plan status or the state of the milestone, when a session opens or closes and needs its next window, when a review or a decision produces work that must be registered, or whenever an entry lands in _private/plan/ and its shape should be checked.
+description: Planning state over the itaca plan ledger and the milestone map. Report progress, add agreed items, or propose the next work window, then validate the ledger. Use when the author asks for plan status or the state of the milestone, when the author asks to propose the next work window, when a review or a decision produces work that must be registered, or whenever an entry lands in _private/plan/ and its shape should be checked. Session close is the handoff skill's trigger, not this one; that skill writes the forward prompt, drawing on the window this skill proposes.
 argument-hint: "[status|add|next]"
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
 disable-model-invocation: false
@@ -71,8 +71,11 @@ writes an entry):
 * `next`: propose the next work window: which items, in what order,
   with what acceptance criteria, against the current phase exit
   criterion in `docs/M1_EXECUTION_PLAN.md`. Never decide alone; iterate
-  with Geovana, then `add` the agreed items and refresh
-  `_private/NEXT_SESSION.md` (the forward prompt for the next session).
+  with Geovana, then `add` the agreed items. `next` produces the proposed
+  window and registers the items; it does not write
+  `_private/NEXT_SESSION.md`, which the handoff skill owns and refreshes
+  at session close (`/handoff out`) drawing on this window, so the forward
+  prompt keeps a single writer.
 
 ## Validating the ledger
 
