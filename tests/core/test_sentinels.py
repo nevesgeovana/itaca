@@ -24,6 +24,7 @@ from pathlib import Path
 
 import itaca as itc
 from itaca.core.sentinels import NoDefault, no_default
+from tests.conftest import child_env
 
 
 class TestSingleton:
@@ -88,11 +89,18 @@ class TestTypingConformance:
         # union, so this test falsifies the promise instead of trusting
         # the annotation.
         snippet = Path(__file__).parents[1] / "typing" / "sentinel_narrowing.py"
+        # child_env, or this mypy run starts a second coverage session
+        # and drops a partial data file in the repository root. It
+        # combines today only because cwd happens to be the root, so
+        # the child rediscovers pyproject.toml and picks up branch
+        # coverage. A QA pass found this site; the failure that started
+        # the hunt was the other one.
         result = subprocess.run(
             [sys.executable, "-m", "mypy", "--strict", str(snippet)],
             capture_output=True,
             text=True,
             cwd=snippet.parents[2],
             check=False,
+            env=child_env(),
         )
         assert result.returncode == 0, result.stdout + result.stderr

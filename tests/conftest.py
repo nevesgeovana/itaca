@@ -1,5 +1,6 @@
 """Shared fixtures and session-state hygiene for the ITACA test suite."""
 
+import os
 from collections.abc import Iterator
 from datetime import datetime, timezone
 
@@ -7,6 +8,44 @@ import pytest
 
 from itaca.core import provenance as provenance_module
 from itaca.core.provenance import Provenance
+
+# pytest-cov starts coverage inside any Python subprocess that inherits
+# these, through its .pth hook, and the child writes to the parent's
+# ABSOLUTE data file path, which is the repository root on every
+# platform. A child that cannot find pyproject.toml starts without
+# branch=true, and combining its statement-only data with the parent's
+# branch data aborts the whole run in teardown, after every test has
+# passed. That turned CI red on all three legs of commit 48009bc.
+#
+# Every test that spawns a Python interpreter must use child_env(), and
+# `test_no_spawn_site_bypasses_child_env` in tests/test_push_gate.py
+# holds that invariant. Two sites existed when this was written; only
+# one had been found by looking at the failure.
+COVERAGE_SUBPROCESS_VARS = (
+    "COV_CORE_SOURCE",
+    "COV_CORE_CONFIG",
+    "COV_CORE_DATAFILE",
+    "COV_CORE_BRANCH",
+    "COV_CORE_CONTEXT",
+    "COVERAGE_PROCESS_START",
+    "COVERAGE_PROCESS_CONFIG",
+)
+
+
+def child_env(**overrides: str | None) -> dict[str, str]:
+    """The environment a spawned Python subprocess should run in.
+
+    Strips coverage measurement. A key whose override is ``None`` is
+    removed, which is how the push gate tests drop the incident ledger
+    variable to stay hermetic.
+    """
+    env = {k: v for k, v in os.environ.items() if k not in COVERAGE_SUBPROCESS_VARS}
+    for key, value in overrides.items():
+        if value is None:
+            env.pop(key, None)
+        else:
+            env[key] = value
+    return env
 
 
 @pytest.fixture(autouse=True)

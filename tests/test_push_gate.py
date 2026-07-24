@@ -25,12 +25,13 @@ stdout.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+from tests.conftest import child_env
 
 HOOK = Path(__file__).resolve().parents[1] / ".claude" / "hooks" / "role_review_gate.py"
 ATTESTATION = Path(".claude") / ".role_review_attestation.json"
@@ -48,35 +49,15 @@ def git(repo: Path, *args: str) -> str:
     return done.stdout.strip()
 
 
-# pytest-cov starts coverage inside any Python subprocess that inherits
-# these, through its .pth hook. The hook script runs with cwd set to a
-# throwaway repository, so the child cannot find pyproject.toml and
-# starts coverage WITHOUT branch=true. Combining statement-only data
-# with the parent's branch data then aborts the whole run at teardown,
-# after every test has passed. That turned CI red on three legs while
-# the local Windows run stayed green, because the child wrote its
-# partial file into its own cwd here and into the repository root
-# there. The hook is not part of the measured package, so the correct
-# child environment is one that does not measure at all.
-_COVERAGE_SUBPROCESS_VARS = (
-    "COV_CORE_SOURCE",
-    "COV_CORE_CONFIG",
-    "COV_CORE_DATAFILE",
-    "COV_CORE_CONTEXT",
-    "COVERAGE_PROCESS_START",
-)
+def hook_env(ledger: str | None = None) -> dict[str, str]:
+    """The environment a hook subprocess runs in.
 
-
-def child_env(ledger: str | None = None) -> dict[str, str]:
-    """The environment a hook subprocess runs in."""
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if k != LEDGER_ENV and k not in _COVERAGE_SUBPROCESS_VARS
-    }
-    if ledger is not None:
-        env[LEDGER_ENV] = ledger
-    return env
+    ``child_env`` (tests/conftest.py) strips coverage measurement; the
+    incident ledger variable is dropped here so the suite is hermetic,
+    because inheriting it would make every case depend on the state of
+    a ledger outside the repository.
+    """
+    return child_env(**{LEDGER_ENV: ledger})
 
 
 def judge(repo: Path, command: str, ledger: str | None = None) -> tuple[str, str]:
@@ -87,7 +68,7 @@ def judge(repo: Path, command: str, ledger: str | None = None) -> tuple[str, str
     a ledger outside the repository, and a real open incident would then
     fail tests that are not about incidents at all.
     """
-    env = child_env(ledger)
+    env = hook_env(ledger)
     done = subprocess.run(
         [sys.executable, str(HOOK)],
         input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}}),
@@ -610,22 +591,61 @@ def test_the_review_deny_names_the_ref_that_is_behind_head(repo: Path) -> None:
     assert "<passes,that,ran> v0.1.0" in reason, reason
 
 
-def test_the_hook_subprocess_does_not_inherit_coverage_measurement() -> None:
+def test_a_child_process_does_not_start_coverage() -> None:
     """A child that measures without branch data aborts the whole run.
 
     This is the defect that turned CI red on every test leg of commit
-    48009bc while the local run stayed green: the failure is in
-    teardown, after all tests pass, so nothing in the suite pointed at
-    it. The guard asserts the contract directly rather than waiting for
-    a platform where the partial file lands somewhere fatal.
+    48009bc: the failure is in teardown, after all tests pass, so
+    nothing in the suite pointed at it.
+
+    The assertion is behavioral rather than a list of variable names.
+    A name list has to track whatever the installed pytest-cov and
+    coverage read, and a first version of this guard asserted a wider
+    set than the helper stripped, so adding --cov-branch would have
+    turned it red while the contract still held. Asking the child
+    whether coverage started cannot drift.
     """
-    env = child_env()
-    leaked = [k for k in env if k.startswith("COV_CORE_") or "COVERAGE" in k]
-    assert not leaked, f"hook subprocesses would start coverage: {leaked}"
+    done = subprocess.run(
+        [sys.executable, "-c", "import sys; print('coverage' in sys.modules)"],
+        capture_output=True,
+        text=True,
+        env=child_env(),
+        check=True,
+    )
+    assert done.stdout.strip() == "False", done.stdout
+
+
+def test_no_spawn_site_bypasses_child_env() -> None:
+    """Every Python subprocess in the suite must go through the helper.
+
+    Two sites existed when the CI failure was diagnosed and only one
+    was found by reading the traceback. The other combined cleanly by
+    accident, because its cwd happened to be the repository root.
+    """
+    root = Path(__file__).resolve().parent
+    offenders: list[str] = []
+    for path in sorted(root.rglob("test_*.py")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if "subprocess.run(" not in line and "subprocess.Popen(" not in line:
+                continue
+            # The call spans several lines, so the interpreter and the
+            # env argument are usually not on the line that opens it.
+            # A first version required both on one line and therefore
+            # missed the only real offender in the suite.
+            window = "\n".join(lines[index : index + 14])
+            if "sys.executable" in window and "env=" not in window:
+                offenders.append(f"{path.name}:{index + 1}")
+    assert not offenders, f"spawn sites with no explicit env: {offenders}"
 
 
 def test_no_partial_coverage_file_survives_a_hook_run(repo: Path) -> None:
-    """The observable symptom, pinned where a future change would show."""
+    """The observable symptom, pinned where a future change would show.
+
+    The child writes to the parent's absolute data file path, which is
+    the repository root on every platform, so this guard is valid here
+    and not only on the platform that went red.
+    """
     root = Path(__file__).resolve().parents[1]
     before = set(root.glob(".coverage.*"))
     add_commit(repo, "one")
