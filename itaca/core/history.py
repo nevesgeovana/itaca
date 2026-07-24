@@ -229,16 +229,18 @@ class History:
                 "step, so the sequence cannot be reproduced faithfully",
                 "narrow the range to the replayable transforms; operations "
                 "that merge frames (concat, combine) are not part of a "
-                "reusable pipeline (REQ-54)",
+                "reusable pipeline (REQ-53)",
             )
         if not steps:
             raise PipelineCompatibilityError(
                 f"history range {lo}..{hi}",
                 "to_pipeline found no replayable operation in the range, so "
                 "the pipeline would apply as a silent no-op",
-                "in draft mode operations record only with history=True; a "
-                "frame reopened from an older .itc archive carries no replay "
-                "steps (REQ-10, REQ-53)",
+                "re-run the processing in draft mode with history=True per "
+                "operation, or switch to production mode, and lift the "
+                "pipeline from that frame; a frame reopened from a pre-0.2.0 "
+                ".itc archive carries no replay steps, so re-export the "
+                "archive with this version first (REQ-10, REQ-53)",
             )
         from itaca.core.version import __version__
 

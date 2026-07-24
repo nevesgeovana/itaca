@@ -9,6 +9,17 @@ VarFrame method to call, its keyword arguments, and the History
 comment) as it derives, so a pipeline reconstructs the exact calls
 rather than the human-facing text.
 
+Replayed onto the frame the range was lifted from, a pipeline
+reproduces the state hash. Replayed onto a different frame it
+reproduces the processing, not the hash: the data differs, so the hash
+of the data must differ too. That is the intended use, and the reason a
+recipe is worth keeping.
+
+The file is readable for review and for diffing in version control,
+not for hand editing. The content hash rejects any change made after
+the write, so a step is altered by re-running the operation and lifting
+a new pipeline.
+
 The ``.itc_pipe`` file is human-readable JSON carrying everything that
 section requires: the ITACA version that created it, the index range in
 the source history, each operation's call with its keyword arguments
@@ -259,6 +270,10 @@ class PipelineStep:
         ----------
         db : VarFrame
             The frame to apply the recorded call to.
+        history : bool, optional
+            In draft mode, record the replayed operation only when True
+            (REQ-10). A frame replayed with the default carries no
+            History, so a pipeline cannot be lifted from it afterwards.
 
         Returns
         -------
@@ -338,6 +353,17 @@ class Pipeline:
     history_end: int | None = None
     itaca_version: str | None = None
 
+    def __post_init__(self) -> None:
+        """Refuse the empty pipeline, which would apply as a silent no-op."""
+        if not self.steps:
+            raise DataError(
+                "pipeline",
+                "a pipeline with no steps was constructed, and applying it "
+                "would return the target unchanged and unrecorded",
+                "lift a range that contains at least one replayable "
+                "operation with db.history.to_pipeline() (REQ-53)",
+            )
+
     def __len__(self) -> int:
         return len(self.steps)
 
@@ -368,7 +394,16 @@ class Pipeline:
         Covers the schema, the creating version, the source index range,
         and every step, so a file edited after generation is detected on
         load. Independent of the file's formatting.
+
+        Raises
+        ------
+        DataError
+            A recorded argument has no JSON representation, for example a
+            non-finite fill value. REQ-35 admits it as a value; only
+            persisting it can fail, and this property persists.
         """
+        for position, step in enumerate(self.steps, start=1):
+            _reject_unserializable(position, step)
         canonical = json.dumps(
             {
                 "schema": PIPELINE_SCHEMA,
@@ -392,6 +427,10 @@ class Pipeline:
             The frame to process. It must carry every variable,
             dimension, and declaration the recorded operations
             reference.
+        history : bool, optional
+            In draft mode, record each replayed operation only when True
+            (REQ-10). A frame replayed with the default carries no
+            History, so a pipeline cannot be lifted from it afterwards.
 
         Returns
         -------
@@ -418,6 +457,18 @@ class Pipeline:
         """
         from itaca.core.errors import ITACAError
 
+        # ``apply`` reads as if it might take a path or an array, so the
+        # wrong target is a likely first-try mistake. Catching it here
+        # turns a bare AttributeError about a missing attribute into an
+        # error that names the operation and what to pass instead.
+        if not hasattr(db, "vars") or not hasattr(db, "history"):
+            raise PipelineCompatibilityError(
+                f"pipeline applied to {type(db).__name__}",
+                "apply expects a VarFrame to replay the recorded operations "
+                f"onto, and the target is a {type(db).__name__}",
+                "pass a VarFrame, for example itc.open(path) or "
+                "itc.load(...).pivot(...) (REQ-54)",
+            )
         result = db
         for position, step in enumerate(self.steps, start=1):
             try:
@@ -526,6 +577,20 @@ def load_pipeline(path: str | os.PathLike[str]) -> Pipeline:
             "load_pipeline could not parse the .itc_pipe JSON",
             "pass a file written by Pipeline.save (REQ-55)",
         ) from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        # A missing path and a binary file are the two likeliest first-try
+        # mistakes, and both used to escape as stdlib exceptions. The
+        # suffix says which reader the caller wanted, so name it.
+        sibling = (
+            "; this looks like a .itc archive, which itc.open reads"
+            if source.suffix == ".itc"
+            else ""
+        )
+        raise DataError(
+            f"file '{source}'",
+            f"load_pipeline could not read it ({type(exc).__name__}: {exc})",
+            f"pass a .itc_pipe file written by Pipeline.save (REQ-55){sibling}",
+        ) from exc
     _require(
         isinstance(payload, dict),
         source,
@@ -546,20 +611,34 @@ def load_pipeline(path: str | os.PathLike[str]) -> Pipeline:
         "read a payload whose 'steps' is missing or not a list",
         "pass a file written by Pipeline.save (REQ-55)",
     )
+    # History.to_pipeline refuses to build a pipeline with no steps
+    # because it would apply as a silent no-op. The reader must refuse
+    # the same file the writer would never produce.
+    _require(
+        bool(raw_steps),
+        source,
+        "read a payload with no steps, which would apply as a silent no-op",
+        "extract the recipe with db.history.to_pipeline().save(path) rather "
+        "than hand-writing the file (REQ-53)",
+    )
     steps: list[PipelineStep] = []
     for index, entry in enumerate(raw_steps, start=1):
         _require(
             isinstance(entry, dict),
             source,
             f"read step {index}, which is not a JSON object",
-            "each step is an object with 'call', 'kwargs', and 'comment'",
+            "each step is an object with 'call', 'kwargs', and 'comment'; "
+            "re-extract the recipe with db.history.to_pipeline().save(path) "
+            "rather than hand-writing the file",
         )
         call = entry.get("call")
         _require(
             isinstance(call, str),
             source,
             f"read step {index} without a string 'call'",
-            "each step names the VarFrame operation to replay",
+            "each step names the VarFrame operation to replay; re-extract "
+            "the recipe with db.history.to_pipeline().save(path) rather than "
+            "hand-writing the file",
         )
         _require(
             call in REPLAYABLE_CALLS,
@@ -572,7 +651,9 @@ def load_pipeline(path: str | os.PathLike[str]) -> Pipeline:
             isinstance(kwargs, dict),
             source,
             f"read step {index} whose 'kwargs' is not a JSON object",
-            "record keyword arguments as an object",
+            "record keyword arguments as an object; re-extract the recipe "
+            "with db.history.to_pipeline().save(path) rather than "
+            "hand-writing the file",
         )
         steps.append(
             PipelineStep(call=call, kwargs=kwargs, comment=entry.get("comment"))

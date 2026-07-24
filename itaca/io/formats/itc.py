@@ -428,7 +428,16 @@ def open_itc(path: str | Path) -> VarFrame:
                 "the archive was edited after it was written; re-export it "
                 "from the source data (REQ-54)",
             )
-    if db.state_hash != metadata["state_hash"]:
+    recorded_state = metadata.get("state_hash")
+    if not isinstance(recorded_state, str):
+        raise DataError(
+            f"archive '{target}'",
+            "itc.open read an archive with no 'state_hash' in metadata.json, "
+            "so the recovered state cannot be verified",
+            "the archive is truncated or was not written by ITACA; re-export "
+            "it from the source data (REQ-103)",
+        )
+    if db.state_hash != recorded_state:
         raise HashMismatchError(
             f"archive '{target}'",
             "itc.open found state-hash drift between the recorded and the "

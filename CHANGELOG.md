@@ -23,9 +23,20 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   History display strings, which are not round-trippable: each
   replayable operation records a `PipelineStep` (`call`, `kwargs`,
   `comment`) as it derives, so a pipeline reconstructs the exact calls
-  and reproduces the state hash, including uncertainty and correlation
-  (DD-28). The encoding is JSON rather than the TOML the SRS first
-  named; DD-28 records why, and the SRS section was amended with it.
+  and, when replayed onto the frame the range was lifted from,
+  reproduces the state hash including uncertainty and correlation
+  (DD-28). Replaying onto a different frame reproduces the processing,
+  not the hash, which is the whole point of a reusable recipe. The
+  encoding is JSON rather than the TOML the SRS first named; DD-28
+  records why, and the SRS section was amended with it. `Pipeline`
+  supports `len()` and iteration over its `PipelineStep` objects and
+  exposes `content_hash`. A pipeline with no steps is refused at
+  construction and on load rather than treated as the identity:
+  `to_pipeline` already refused to produce one, because applying it
+  would return the target unchanged and unrecorded. The `.itc_pipe`
+  file is readable for review and diffing, not for hand editing; the
+  content hash rejects any post-write change, so a step is altered by
+  re-running the operation and lifting a new pipeline.
 * Replayable operations are an explicit allowlist (`REPLAYABLE_CALLS`),
   validated when a `.itc_pipe` is read so a hand-edited recipe cannot
   name an arbitrary method. Alongside the transforms it covers `at`,
@@ -38,10 +49,8 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   `history=True`) rather than returning a silent no-op.
 * `HistoryEntry` gains `step` (the recorded `PipelineStep`, or `None`;
   excluded from the state hash) with `replayable` and `name`
-  properties, and `History.append` a matching `step=` keyword. The
-  `.itc` archive persists the step at schema `itaca-itc/2`, so a
-  reopened archive can still lift its recipe; schema 1 archives stay
-  readable. `itc.Pipeline`, `itc.VarFrame`, and `itc.load_pipeline`
+  properties, and `History.append` a matching `step=` keyword.
+  `itc.Pipeline`, `itc.VarFrame`, and `itc.load_pipeline`
   join the top-level exports, and `PipelineStep`, `REPLAYABLE_CALLS`,
   and `PIPELINE_SCHEMA` are importable from `itaca.core.pipeline`.
 * M1 Phase B2, axes. The `Axis` type (exported as `itc.Axis`; constant
@@ -120,6 +129,15 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 * REQ-101 (condition-dependent axes) promoted from draft to stable at
   the M1 Phase B2 checkpoint, once condition-dependent frames were
   implemented and tested.
+* `.itc` archives are now written at schema `itaca-itc/2`, which adds
+  the per-entry replay step to `history.json` and a `steps_hash` digest
+  to `metadata.json`, so a reopened archive can still lift its recipe
+  and an edited recipe is detected. The state hash of REQ-103 keeps its
+  scope: it covers the recovered data, while `steps_hash` covers the
+  steps, and without the second digest an edited step passes the first
+  check and then steers the next replay. This build reads schema 1 and
+  2; v0.1.0 cannot open an archive written by v0.2.0, which is a
+  forward-compatibility break for files already written.
 
 ### Deprecated
 

@@ -25,6 +25,9 @@ def _run(seed: int) -> itc.VarFrame:
     alpha = np.arange(-4.0, 12.1, 2.0)
     cl = 0.1 + 0.105 * alpha + rng.normal(0.0, 0.01, alpha.size)
     cd = 0.02 + 0.05 * cl**2 + rng.normal(0.0, 0.002, alpha.size)
+    # Array mode with explicit names. The dict mode CLAUDE.md prefers
+    # maps coordinate tuples to FILES (REQ-03), which is the campaign
+    # case in wt_campaign.py, not a single in-memory run like this one.
     arr = np.column_stack([alpha, cl, cd])
     return itc.load(arr, names=["alpha", "CL", "CD"]).pivot(dims=["alpha"])
 

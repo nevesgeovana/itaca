@@ -531,6 +531,8 @@ frame identity. Rejected because it duplicates the instance lifetime
 management the interpreter already provides through the instance
 `__dict__`, and the cache is conceptually per-frame state anyway.
 
+---
+
 ## DD-28: Pipelines replay structured steps, and .itc_pipe is JSON
 
 **Date:** 2026-07-23
@@ -563,7 +565,8 @@ persisted in the `.itc` archive (schema `itaca-itc/2`) so a reopened
 archive can still lift its recipe.
 
 The `.itc_pipe` encoding is JSON, superseding the TOML named in the
-original text of the .itc_pipe section of SRS Chapter 4. Three reasons: no Python version ships a standard
+original text of the .itc_pipe section of SRS Chapter 4. Three reasons:
+no Python version ships a standard
 library TOML writer (`tomllib` is read-only and 3.11+), so TOML would
 force a third-party runtime dependency into a core feature; TOML has no
 null type, and `compute(fill=None)` is meaningful and differs from the
@@ -571,15 +574,20 @@ default `fill=nan`, so a TOML encoding would either lose it or need a
 side-channel that a reader can misread; and replay arguments nest
 (`filters`, `at`, `axisTranslation`), which TOML expresses as
 non-adjacent sub-tables that scatter one call's arguments. JSON keeps
-every content item that section requires (creating version, source index range, each
-call with its arguments and comment, and a content hash) with no
-dependency and no lossy encoding, and it matches the `.itc` metadata
-discipline. That section was amended in the same change.
+every content item that section requires (creating version, source
+index range, each call with its arguments and comment, and a content
+hash) with no dependency, and it matches the `.itc` metadata
+discipline. Encoding is not lossless in general: `_freeze` stores
+nested lists as tuples and nested mappings as read-only views, and a
+non-finite float has no JSON form and is refused at write time rather
+than silently reshaped. That section was amended in the same change.
 
 **Rejected alternative:** a hand-rolled stdlib TOML emitter. Rejected
 because the nesting, ordering, and null rules above make it real format
 code of ours to maintain and test, for a file whose only job is faithful
 reproduction.
+
+---
 
 ## DD-29: The linter is pinned exactly and bumped deliberately
 

@@ -49,8 +49,8 @@ operations) was resolved and its four rules folded into Section 4.3.
 REQ-108 (published documentation site on GitHub Pages, mirroring
 pyflightstream, DD-23) was added as a draft requirement. M1 Phase B3a
 implemented the pipeline requirements and corrected the specification
-where it was wrong: Section~ef{sec:itc-pipe} now specifies the \code{.itc\_pipe}
-serialization as JSON rather than TOML, with the reasons recorded in
+where it was wrong: Section~\ref{sec:itc-pipe} now specifies the
+\code{.itc\_pipe} serialization as JSON rather than TOML, with the reasons recorded in
 DD-28 (no standard-library TOML writer in any Python version, no TOML
 null type against a meaningful \code{compute(fill=None)}, and nested
 replay arguments); every content item the section required is kept,
@@ -63,7 +63,13 @@ than producing a silent no-op), and REQ-54 gained the replay contract
 incompatible target raises with the underlying object and fix
 preserved). The History-entry table gained the \code{step} field, replay
 metadata excluded from the state hash and persisted in the \code{.itc}
-archive at schema \code{itaca-itc/2}.\\
+archive at schema \code{itaca-itc/2}. Section~\ref{sec:itc-archive} was
+amended to match: it now names both schema versions, the \code{step}
+member of \code{history.json}, and the \code{steps\_hash} digest in
+\code{metadata.json}, which covers the recipe while the REQ-103 state
+hash covers the recovered data. Without the second digest an edited
+step passes the state check and then steers the next replay. The
+scope of REQ-103 is unchanged.\\
 \addlinespace
 0.1.1 & 2026-07-21 & Geovana Neves &
 REQ-98 and REQ-99 promoted from draft to stable after the M0

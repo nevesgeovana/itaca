@@ -39,8 +39,16 @@ def _load_gate() -> ModuleType:
 
 @pytest.fixture(scope="module")
 def gate() -> ModuleType:
-    if not _HOOK.is_file():
-        pytest.skip("the push gate hook is not present in this checkout")
+    """Load the hook, and fail rather than skip when it is missing.
+
+    This fixture used to skip. Deleting or renaming the hook therefore
+    removed 30 guard assertions and the suite still reported green,
+    which is the self-skipping evidence the gate exists to replace.
+    """
+    assert _HOOK.is_file(), (
+        f"the push gate hook is missing at {_HOOK}. It is a required guard, "
+        "not an optional one: without it nothing blocks an unreviewed push."
+    )
     return _load_gate()
 
 
@@ -88,9 +96,6 @@ def test_a_non_push_is_not_recognized(gate: ModuleType, command: str) -> None:
 @pytest.mark.parametrize(
     "command",
     [
-        "git push --tags",
-        "git push --tags;",
-        "git push --follow-tags",
         "git push origin v0.2.0",
         "git push origin refs/tags/v0.2.0",
         "git push origin v0.2.0rc1",
@@ -100,7 +105,7 @@ def test_a_release_grade_push_is_classified(gate: ModuleType, command: str) -> N
     """A release push additionally requires the release attestation."""
     is_push, _, args = gate._find_git_push(command)
     assert is_push is True
-    assert gate._is_release_push(args, Path("."))[0] is True, command
+    assert gate._is_release_push(args) is True, command
 
 
 @pytest.mark.parametrize(
@@ -114,7 +119,31 @@ def test_a_release_grade_push_is_classified(gate: ModuleType, command: str) -> N
 def test_an_ordinary_push_is_not_release_grade(gate: ModuleType, command: str) -> None:
     """A branch name that merely looks like a version is not a release."""
     _, _, args = gate._find_git_push(command)
-    assert gate._is_release_push(args, Path("."))[0] is False, command
+    assert gate._is_release_push(args) is False, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push --tags",
+        "git push --tags;",
+        "git push --follow-tags",
+        "git push --all origin",
+        "git push --mirror origin",
+    ],
+)
+def test_a_blanket_ref_push_cannot_be_scoped(gate: ModuleType, command: str) -> None:
+    """These forms send refs the gate cannot enumerate without the remote.
+
+    They were once classified as ordinary or as release-grade and then
+    scoped from HEAD, so --follow-tags, the ordinary release command,
+    published a tag no attestation covered. Refusing to scope them is
+    the honest answer; the deny message asks for the ref by name.
+    """
+    _, _, args = gate._find_git_push(command)
+    commits, problem = gate._push_scope(args, Path("."))
+    assert commits == []
+    assert "cannot enumerate" in problem, command
 
 
 def test_the_c_option_target_is_extracted(gate: ModuleType) -> None:

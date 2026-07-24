@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 import itaca as itc
-from itaca.core.errors import DraftModeExportError, HashMismatchError
+from itaca.core.errors import DataError, DraftModeExportError, HashMismatchError
 from itaca.core.varframe import VarFrame
 
 
@@ -126,3 +126,56 @@ class TestGuards:
         # Schema 2 adds the per-entry replay step to history.json (REQ-54).
         assert metadata["schema"] == "itaca-itc/2"
         assert metadata["state_hash"] == rich_db.state_hash
+
+    def test_a_schema_1_archive_still_opens(
+        self, rich_db: VarFrame, tmp_path: Path
+    ) -> None:
+        """The CHANGELOG promises it; nothing proved it.
+
+        A v0.1.0 archive has no per-entry 'step' and no 'steps_hash'.
+        Downgrading a schema-2 archive reproduces exactly that shape, so
+        the compatibility claim is tested rather than asserted.
+        """
+        target = tmp_path / "campaign.itc"
+        rich_db.save(target)
+        legacy = tmp_path / "legacy.itc"
+        with (
+            zipfile.ZipFile(target) as source,
+            zipfile.ZipFile(legacy, "w", zipfile.ZIP_DEFLATED) as out,
+        ):
+            for item in source.namelist():
+                data = source.read(item)
+                if item == "metadata.json":
+                    metadata = json.loads(data)
+                    metadata["schema"] = "itaca-itc/1"
+                    metadata.pop("steps_hash", None)
+                    data = json.dumps(metadata).encode()
+                elif item == "history.json":
+                    entries = json.loads(data)
+                    for entry in entries:
+                        entry.pop("step", None)
+                    data = json.dumps(entries).encode()
+                out.writestr(item, data)
+        reopened = itc.open(legacy)
+        assert reopened.state_hash == rich_db.state_hash
+
+    def test_an_archive_with_no_state_hash_is_named_not_a_key_error(
+        self, rich_db: VarFrame, tmp_path: Path
+    ) -> None:
+        """A truncated metadata block must not surface as KeyError."""
+        target = tmp_path / "campaign.itc"
+        rich_db.save(target)
+        broken = tmp_path / "broken.itc"
+        with (
+            zipfile.ZipFile(target) as source,
+            zipfile.ZipFile(broken, "w", zipfile.ZIP_DEFLATED) as out,
+        ):
+            for item in source.namelist():
+                data = source.read(item)
+                if item == "metadata.json":
+                    metadata = json.loads(data)
+                    metadata.pop("state_hash")
+                    data = json.dumps(metadata).encode()
+                out.writestr(item, data)
+        with pytest.raises(DataError, match="no 'state_hash'"):
+            itc.open(broken)

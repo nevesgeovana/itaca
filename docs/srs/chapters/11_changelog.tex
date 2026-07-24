@@ -86,7 +86,7 @@ reshaping operations) was resolved and its four rules folded into the
 HistoryFrame section (Chapter~\ref{ch:datamodel}, Section 4.3).
 
 \paragraph{Changed (B3a).} The \code{.itc\_pipe} format
-(Chapter~\ref{ch:datamodel}, Section~ef{sec:itc-pipe}) is specified as JSON rather
+(Chapter~\ref{ch:datamodel}, Section~\ref{sec:itc-pipe}) is specified as JSON rather
 than TOML, with design decision DD-28 recording why (no
 standard-library TOML writer in any Python version, no TOML null type
 against a meaningful \code{compute(fill=None)}, and nested replay
@@ -105,7 +105,14 @@ underlying error's object and suggested fix preserved. The History-entry
 table gained the \code{step} field (replay metadata, excluded from the
 state hash, REQ-103 scope unchanged), and the \code{.itc} archive
 persists it at schema \code{itaca-itc/2} so a reopened archive can still
-lift its recipe. DD-28 also records the replay representation itself:
+lift its recipe. The archive section (Section~\ref{sec:itc-archive}) was
+amended to match, naming both schema versions, the \code{step} member of
+\code{history.json}, and the \code{steps\_hash} digest in
+\code{metadata.json}. That digest covers the recipe while the REQ-103
+state hash covers the recovered data: without it an edited step passes
+the state check, because the stored data still matches itself, and the
+edited recipe then steers the next replay. DD-28 also records the replay
+representation itself:
 structured step re-dispatch rather than re-parsing the History display
 strings.
 

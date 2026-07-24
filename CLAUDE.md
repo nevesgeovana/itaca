@@ -73,8 +73,10 @@ tagged stable may proceed.
 Before a work item closes, the `role-review` skill has run its
 applicable reviewer passes (architect, QA, V&V, tech writer, API
 designer; charters in `.claude/agents/`) on the item's diff, and
-every finding is fixed or registered (OPEN_QUESTIONS.md or the
-milestone execution plan). Geovana keeps the non-delegable seats:
+every finding is fixed or registered (`docs/OPEN_QUESTIONS.md` for
+design questions, the milestone execution plan for approved scope, or
+the working plan ledger, one file per entry, for everything else).
+Geovana keeps the non-delegable seats:
 product owner, domain expert, numerical analyst. The sister
 pyflightstream repository carries the same process (DD-23).
 
@@ -84,15 +86,23 @@ specialist agents): "role-review" means invoking the `role-review`
 skill so the real reviewer agents run, never a hand-written
 paraphrase. A `git push` PreToolUse hook
 (`.claude/hooks/role_review_gate.py`) blocks every push until an
-attestation stamped by the skill covers every commit the push makes
-new, computed as `git rev-list <target> --not --remotes` plus the ref
-being pushed, always. The ref stays in scope even when the range is
-empty: the ordinary release order (branch first, then tag) leaves the
-tagged commit already on the remote, and set containment over an empty
-range is vacuously true, so checking the range alone once let an
-unattested tag clear the gate. A milestone-release tag (`vX.Y.Z` or
-`--tags`) additionally requires the release attestation (full-scope
-review of the release diff). The attestation is written by
+attestation covers every commit the push makes new, computed per
+resolved ref as `git rev-list <ref> --not --remotes` plus the ref
+itself, always. The ref stays in scope even when the range is empty:
+the ordinary release order (branch first, then tag) leaves the tagged
+commit already on the remote, and set containment over an empty range
+is vacuously true, so checking the range alone once let an unattested
+tag clear the gate. Push forms whose scope cannot be resolved offline
+(`--all`, `--mirror`, `--tags`, `--follow-tags`, deletions) are
+denied rather than guessed at; name the branch or tag. An explicit
+version tag additionally requires the release attestation (full-scope
+review of the release diff).
+
+What the mechanism enforces is exactly this: an attestation exists
+naming every commit in scope. It does not prove the agents ran, and
+the recorded `passes` list is never checked. That last step rests on
+whoever writes the attestation, which is why the skill, not a
+paraphrase, must be what writes it. The attestation is written by
 `.claude/hooks/write_attestation.py` as the skill's closing step, in
 `.claude/.role_review_attestation.json` (local, gitignored). A commit
 made after attesting re-arms the gate: an unreviewed commit never
@@ -116,12 +126,16 @@ it protects and show the guard fails.
 
 Incidents are recorded in the shared ledger with the sister
 repository, located by the `ITACA_INCIDENT_LEDGER` environment
-variable, never by a literal path in a versioned file. The
-`incident-analyst` agent (charter in `.claude/agents/`) writes the
-record: symptom, proximate cause, structural cause, guard, guard
-evidence, cross-repository impact. Whether an incident blocks a push
-is Geovana's call, and the push gate denies while one is open. No new
-work ships on top of a defect whose structural cause is still unfixed.
+variable, never by a literal path in a versioned file. The variable
+names the directory holding `check_incidents.py` (or the checker
+itself); unset means the check does not apply, so a clone that never
+configured it can still push, while set but unreachable blocks every
+push by design. The `incident-analyst` agent (charter in
+`.claude/agents/`) drafts the record: symptom, proximate cause,
+structural cause, guard, guard evidence, cross-repository impact.
+Whether an incident blocks is Geovana's call, and while one marked
+blocking is open the gate denies. No new work ships on top of a defect
+whose structural cause is still unfixed.
 
 ## What Claude should do here
 

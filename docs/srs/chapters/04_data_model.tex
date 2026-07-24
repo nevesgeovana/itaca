@@ -435,6 +435,20 @@ Table~\ref{tab:itc-archive}. The format is designed for long-term archival:
 it uses open standards (NumPy \code{.npz} and JSON) and can be inspected
 without \itc{} using any ZIP tool plus \code{numpy.load}.
 
+Two schema versions exist. Schema \code{itaca-itc/1} is the 0.1.0
+layout; schema \code{itaca-itc/2} adds the replay step to each
+\code{history.json} entry, so a pipeline can be lifted from a reopened
+archive (Section~\ref{sec:itc-pipe}). A build reads both, and writes
+the current one. Schema 2 carries a second integrity digest,
+\code{steps\_hash} in \code{metadata.json}, computed over the recorded
+steps. It is separate from the state hash of REQ-103, whose scope is
+unchanged: the state hash covers the recovered data, while
+\code{steps\_hash} covers the recipe. Without it an edited step passes
+the state check, because the stored data still matches itself, and the
+edited recipe then steers the next replay. Loading refuses a schema 2
+archive whose \code{steps\_hash} is absent or does not match, and
+refuses any archive with no state hash.
+
 \begin{table}[H]
 \centering
 \caption{Layout of a \code{.itc} archive.}
@@ -452,8 +466,8 @@ without \itc{} using any ZIP tool plus \code{numpy.load}.
 \code{historyframe.npz}  & Origin tags per variable (absent when all values are original).\\
 \code{axes.json}         & Registered axes with rotation matrices (absent when only the canonical body axis is present).\\
 \code{provenance.json}   & Origin record (Section~\ref{sec:provenance-history}).\\
-\code{history.json}      & Ordered list of operation entries with indices.\\
-\code{metadata.json}     & \itc{} version, format version, schema validation hash.\\
+\code{history.json}      & Ordered list of operation entries with indices, each carrying its replay step when the operation records one (schema \code{itaca-itc/2}).\\
+\code{metadata.json}     & \itc{} version, format version, state hash, and the replay-steps hash (schema \code{itaca-itc/2}).\\
 \bottomrule
 \end{tabularx}
 \end{table}

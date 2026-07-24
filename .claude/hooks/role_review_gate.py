@@ -13,8 +13,15 @@ exact commit being pushed, and a release-grade push (a version tag or
 
 The hook cannot itself run the agents (subagents are the model's to
 invoke). It blocks and tells the model what to run; the skills write
-the attestation as their closing step (see write_attestation.py), so
-the only way to clear the gate is to actually run them.
+the attestation as their closing step (see write_attestation.py).
+
+What this mechanism actually enforces, stated exactly: an attestation
+exists that names every commit in scope for this push. It does NOT
+prove the reviewer agents ran. The ``passes`` field is recorded and
+never checked, and any process that can write the file can clear the
+gate. That residual trust sits with the operator. Claiming more than
+this would make the gate the thing it guards against, an assurance
+whose evidence nobody verified.
 
 Design (hardened 2026-07-23 after the gate's own role review found
 bypass holes in v1):
@@ -271,23 +278,90 @@ def _blocking_incidents(repo_name: str) -> tuple[bool, str, str]:
     return True, "unreachable" if "UNREADABLE" in detail else "incident", detail
 
 
-def _is_release_push(args_after_push: list[str], root: Path) -> tuple[bool, str | None]:
+# Options that send refs the gate cannot enumerate offline. --tags and
+# --follow-tags are the sharp ones: there is no way to tell which tags the
+# remote already has without talking to it, so a scope computed from local
+# state silently omits the tag being published. --follow-tags is the
+# ordinary release command, and it shipped an unattested tag while every
+# test stayed green.
+UNSCOPABLE_OPTIONS = frozenset(
+    {"--all", "--mirror", "--tags", "--follow-tags", "--delete", "-d"}
+)
+
+
+def _push_scope(args_after_push: list[str], root: Path) -> tuple[list[str], str]:
+    """Resolve the commits this push sends, or say why it cannot.
+
+    Returns ``(commits, problem)``. A non-empty ``problem`` means the
+    gate could not determine what the push sends and must deny: a guard
+    that guesses at its own scope is not a guard.
+
+    The first non-option token is the remote; the rest are refspecs,
+    whose source side (before ``:``) is resolved locally. With no
+    refspec the push sends the current branch, so the scope is HEAD.
+    """
+    tokens = [_unquote(raw) for raw in args_after_push]
+    for tok in tokens:
+        if tok in UNSCOPABLE_OPTIONS:
+            return [], f"the {tok} form sends refs the gate cannot enumerate"
+
+    positional = [t for t in tokens if not t.startswith("-")]
+    # The first positional is the remote (a name or a URL), never a ref.
+    refspecs = positional[1:]
+    if not refspecs:
+        head = _git(root, "rev-parse", "HEAD")
+        return ([head] if head else []), ("" if head else "HEAD does not resolve")
+
+    commits: list[str] = []
+    for spec in refspecs:
+        source = spec.lstrip("+").split(":", 1)[0]
+        if not source:
+            return [], f"the refspec {spec!r} deletes a remote ref"
+        commit = _git(root, "rev-list", "-n", "1", source)
+        if not commit:
+            return [], f"the ref {source!r} does not resolve in this checkout"
+        commits.append(commit)
+    return commits, ""
+
+
+def _is_release_push(args_after_push: list[str]) -> bool:
     """Classify a push as release-grade from the refs it names.
 
-    Release-grade if the args carry --tags/--follow-tags or an explicit
-    version-tag argument. Returns ``(is_release, tagged_commit)`` where
-    tagged_commit is the commit an explicit version tag resolves to (so
-    the gate checks the attestation against the tag's target, not HEAD),
-    or None when the release-ness comes from --tags with no explicit tag.
+    Release-grade when an argument is an explicit version tag. The
+    --tags forms never reach this question: they are refused earlier as
+    unscopable, which is also what stops them from publishing a tag the
+    release attestation never covered.
     """
-    for raw in args_after_push:
-        tok = _unquote(raw)
-        if tok in ("--tags", "--follow-tags"):
-            return True, None
-        if VERSION_TAG_TOKEN.match(tok):
-            commit = _git(root, "rev-list", "-n", "1", tok)
-            return True, (commit or None)
-    return False, None
+    return any(VERSION_TAG_TOKEN.match(_unquote(raw)) for raw in args_after_push)
+
+
+def _repo_identity(root: Path) -> str:
+    """Name this repository for the incident query.
+
+    From ``[project] name`` in pyproject.toml, which travels with the
+    clone. The checkout directory name does not: a clone into
+    ``itaca-review``, a worktree, or a renamed folder would query an
+    unknown repository, get a clean answer, and allow. Falling back to
+    the folder name keeps the gate working in a checkout with no
+    pyproject, which is the only case where nothing better exists.
+    """
+    config = root / "pyproject.toml"
+    section = ""
+    try:
+        for line in config.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                section = stripped
+                continue
+            if section == "[project]" and stripped.startswith("name"):
+                _, sep, value = stripped.partition("=")
+                if sep:
+                    name = value.strip().strip("\"'")
+                    if name:
+                        return name
+    except OSError:
+        pass
+    return root.name
 
 
 def main() -> None:
@@ -331,10 +405,21 @@ def main() -> None:
                 "root, then push.",
             )
 
-        is_release, tagged_commit = _is_release_push(args_after_push, root)
-        # The commit the attestation must cover: an explicit version tag's
-        # target when pushing one, else the working-tree tip (HEAD).
-        target = tagged_commit or head
+        is_release = _is_release_push(args_after_push)
+        # The refs this push actually sends, resolved from the command.
+        # Scoping from HEAD instead let a push of any other ref clear the
+        # gate whenever HEAD happened to be attested.
+        targets, problem = _push_scope(args_after_push, root)
+        if problem:
+            _decide(
+                "deny",
+                "role-review gate: the gate cannot determine which commits "
+                f"this push sends, because {problem}. Push the branch or tag "
+                "by name (for example `origin main` or `origin v0.2.0`) so "
+                "the gate can resolve the ref and check it against the "
+                "attestation. Refusing is deliberate: a guard that guesses "
+                "at its own scope proves nothing.",
+            )
 
         att_path = root / ATTESTATION
         try:
@@ -352,7 +437,7 @@ def main() -> None:
         # comes from the checkout, never a literal, so a copy that forgot
         # to edit it cannot query the wrong repository, get a clean
         # answer, and allow.
-        repo_name = root.name
+        repo_name = _repo_identity(root)
         blocked, kind, detail = _blocking_incidents(repo_name)
         if blocked and kind == "unreachable":
             _decide(
@@ -379,14 +464,17 @@ def main() -> None:
         # The attestation must cover EVERY commit the push makes new, not
         # just the tip: checking the tip alone let unpushed ancestors ship
         # unreviewed. ITACA's own role review found that defect.
-        pushed = _pushed_commits(root, target)
-        # The ref being pushed is ALWAYS in scope, even when it moves zero
-        # new commits. Set containment over an empty range is vacuously
-        # true, and the ordinary release order (branch first, then tag)
-        # leaves the tagged commit already on the remote: checking only the
-        # range let an unattested tag through. A guard whose assertion can
-        # be discharged by having nothing to assert about is not a guard.
-        in_scope = list(dict.fromkeys([*pushed, target]))
+        # Every ref sent is ALWAYS in scope, even when it moves zero new
+        # commits. Set containment over an empty range is vacuously true,
+        # and the ordinary release order (branch first, then tag) leaves
+        # the tagged commit already on the remote: checking only the range
+        # let an unattested tag through. A guard whose assertion can be
+        # discharged by having nothing to assert about is not a guard.
+        in_scope: list[str] = []
+        for ref_commit in targets:
+            in_scope.extend(_pushed_commits(root, ref_commit))
+            in_scope.append(ref_commit)
+        in_scope = list(dict.fromkeys(in_scope))
         review = att.get("review") or {}
         covered = set(
             review.get("commits") or ([review["head"]] if review.get("head") else [])
@@ -395,16 +483,23 @@ def main() -> None:
         if missing:
             listed = ", ".join(c[:12] for c in missing[:8])
             more = f" and {len(missing) - 8} more" if len(missing) > 8 else ""
+            # Name the range. The role-review skill defaults to the last
+            # commit when given nothing, which is the wrong scope for this
+            # denial, so a reader who obeys the message literally re-arms
+            # the gate instead of clearing it.
+            span = f"{in_scope[-1]}^..{in_scope[0]}"
             _decide(
                 "deny",
                 f"ROLE-REVIEW GATE: {len(missing)} of the {len(in_scope)} commit(s) in "
                 f"scope for this push are not covered by any role-review attestation: "
                 f"{listed}{more}. Run the role-review skill (the specialist agents: "
                 "architect, QA, V&V, tech writer, API designer as applicable) over the "
-                "WHOLE pushed range, not only the tip, fix or register every finding, "
-                "and let the skill write the attestation. Do NOT paraphrase the review "
-                "as manual checks. If you amended or rebased since attesting, the "
-                "commits changed: re-review and re-attest. Then push.",
+                f"WHOLE pushed range, which is `{span}`, not only the tip; read "
+                f"it with `git log --oneline {span}`. Fix or register every "
+                "finding and let the "
+                "skill write the attestation. Do NOT paraphrase the review as manual "
+                "checks. If you amended or rebased since attesting, the commits "
+                "changed: re-review and re-attest. Then push.",
             )
 
         if is_release:
@@ -417,14 +512,15 @@ def main() -> None:
             if rel_missing:
                 _decide(
                     "deny",
-                    "RELEASE GATE: this is a release-grade push (a version tag or "
-                    "--tags) but the release attestation does not cover "
+                    "RELEASE GATE: this is a release-grade push (an explicit version "
+                    "tag) but the release attestation does not cover "
                     f"{len(rel_missing)} of the {len(in_scope)} commit(s) being "
                     "released, including the tagged commit itself when the branch was "
-                    "pushed first. Run the release skill end to end (full-scope audit "
-                    "plus the role-review sweep of every item), which writes the "
-                    "release attestation over the whole range, before tagging or "
-                    "pushing the release.",
+                    "pushed first. Run the role-review skill over the whole release "
+                    "diff (every applicable pass, full scope, not the last item only), "
+                    "fix or register every finding, then write the release attestation "
+                    "with `python .claude/hooks/write_attestation.py release "
+                    "<passes,that,ran>`, and only then push the tag.",
                 )
 
         # Attestation covers the pushed commit: let the normal permission
@@ -435,8 +531,10 @@ def main() -> None:
             "deny",
             "role-review gate: the gate could not be evaluated for this "
             f"push ({type(error).__name__}: {error}). Failing closed. "
-            "Resolve the error, or temporarily disable the hook via /hooks "
-            "if it is the gate itself that is broken, then push.",
+            "Resolve the error, then push. If the gate itself is broken, "
+            "stop and tell Geovana: turning the gate off to ship is an "
+            "author decision, not a workaround, and it is the exact move "
+            "this protocol exists to prevent.",
         )
 
 

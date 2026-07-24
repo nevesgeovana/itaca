@@ -251,10 +251,17 @@ def test_apply_wraps_non_data_errors_too() -> None:
         recipe.apply(_force_frame())
 
 
-def test_an_empty_pipeline_is_the_identity() -> None:
-    """Constructible by hand; extraction refuses to produce one."""
-    db = _frame()
-    assert Pipeline(steps=()).apply(db).state_hash == db.state_hash
+def test_an_empty_pipeline_cannot_be_constructed() -> None:
+    """Extraction refuses to produce one, so construction must too.
+
+    This test previously pinned the opposite, that the empty pipeline
+    was the identity. ``History.to_pipeline`` raises on an empty range
+    precisely to stop a pipeline that would apply as a silent no-op, so
+    letting one in through the constructor and through the file reader
+    left the producer strict and the two consumers permissive.
+    """
+    with pytest.raises(DataError, match="no steps"):
+        Pipeline(steps=())
 
 
 def test_replay_rejects_a_call_outside_the_allowlist() -> None:
@@ -625,3 +632,61 @@ def test_translate_moments_replays_on_a_different_frame() -> None:
     assert recipe.apply(target).state_hash == (
         target.translate_moments(to_point=[1.0, 0.0, 0.0]).state_hash
     )
+
+
+# ---------------------------------------------------------------------------
+# The library never lets a stdlib exception reach the user (REQ-81)
+# ---------------------------------------------------------------------------
+
+
+def test_load_pipeline_names_a_missing_file(tmp_path: Path) -> None:
+    """The likeliest first-try mistake must not surface as FileNotFoundError."""
+    with pytest.raises(DataError, match="could not read"):
+        itc.load_pipeline(tmp_path / "absent.itc_pipe")
+
+
+def test_load_pipeline_names_a_binary_file(tmp_path: Path) -> None:
+    """Pointing it at a sibling .itc archive decodes as bytes, not as text."""
+    archive = tmp_path / "campaign.itc"
+    archive.write_bytes(b"PK\x03\x04\x00\xff\xfe binary")
+    with pytest.raises(DataError, match="could not read") as excinfo:
+        itc.load_pipeline(archive)
+    # The suffix is a free, certain signal about which reader was wanted.
+    assert "itc.open" in excinfo.value.fix
+
+
+def test_apply_to_a_non_varframe_says_what_to_pass() -> None:
+    """``apply`` reads as if it might take a path; it does not."""
+    pipeline = _frame().compute("w = y * 2").history.to_pipeline()
+    with pytest.raises(PipelineCompatibilityError, match="expects a VarFrame"):
+        pipeline.apply("run2.itc")  # type: ignore[arg-type]
+
+
+def test_content_hash_refuses_a_non_finite_argument_the_same_way_save_does() -> None:
+    """A public property must not raise a bare ValueError (REQ-81)."""
+    processed = _frame().compute("w = y * 2", where="y > 5", fill=float("inf"))
+    pipeline = processed.history.to_pipeline()
+    with pytest.raises(DataError, match="no RFC 8259 JSON representation"):
+        _ = pipeline.content_hash
+
+
+def test_a_pipeline_with_no_steps_is_refused_at_both_ends(tmp_path: Path) -> None:
+    """``to_pipeline`` refuses to build a silent no-op; so must the reader."""
+    with pytest.raises(DataError, match="no steps"):
+        Pipeline(steps=(), history_start=0, history_end=0, itaca_version="0.2.0")
+    target = tmp_path / "empty.itc_pipe"
+    target.write_text(
+        json.dumps(
+            {
+                "schema": PIPELINE_SCHEMA,
+                "itaca_version": "0.2.0",
+                "history_start": 0,
+                "history_end": 0,
+                "steps": [],
+                "content_hash": "sha256:0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(DataError, match="no steps"):
+        itc.load_pipeline(target)

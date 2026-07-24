@@ -45,9 +45,10 @@ them what to read. Wait for all passes before acting on any finding.
 
 For each finding, in severity order: fix it in-session, or append it
 to `docs/OPEN_QUESTIONS.md` with the next free OQ id (design
-questions) or to the current milestone execution plan (work items),
-or record in the session notes why it is not a defect (with the
-reviewer named, so the disagreement is auditable). Findings that
+questions), or to the current milestone execution plan (approved
+scope), or to the working plan ledger as one file per entry
+(everything else), or record in the session notes why it is not a
+defect (with the reviewer named, so the disagreement is auditable). Findings that
 require a non-delegable seat (product owner, domain expert,
 numerical analyst) become questions to the author, never an agent's
 call. Re-run a reviewer only when its findings forced substantive

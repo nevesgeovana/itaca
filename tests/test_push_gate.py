@@ -48,8 +48,8 @@ def git(repo: Path, *args: str) -> str:
     return done.stdout.strip()
 
 
-def decide(repo: Path, command: str, ledger: str | None = None) -> str:
-    """Run the hook on ``command`` and return its permission decision.
+def judge(repo: Path, command: str, ledger: str | None = None) -> tuple[str, str]:
+    """Run the hook on ``command`` and return (decision, reason).
 
     The incident ledger variable is stripped by default so the suite is
     hermetic: inheriting it would make every case depend on the state of
@@ -68,8 +68,31 @@ def decide(repo: Path, command: str, ledger: str | None = None) -> str:
         env=env,
     )
     if not done.stdout.strip():
-        return "allow"
-    return str(json.loads(done.stdout)["hookSpecificOutput"]["permissionDecision"])
+        return "allow", ""
+    out = json.loads(done.stdout)["hookSpecificOutput"]
+    return str(out["permissionDecision"]), str(out.get("permissionDecisionReason", ""))
+
+
+def decide(repo: Path, command: str, ledger: str | None = None) -> str:
+    """Run the hook on ``command`` and return its permission decision."""
+    return judge(repo, command, ledger)[0]
+
+
+def stub_ledger(folder: Path, exit_code: int, message: str) -> str:
+    """Write a fake check_incidents.py that exits with ``exit_code``.
+
+    The real ledger lives outside the repository, so the only way to
+    exercise the branch that matters (a checker that runs and reports a
+    blocking incident) is to stand one up here. Without this the gate
+    could be disabled entirely and the suite would stay green.
+    """
+    folder.mkdir(parents=True, exist_ok=True)
+    checker = folder / "check_incidents.py"
+    checker.write_text(
+        f"import sys\nprint({message!r} + ' ' + sys.argv[1])\nsys.exit({exit_code})\n",
+        encoding="utf-8",
+    )
+    return str(folder)
 
 
 def attest(repo: Path, commits: list[str], kind: str = "review") -> None:
@@ -102,6 +125,10 @@ def repo(tmp_path: Path) -> Path:
     (work / "a.txt").write_text("a", encoding="utf-8")
     git(work, "add", "-A")
     git(work, "commit", "-q", "-m", "base")
+    # Name the branch, so a test that pushes "main" by name pushes a ref
+    # that exists locally. git init picks master or main depending on the
+    # installation, and the gate now resolves the named ref.
+    git(work, "branch", "-M", "main")
     git(work, "remote", "add", "origin", str(remote))
     git(work, "push", "-q", "origin", "HEAD:refs/heads/main")
     git(work, "fetch", "-q", "origin")
@@ -193,3 +220,153 @@ def test_a_quoted_mention_of_the_command_is_not_a_push(repo: Path) -> None:
     """A commit message naming the command must not trip the gate."""
     add_commit(repo, "one")
     assert decide(repo, f'git commit -m "explain the {PUSH} gate"') == "allow"
+
+
+def test_a_named_branch_is_scoped_by_that_branch_not_by_head(repo: Path) -> None:
+    """Pushing a ref that is not HEAD must be judged on that ref.
+
+    Scoping from HEAD let a branch carrying unattested commits ship
+    whenever HEAD happened to be attested, which is the same free ride
+    for unreviewed work that the range check exists to stop.
+    """
+    head = add_commit(repo, "one")
+    git(repo, "branch", "side")
+    git(repo, "checkout", "-q", "side")
+    add_commit(repo, "unreviewed")
+    git(repo, "checkout", "-q", "main")
+    attest(repo, [head])
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert decide(repo, f"{PUSH} origin side") == "deny"
+    assert decide(repo, f"{PUSH} origin side:main") == "deny"
+
+
+def test_a_push_the_gate_cannot_scope_is_denied(repo: Path) -> None:
+    """--all, --mirror and --tags send refs the gate cannot enumerate.
+
+    Offline there is no way to tell which tags the remote already has, so
+    the honest answer is to refuse and ask for the ref by name. Allowing
+    would be a guard discharging its assertion by not making one:
+    --follow-tags is the ordinary release command, and it published an
+    unattested tag while the suite stayed green.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    attest(repo, [head], kind="release")
+    for form in ("--all", "--mirror", "--tags", "--follow-tags"):
+        decision, reason = judge(repo, f"{PUSH} {form} origin")
+        assert decision == "deny", form
+        assert "cannot determine" in reason, form
+
+
+def test_a_deletion_refspec_is_denied(repo: Path) -> None:
+    """A push that removes a remote ref is not something the gate can bless."""
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    decision, reason = judge(repo, f"{PUSH} origin :main")
+    assert decision == "deny"
+    assert "cannot determine" in reason
+
+
+def test_an_open_blocking_incident_denies(repo: Path, tmp_path: Path) -> None:
+    """The branch the incident gate exists for, driven by a real checker.
+
+    Only the unreachable-ledger path was covered before, so the whole
+    incident gate could be deleted with the suite green.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    ledger = stub_ledger(tmp_path / "ledger", 1, "INC-1 open and blocking for")
+    decision, reason = judge(repo, f"{PUSH} origin main", ledger=ledger)
+    assert decision == "deny"
+    assert "INCIDENT GATE" in reason
+    assert "INC-1 open and blocking for" in reason
+    # The two failure classes have opposite remedies and must not share
+    # a message: this one is a real incident, not an unreadable ledger.
+    assert "incident-analyst" in reason
+    assert "could not be consulted" not in reason
+
+
+def test_a_clean_ledger_allows(repo: Path, tmp_path: Path) -> None:
+    """A checker that reports no blocking incident must not block."""
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    ledger = stub_ledger(tmp_path / "ledger", 0, "clean for")
+    assert decide(repo, f"{PUSH} origin main", ledger=ledger) == "allow"
+
+
+def test_the_incident_query_uses_the_project_name(repo: Path, tmp_path: Path) -> None:
+    """The queried identity must survive a clone into a renamed directory.
+
+    Taking it from the folder name meant a clone named anything else
+    queried an unknown repository, got a clean answer, and shipped.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    (repo / "pyproject.toml").write_text(
+        '[project]\nname = "itaca"\n', encoding="utf-8"
+    )
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "pyproject")
+    attest(repo, _pushed(repo))
+    ledger = stub_ledger(tmp_path / "ledger", 1, "queried")
+    decision, reason = judge(repo, f"{PUSH} origin main", ledger=ledger)
+    assert decision == "deny"
+    assert "queried itaca" in reason, reason
+
+
+def test_the_deny_names_the_range_to_review(repo: Path) -> None:
+    """The reason must carry the command that clears it, not just a complaint.
+
+    A reader who follows the role-review skill default reviews the last
+    commit, which is the wrong scope for this denial and re-arms the gate.
+    """
+    first = add_commit(repo, "one")
+    add_commit(repo, "two")
+    decision, reason = judge(repo, f"{PUSH} origin main")
+    assert decision == "deny"
+    assert "ROLE-REVIEW GATE" in reason
+    assert f"{first}^.." in reason, reason
+
+
+def test_the_fail_closed_reason_does_not_offer_to_disable_the_gate() -> None:
+    """A confused gate must not hand over its own bypass as a remedy.
+
+    The fail-closed message is read by an agent under time pressure. It
+    once offered turning the hook off through /hooks as a co-equal
+    option, next to actually fixing the problem.
+    """
+    text = HOOK.read_text(encoding="utf-8")
+    assert "via /hooks" not in text
+    assert "disable the hook" not in text
+
+
+def test_settings_json_wires_the_hook() -> None:
+    """A hook nobody invokes is not a guard.
+
+    Every other test here runs the script by path, so the suite passed
+    identically with the registration deleted, the matcher narrowed, or
+    the path drifted.
+    """
+    settings = json.loads(
+        (HOOK.parents[1] / "settings.json").read_text(encoding="utf-8")
+    )
+    entries = settings["hooks"]["PreToolUse"]
+    wired = [
+        hook
+        for entry in entries
+        for hook in entry.get("hooks", [])
+        if "role_review_gate.py" in hook.get("command", "")
+    ]
+    assert wired, "no PreToolUse hook invokes role_review_gate.py"
+    matchers = [
+        entry["matcher"]
+        for entry in entries
+        if any("role_review_gate.py" in h.get("command", "") for h in entry["hooks"])
+    ]
+    assert any("Bash" in m and "PowerShell" in m for m in matchers), matchers
+
+
+def _pushed(repo: Path) -> list[str]:
+    """The commits a push from ``repo`` would make new."""
+    listed = git(repo, "rev-list", "HEAD", "--not", "--remotes")
+    return [c for c in listed.splitlines() if c]
