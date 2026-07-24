@@ -1,7 +1,7 @@
 """Shared fixtures and session-state hygiene for the ITACA test suite."""
 
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import datetime, timezone
 
 import pytest
@@ -38,6 +38,13 @@ def child_env(**overrides: str | None) -> dict[str, str]:
     Strips coverage measurement. A key whose override is ``None`` is
     removed, which is how the push gate tests drop the incident ledger
     variable to stay hermetic.
+
+    Reached two ways, both pytest-native and neither needing ``tests``
+    to be an importable package: modules beside this file import it
+    (pytest puts their directory on ``sys.path``), and modules in
+    subdirectories take the fixture of the same name below. An earlier
+    ``from tests.conftest import`` worked locally only because of the
+    editable install and broke every CI leg with ModuleNotFoundError.
     """
     env = {k: v for k, v in os.environ.items() if k not in COVERAGE_SUBPROCESS_VARS}
     for key, value in overrides.items():
@@ -46,6 +53,12 @@ def child_env(**overrides: str | None) -> dict[str, str]:
         else:
             env[key] = value
     return env
+
+
+@pytest.fixture(name="child_env")
+def _child_env_fixture() -> Callable[..., dict[str, str]]:
+    """Expose :func:`child_env` to tests in subdirectories."""
+    return child_env
 
 
 @pytest.fixture(autouse=True)

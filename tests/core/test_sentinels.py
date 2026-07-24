@@ -24,7 +24,6 @@ from pathlib import Path
 
 import itaca as itc
 from itaca.core.sentinels import NoDefault, no_default
-from tests.conftest import child_env
 
 
 class TestSingleton:
@@ -82,7 +81,7 @@ class TestIdentityInvariants:
 
 
 class TestTypingConformance:
-    def test_mypy_strict_narrows_the_identity_check(self):
+    def test_mypy_strict_narrows_the_identity_check(self, child_env):
         # The typed half of REQ-105: the docstring's adoption pattern
         # must hold under mypy --strict. The snippet's assignments fail
         # to typecheck if the enum singleton stops narrowing out of the

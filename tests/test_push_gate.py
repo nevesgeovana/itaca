@@ -30,8 +30,7 @@ import sys
 from pathlib import Path
 
 import pytest
-
-from tests.conftest import child_env
+from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
 
 HOOK = Path(__file__).resolve().parents[1] / ".claude" / "hooks" / "role_review_gate.py"
 ATTESTATION = Path(".claude") / ".role_review_attestation.json"

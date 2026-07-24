@@ -368,3 +368,34 @@ class TestGuards:
             db.save(tmp_path / "campaign.itc")
         assert "fill" in excinfo.value.obj
         assert "compute" in excinfo.value.obj
+
+
+class TestSchemaLiterals:
+    """Pin the schema strings by parsing, not by reading them.
+
+    Twice in one session a review pass reported one of these literals as
+    containing a backslash escape (`itaca-itc\1`, an octal escape for
+    U+0001) and concluded the schema 1 read path was dead code. The byte
+    is a forward slash; the search tool renders it both ways on Windows.
+    Acting on that finding would have introduced the defect it
+    described.
+
+    A charter note telling reviewers to check bytes is documentation,
+    not a guard. This is the guard: the claim is now mechanically
+    refutable, because a build where it were true is a build where this
+    test is already red.
+    """
+
+    def test_every_schema_literal_is_exactly_as_written(self) -> None:
+        import ast
+
+        source = Path(itc.io.formats.itc.__file__).read_text(encoding="utf-8")
+        literals = {
+            node.value
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value.startswith("itaca-itc")
+        }
+        assert literals == {"itaca-itc/1", "itaca-itc/2"}, literals
+        assert all("\\" not in value and "\x01" not in value for value in literals)
