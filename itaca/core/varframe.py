@@ -1764,8 +1764,8 @@ class VarFrame:
             example ``fill=float("inf")``. REQ-35 admits the value; the
             archive must stay readable by any JSON tool (REQ-70), so it
             cannot be written. The message names the step and argument.
-            A NaN fill is never recorded as a replay argument, so it
-            does not trigger this.
+            A NaN fill is not recorded as a replay argument, so it does
+            not trigger this.
 
         Examples
         --------

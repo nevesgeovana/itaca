@@ -685,11 +685,13 @@ containers and non-finite floats rather than claiming no lossy
 encoding. The file itself has been published many times; that
 particular entry never had been.
 
-DD-28 has now been edited in place twice: its encoding claim in
-`2047c6b`, and the marker under its status in `5110f62`, the commit
-that added this note. The second edit is in scope of the same question
-as the first, and recording it here rather than leaving it implicit is
-the point of the note.
+DD-28 has been edited in place after the file was published: its
+encoding claim in `2047c6b`, and the marker under its status, added in
+`5110f62` and reworded afterward. Further edits to DD-28, and edits to
+this note, fall under the same question. A running count is not kept on
+purpose: a note that enumerates edits to an entry, written by a commit
+that edits that entry, is stale the moment it is written, and this note
+carried exactly that defect before a review pass caught it.
 
 The preamble states the append-only rule without a qualifier, so on its
 face both edits are violations, and whether "frozen" begins at
