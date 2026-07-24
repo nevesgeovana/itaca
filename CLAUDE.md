@@ -80,6 +80,9 @@ format is defined in `_private/plan/README.md`, for everything else).
 Geovana keeps the non-delegable seats:
 product owner, domain expert, numerical analyst. The sister
 pyflightstream repository carries the same process (DD-23).
+Session planning, closure, and periodic audit run through the plan,
+handoff, and audit skills in `.claude/skills/` (session documents in
+`_private/`, never committed).
 
 Mandatory push and release gate (adopted 2026-07-23, after a
 pyflightstream release ran paraphrased manual checks instead of the
