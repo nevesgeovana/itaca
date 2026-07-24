@@ -30,8 +30,9 @@ body sha256.
 
 Two vendoring shapes are covered:
 
-- committed copies (the hooks, the of-record agent charter, the S3 guard
-  under ``.claude/kit``) are always present and always checked; and
+- committed copies (the hooks, the of-record agent charter, the two S3
+  guard artifacts under ``.claude/kit``) are always present and always
+  checked; and
 - shared tools located by an environment variable (the incident checker,
   the ``_private`` snapshot script, the kit plan checker) are checked when
   configured and skipped when not, exactly as the incident gate skips an

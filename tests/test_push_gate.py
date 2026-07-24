@@ -284,6 +284,10 @@ def test_a_push_the_gate_cannot_scope_is_denied(repo: Path) -> None:
         decision, reason = judge(repo, f"{PUSH} {form} origin")
         assert decision == "deny", form
         assert "cannot determine" in reason, form
+        # v0.2.2: the highest-traffic deny path carries the [scope] sub-kind.
+        # Pin it, or a regression could drop or rename the most common
+        # bracket while the suite stayed green.
+        assert "role-review gate: [scope]" in reason, form
 
 
 def test_a_deletion_refspec_is_denied(repo: Path) -> None:
@@ -361,6 +365,7 @@ def test_the_deny_names_the_range_to_review(repo: Path) -> None:
     # v0.2.0 (S5b, FIX 6): the review deny now shares the one gate prefix
     # with a [review] sub-kind, replacing the old "ROLE-REVIEW GATE:" voice.
     assert "role-review gate: [review]" in reason
+    assert "ROLE-REVIEW GATE" not in reason
     assert f"{tip} --not --remotes" in reason, reason
 
 
@@ -790,10 +795,33 @@ def test_a_multi_tag_release_deny_names_every_tag(repo: Path) -> None:
     decision, reason = judge(repo, f"{PUSH} origin v9.9.8 v9.9.9")
     assert decision == "deny"
     assert "role-review gate: [release]" in reason
+    assert "RELEASE GATE" not in reason
     assert "v9.9.8" in reason and "v9.9.9" in reason
     # The prescribed writer command must carry both tags, not just one.
     writer = reason[reason.index("write_attestation.py release") :]
     assert "v9.9.8" in writer and "v9.9.9" in writer
+
+
+def test_a_push_with_no_resolvable_repo_denies_with_the_repo_kind(
+    tmp_path: Path,
+) -> None:
+    """A push where no git repository resolves denies with the [repo] sub-kind.
+
+    v0.2.2 gave the "no repo resolves" deny its own bracket. The fixture
+    everywhere else builds a valid repo, so this path (and its bracket) had
+    no test; a re-fork could drop or mislabel it while the suite stayed
+    green. tmp_path sits under the OS temp dir, not inside any checkout, so
+    git resolves no repository here.
+
+    The [gate] top-level fail-closed catch-all is a documented residual: it
+    fires only on an unexpected internal exception, which cannot be
+    triggered honestly through the subprocess boundary these tests use.
+    """
+    non_repo = tmp_path / "not_a_repo"
+    non_repo.mkdir()
+    decision, reason = judge(non_repo, f"{PUSH} origin main")
+    assert decision == "deny"
+    assert "role-review gate: [repo]" in reason
 
 
 def test_a_shell_wrapped_attested_push_is_allowed(repo: Path) -> None:
