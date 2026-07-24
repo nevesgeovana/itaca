@@ -87,6 +87,25 @@ def decide(repo: Path, command: str, ledger: str | None = None) -> str:
     return judge(repo, command, ledger)[0]
 
 
+def stderr_of(repo: Path, command: str, ledger: str | None = None) -> str:
+    """Run the hook on ``command`` and return what it wrote to stderr.
+
+    The permission decision travels on stdout; the gate's observability
+    line (a passing gate announcing itself) travels on stderr, which
+    ``judge`` does not surface. Kept separate so the decision helpers stay
+    about the decision.
+    """
+    done = subprocess.run(
+        [sys.executable, str(HOOK)],
+        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}}),
+        capture_output=True,
+        text=True,
+        cwd=repo,
+        env=hook_env(ledger),
+    )
+    return done.stderr
+
+
 def stub_ledger(folder: Path, exit_code: int, message: str) -> str:
     """Write a fake check_incidents.py that exits with ``exit_code``.
 
@@ -674,6 +693,9 @@ def test_a_bare_force_push_is_denied_even_when_fully_attested(
     assert decision == "deny", option
     assert "force" in reason.lower(), option
     assert "author decision" in reason, option
+    # The deny must be actionable: name the safe alternative, or the
+    # operator is left with a refusal and no path forward.
+    assert "--force-with-lease" in reason, option
 
 
 def test_a_force_with_lease_push_still_rides_the_attestation(repo: Path) -> None:
@@ -697,8 +719,67 @@ def test_a_shell_wrapped_unattested_push_is_denied(repo: Path) -> None:
     form does.
     """
     add_commit(repo, "one")  # unattested
-    decision, _ = judge(repo, f'bash -c "{PUSH} origin main"')
+    decision, reason = judge(repo, f'bash -c "{PUSH} origin main"')
     assert decision == "deny"
+    # Deny for the right reason: a wrapped push that reached the review
+    # check, not a scope refusal that happened to also deny.
+    assert "role-review gate: [review]" in reason
+
+
+def test_the_passing_gate_announces_itself_on_stderr(repo: Path) -> None:
+    """A passing gate must not look exactly like an absent one in the logs.
+
+    The final all-checks-passed allow stays a silent permission outcome
+    (no stdout, so the normal permission flow is not auto-approved) but
+    prints one line to stderr naming the repo and the in-scope commit
+    count. Without this a disabled or misfiring gate would be
+    indistinguishable from a gate that ran and allowed.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    decision, _ = judge(repo, f"{PUSH} origin main")
+    assert decision == "allow"
+    assert "role-review gate: evaluated and ALLOWED" in stderr_of(
+        repo, f"{PUSH} origin main"
+    )
+
+
+def test_a_shell_wrapped_attested_push_is_allowed_because_it_was_seen(
+    repo: Path,
+) -> None:
+    """The wrapper detection must allow a wrapped push that IS attested.
+
+    A plain ``decision == allow`` cannot tell "allowed because recognized
+    and attested" from "allowed because the wrapper hid it and the gate
+    never ran", so this asserts the passing-gate stderr line, which only
+    the recognized-and-evaluated path emits.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    wrapped = f'bash -c "{PUSH} origin main"'
+    assert decide(repo, wrapped) == "allow"
+    assert "role-review gate: evaluated and ALLOWED" in stderr_of(repo, wrapped)
+
+
+def test_a_multi_tag_release_deny_names_every_tag(repo: Path) -> None:
+    """A release deny that named only the first tag left the second uncovered.
+
+    Pushing two version tags in one command must deny (no release
+    attestation) with the [release] sub-kind, name BOTH tags in the
+    reason, and prescribe a writer command that lists both, so one pass
+    covers the whole push instead of looping tag by tag.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    git(repo, "tag", "v9.9.8")
+    git(repo, "tag", "v9.9.9")
+    decision, reason = judge(repo, f"{PUSH} origin v9.9.8 v9.9.9")
+    assert decision == "deny"
+    assert "role-review gate: [release]" in reason
+    assert "v9.9.8" in reason and "v9.9.9" in reason
+    # The prescribed writer command must carry both tags, not just one.
+    writer = reason[reason.index("write_attestation.py release") :]
+    assert "v9.9.8" in writer and "v9.9.9" in writer
 
 
 def test_a_shell_wrapped_attested_push_is_allowed(repo: Path) -> None:

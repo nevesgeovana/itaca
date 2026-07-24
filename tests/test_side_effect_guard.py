@@ -56,8 +56,22 @@ def test_the_guard_and_its_skills_are_present() -> None:
     the kit exists to replace.
     """
     assert _GUARD.is_file(), f"S3 guard missing at {_GUARD}"
-    assert _GUARD_MUTATIONS.is_file(), f"S3 mutation companion missing at {_GUARD_MUTATIONS}"
+    assert _GUARD_MUTATIONS.is_file(), (
+        f"S3 mutation companion missing at {_GUARD_MUTATIONS}"
+    )
     assert _SKILLS.is_dir(), f"skills tree missing at {_SKILLS}"
+
+
+def test_the_guard_actually_has_skills_to_check() -> None:
+    """A clean guard run must not mean it silently checked nothing.
+
+    The guard globs ``*/SKILL.md`` and exits 0 when it finds no offender,
+    which is also what it does when it finds no skills at all. So pin that
+    this repository's skills tree is non-empty; otherwise "no offender"
+    below would be a vacuous pass on an empty or mis-pointed directory.
+    """
+    skills = sorted(_SKILLS.glob("*/SKILL.md"))
+    assert skills, f"no */SKILL.md under {_SKILLS}; the guard would pass vacuously"
 
 
 def test_no_side_effecting_skill_is_model_invocable() -> None:

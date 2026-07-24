@@ -79,7 +79,14 @@ target-version = "py310"
 # illustrative samples, not sources the formatter owns. Revisit if
 # Markdown code blocks are ever collected as doctests, which nothing
 # in this repository does today.
-extend-exclude = ["*.md"]
+#
+# The vendored shared-process-kit copies under .claude/hooks and
+# .claude/kit are excluded: they are derived copies whose body is
+# drift-pinned by tests/test_kit_drift.py, so a lint or format fix here
+# would break the pinned hash and has no in-repo remedy. Their lint and
+# format standard is the kit master's responsibility; a finding against
+# one is fixed in the kit and re-vendored, never hand-edited here.
+extend-exclude = ["*.md", ".claude/hooks/**", ".claude/kit/**"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "TID", "RUF", "D"]

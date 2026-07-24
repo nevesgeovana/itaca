@@ -169,14 +169,14 @@ def test_unbalanced_quotes_fail_closed(gate: ModuleType) -> None:
         # POSIX short-flag clusters that carry an inline command.
         "bash -c 'git push'",
         "bash -lc 'git push origin main'",
-        "sh -c \"git push\"",
+        'sh -c "git push"',
         "zsh -ec 'git push'",
         # PowerShell accepts a case-insensitive prefix of -Command.
         "powershell -Command 'git push'",
-        "powershell -command \"git push origin main\"",
+        'powershell -command "git push origin main"',
         "pwsh -Comm 'git push'",
         # cmd /c.
-        "cmd /c \"git push\"",
+        'cmd /c "git push"',
         # Nested wrapper, still within the bounded recursion depth.
         "bash -c \"bash -c 'git push'\"",
     ],

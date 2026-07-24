@@ -10,9 +10,12 @@ vendored into this repository as derived copies. A copy carries a
 provenance header, a line ``END KIT PROVENANCE``, and then the artifact
 body verbatim. This test recomputes each vendored body's sha256 and
 asserts it equals the value this repository pinned when it vendored
-kit-version 0.2.0. A hand-edit of any vendored copy changes its body, the
-recomputed hash no longer matches, and CI goes red: the copies cannot
-silently diverge from the kit again.
+kit-version 0.2.0. A hand-edit of a committed vendored copy changes its
+body, the recomputed hash no longer matches, and CI goes red: the
+committed copies cannot silently diverge from the kit again. The
+env-located shared tools are checked only when their variable is set (see
+below), so in a clone that never configured them they are not drift-guarded
+in ordinary CI.
 
 The fixture is the manifest (kit ``README.md`` 0.2.0), inlined here so the
 test needs no cross-repo filesystem access and cannot deadlock a push. The
@@ -93,7 +96,10 @@ COMMITTED: list[tuple[str, str]] = [
     ("write_attestation.py", ".claude/hooks/write_attestation.py"),
     ("incident-analyst.md", ".claude/kit/incident-analyst.md"),
     ("check_side_effect_guard.py", ".claude/kit/check_side_effect_guard.py"),
-    ("check_side_effect_guard_mutations.py", ".claude/kit/check_side_effect_guard_mutations.py"),
+    (
+        "check_side_effect_guard_mutations.py",
+        ".claude/kit/check_side_effect_guard_mutations.py",
+    ),
 ]
 
 
@@ -197,10 +203,19 @@ def test_the_runtime_agent_body_matches_the_of_record_copy() -> None:
 
 
 def _env_located() -> list[tuple[str, Path]]:
-    """(manifest key, path) for shared tools resolved from env vars.
+    """(manifest key, path) for shared tools that MUST exist when configured.
 
     Skipped entirely when neither variable is configured, mirroring the
     incident gate: a clone that never set them still runs a green suite.
+    Each tool is located by its OWN variable: the incident checker by
+    ITACA_INCIDENT_LEDGER, the plan checker (and its companion) by
+    ITACA_PLAN_VALIDATOR. snap.sh is deliberately NOT here: it has no
+    locator variable of its own, so binding it to the plan-validator
+    directory would be a false coupling (a correctly configured plan
+    validator whose directory happens not to hold snap.sh would fail a
+    check that is not about the plan validator). It is drift-checked
+    best-effort by ``_snap_if_present`` instead, and a locator variable for
+    it is a registered kit item.
     """
     located: list[tuple[str, Path]] = []
     ledger = os.environ.get("ITACA_INCIDENT_LEDGER")
@@ -212,12 +227,27 @@ def _env_located() -> list[tuple[str, Path]]:
     if validator:
         target = Path(validator)
         directory = target.parent if target.suffix == ".py" else target
-        located.append(("snap.sh", directory / "snap.sh"))
         located.append(("check_plan_kit.py", directory / "check_plan_kit.py"))
         located.append(
             ("check_plan_kit_mutations.py", directory / "check_plan_kit_mutations.py")
         )
     return located
+
+
+def _snap_if_present() -> tuple[str, Path] | None:
+    """snap.sh beside the plan validator, only if it is actually there.
+
+    Best-effort: snap.sh has no locator of its own, so it is checked where
+    it happens to sit and never asserted-present, which keeps a false
+    coupling to ITACA_PLAN_VALIDATOR from reddening a correct config.
+    """
+    validator = os.environ.get("ITACA_PLAN_VALIDATOR")
+    if not validator:
+        return None
+    target = Path(validator)
+    directory = target.parent if target.suffix == ".py" else target
+    snap = directory / "snap.sh"
+    return ("snap.sh", snap) if snap.is_file() else None
 
 
 def test_env_located_shared_tools_match_the_manifest() -> None:
@@ -234,3 +264,12 @@ def test_env_located_shared_tools_match_the_manifest() -> None:
             f"shared tool is a configuration error, not a clean skip."
         )
         _assert_matches_manifest(key, path)
+
+
+def test_snap_script_matches_the_manifest_where_it_is_deployed() -> None:
+    """Drift-check snap.sh best-effort; it has no locator of its own."""
+    found = _snap_if_present()
+    if found is None:
+        pytest.skip("snap.sh is not present beside a configured plan validator")
+    key, path = found
+    _assert_matches_manifest(key, path)
