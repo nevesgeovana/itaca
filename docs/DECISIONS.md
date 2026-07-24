@@ -537,9 +537,9 @@ management the interpreter already provides through the instance
 
 **Date:** 2026-07-23
 **Status:** confirmed
-**Corrected in place 2026-07-23, see the note in DD-30.** A reader who
-opens only this entry must not have to reach DD-30 to learn that its
-encoding claim was rewritten.
+
+**Edited in place after first writing; DD-30 records what changed and
+the open question it raises.**
 
 A Pipeline (REQ-53 to REQ-55) replays by re-dispatching structured
 steps, not by re-parsing the History display strings. Every replayable
@@ -683,8 +683,17 @@ unpushed, and its encoding claim was corrected in place in commit
 `2047c6b` to say what the JSON encoding actually does with nested
 containers and non-finite floats rather than claiming no lossy
 encoding. The file itself has been published many times; that
-particular entry never had been. The preamble states the rule without
-that qualifier, so on its face the edit is a violation, and whether
-"frozen" begins at authoring or at the first push is a question for the
-author. It is registered, not settled here, and until it is settled the
-strict reading applies.
+particular entry never had been.
+
+DD-28 has now been edited in place twice: its encoding claim in
+`2047c6b`, and the marker under its status in `5110f62`, the commit
+that added this note. The second edit is in scope of the same question
+as the first, and recording it here rather than leaving it implicit is
+the point of the note.
+
+The preamble states the append-only rule without a qualifier, so on its
+face both edits are violations, and whether "frozen" begins at
+authoring or at the first push is a question for the author. It is
+registered in the working plan ledger as
+`when-does-a-decision-entry-become-frozen`, not settled here, and until
+it is settled the strict reading applies.

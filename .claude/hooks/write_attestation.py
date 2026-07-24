@@ -28,7 +28,7 @@ is an audit annotation, not an enforced gate input: the gate checks
 only that an attestation covers the pushed range, so the honesty of
 the passes list rests on the operator, not the mechanism.
 
-The record's timestamp is the resolved ref's committer date
+The record's timestamp is the first resolved ref's committer date
 (``git show -s --format=%cI``), so it is deterministic and free of any
 wall clock; if unavailable it is omitted. No network, no third-party
 deps. The attestation path is duplicated in role_review_gate.py and

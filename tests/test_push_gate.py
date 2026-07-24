@@ -560,3 +560,22 @@ def test_the_deny_range_covers_every_ref_it_refused(repo: Path) -> None:
     _, reason = judge(repo, f"{PUSH} origin main side")
     side = git(repo, "rev-parse", "side")
     assert side in reason
+
+
+def test_the_review_deny_names_the_ref_that_is_behind_head(repo: Path) -> None:
+    """The loop only happens when the pushed ref is not HEAD.
+
+    The earlier test pushed `main` while main was HEAD, so the deny
+    could name HEAD unconditionally and still pass: the scenario in its
+    own name was never exercised.
+    """
+    behind = add_commit(repo, "one")
+    git(repo, "tag", "v0.1.0")
+    add_commit(repo, "two")
+    assert git(repo, "rev-parse", "v0.1.0") == behind
+    assert git(repo, "rev-parse", "HEAD") != behind
+    _, reason = judge(repo, f"{PUSH} origin v0.1.0")
+    assert "write_attestation.py review" in reason
+    # Naming HEAD here is the loop: the writer would stamp HEAD, which
+    # does not cover the tag, and the same denial repeats.
+    assert "<passes,that,ran> v0.1.0" in reason, reason
