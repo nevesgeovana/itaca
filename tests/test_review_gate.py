@@ -141,13 +141,13 @@ def test_a_blanket_ref_push_cannot_be_scoped(gate: ModuleType, command: str) -> 
     the honest answer; the deny message asks for the ref by name.
     """
     _, _, args = gate._find_git_push(command)
-    # v0.2.0 (S5b, FIX 3): _push_scope also returns the resolved target
-    # remote so the range can be scoped to it; the blanket forms still
-    # short-circuit before a remote is known, so it comes back empty.
-    commits, problem, fix, _remote = gate._push_scope(args, Path("."))
+    # v0.2.2: _push_scope returns (commits, problem, fix, remote, kind).
+    # A blanket form is a genuinely unresolvable range, so kind is "scope".
+    commits, problem, fix, _remote, kind = gate._push_scope(args, Path("."))
     assert commits == []
     assert "cannot enumerate" in problem, command
     assert fix, command
+    assert kind == "scope", command
 
 
 def test_the_c_option_target_is_extracted(gate: ModuleType) -> None:
@@ -211,9 +211,33 @@ def test_an_unconditional_force_is_refused_as_author_only(gate: ModuleType) -> N
     ``tests/test_push_gate.py``.
     """
     for option in ("-f", "--force"):
-        commits, problem, fix, _remote = gate._push_scope(
+        commits, problem, fix, _remote, kind = gate._push_scope(
             [option, "origin", "main"], Path(".")
         )
         assert commits == [], option
         assert "force" in problem.lower(), option
         assert fix, option
+        # v0.2.2: a force stop is a policy refusal, not a scope failure;
+        # the caller frames the two differently, so kind distinguishes them.
+        assert kind == "policy", option
+
+
+def test_the_heredoc_stripper_actually_removes_a_body(gate: ModuleType) -> None:
+    """The stripper must delete a heredoc body, not merely the end decision.
+
+    A stray control byte once broke the heredoc-opener regex so
+    ``_strip_heredocs`` matched nothing and stripped nothing (the closed
+    incident INC-20260724-0912, re-forked into the 0.2.0 kit body). The
+    end-to-end decision stayed correct by luck, so only a test that asserts
+    the body is gone catches a dead stripper. This pins the stripper itself
+    so a re-fork of that byte turns CI red.
+    """
+    command = (
+        "git commit -F - <<EOF\n"
+        "this message body mentions git push but must be stripped\n"
+        "EOF"
+    )
+    stripped = gate._strip_heredocs(command)
+    assert "must be stripped" not in stripped, "heredoc body was not removed"
+    # The opener line itself is kept; only the body is dropped.
+    assert "git commit -F -" in stripped

@@ -22,14 +22,12 @@ Resolution mirrors the plan skill and the incident-ledger philosophy:
   companion would let a mis-pointed ``ITACA_PLAN_VALIDATOR`` (for example
   one still naming the retired ``check_plan_entries.py``) green the suite.
 
-Known coupling (registered in the plan ledger, routed to the kit): the
-kit's ``check_plan_kit_mutations.py`` hardcodes the coordination master
-path for the checker under test rather than resolving it as a sibling the
-way the S3 mutation companion does. So this test proves the coordination
-MASTER can still fail, which equals the deployed copy only while the two
-bodies are byte-identical (they are, and the drift test pins the deployed
-copy). The sibling-resolution fix belongs in the kit and is re-vendored,
-never hand-edited into the drift-pinned copy.
+As of kit 0.2.2 the companion resolves the checker as a sibling
+(``Path(__file__).resolve().parent / "check_plan_kit.py"``) instead of
+the old hardcoded coordination path, so it now proves the DEPLOYED copy
+beside it, not the coordination master. That closes the coupling this
+test previously had to disclose (routed item ITC-20260724-1715), which is
+why the mutation companion can finally be wired as a tier-1 test here.
 """
 
 from __future__ import annotations

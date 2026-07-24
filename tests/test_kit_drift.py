@@ -9,20 +9,24 @@ The shared process kit (canonical masters at the coordination level) is
 vendored into this repository as derived copies. A copy carries a
 provenance header, a line ``END KIT PROVENANCE``, and then the artifact
 body verbatim. This test recomputes each vendored body's sha256 and
-asserts it equals the value this repository pinned when it vendored
-kit-version 0.2.0. A hand-edit of a committed vendored copy changes its
-body, the recomputed hash no longer matches, and CI goes red: the
-committed copies cannot silently diverge from the kit again. The
-env-located shared tools are checked only when their variable is set (see
-below), so in a clone that never configured them they are not drift-guarded
-in ordinary CI.
+asserts it equals the value this repository pinned when it vendored the
+kit. A hand-edit of a committed vendored copy changes its body, the
+recomputed hash no longer matches, and CI goes red: the committed copies
+cannot silently diverge from the kit again. The env-located shared tools
+are checked only when their variable is set (see below), so in a clone
+that never configured them they are not drift-guarded in ordinary CI.
 
-The fixture is the manifest (kit ``README.md`` 0.2.0), inlined here so the
-test needs no cross-repo filesystem access and cannot deadlock a push. The
-0.1.0 -> 0.2.0 promotion changed only ``role_review_gate.py`` and added
-the two S3 side-effect-guard artifacts; every other body keeps its 0.1.0
-hash, so a MIXED manifest (per-file body hashes, not one kit-wide hash) is
-expected and correct.
+The fixture is the manifest (kit ``README.md``), inlined here so the test
+needs no cross-repo filesystem access and cannot deadlock a push. itaca
+tracks kit 0.2.2: ``role_review_gate.py`` (the ``\\x01`` heredoc-byte fix
+plus the deny-message taxonomy), both S3 side-effect-guard artifacts, and
+both kit plan-checker artifacts are at 0.2.2; ``write_attestation.py``,
+``incident-analyst.md``, ``check_incidents.py`` and ``snap.sh`` are
+unchanged and stay at 0.1.0. A MIXED manifest (per-file body hashes and
+versions, not one kit-wide hash) is expected and correct. The vendored
+copies carry a per-copy ``note:`` line ("derived copy ..."); the header,
+including that line, is not hashed, so restamping it does not affect the
+body sha256.
 
 Two vendoring shapes are covered:
 
@@ -59,10 +63,11 @@ class Pin:
     kit_version: str
 
 
-# The kit README 0.2.0 manifest, inlined as the fixture.
+# The kit README 0.2.2 manifest, inlined as the fixture (per-file
+# versions: mixed 0.2.2 and 0.1.0 is correct).
 MANIFEST: dict[str, Pin] = {
     "role_review_gate.py": Pin(
-        "0f1063f5d684e3065fb6864d67e8b933420660088287a5ab1fbf529aaba8de30", "0.2.0"
+        "762297b3d7752710aa6146719e8c4540b6b05bbf851f71f5a66105b9db58134e", "0.2.2"
     ),
     "write_attestation.py": Pin(
         "0c6aa3f9bc7e68aadb921463371b0f4a30a3f4bd9da9f1e3915bc48e8f243a91", "0.1.0"
@@ -71,10 +76,10 @@ MANIFEST: dict[str, Pin] = {
         "9d2bc1bb38d6c249969cb268ce6e9b778457059d691a87cecda172f83f475eac", "0.1.0"
     ),
     "check_side_effect_guard.py": Pin(
-        "f11972715660cdcda4fd06cd29925276369878eedafefb007e3cbafaf64d3456", "0.2.0"
+        "ba9007941dcc44887e31d70dc74be8efe409f51a249d2b79398e66c276e9810c", "0.2.2"
     ),
     "check_side_effect_guard_mutations.py": Pin(
-        "fc5e7fdabd50a7784e53f0e8a636e87ff19e19260c9a711fb05892f78c1ad97f", "0.2.0"
+        "af5674911c06e5c67c5a178374c6c79245be25c8e9d1eb742667fc2f4bd8decb", "0.2.2"
     ),
     "check_incidents.py": Pin(
         "f6d3430a6d0ee44b4843f7d297a3454ce40d34cd83dc182a2ef840952c5c9c0a", "0.1.0"
@@ -83,10 +88,10 @@ MANIFEST: dict[str, Pin] = {
         "0da13e4da525c1c470dc4429ef6c557a3b74600ad817c534344e999180786383", "0.1.0"
     ),
     "check_plan_kit.py": Pin(
-        "4a18d1aa061b92c7fc677c16479730b25cdd6b759625857d4c1720628a5415a6", "0.1.0"
+        "d7b7126a83ad96196c5a063d3b6d6c771747af84e590a9c97a3d702b057b9e52", "0.2.2"
     ),
     "check_plan_kit_mutations.py": Pin(
-        "e434e5be6e3c796ab297b0d110e37b58aa213b8199b77367db134f51ed77ed2f", "0.1.0"
+        "cef4d90a31b11e8642f78ed47a4fad20c3f5c1a6e33dd36e6ddb60dc7390c4aa", "0.2.2"
     ),
 }
 

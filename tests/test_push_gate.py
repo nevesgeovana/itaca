@@ -292,7 +292,11 @@ def test_a_deletion_refspec_is_denied(repo: Path) -> None:
     attest(repo, [head])
     decision, reason = judge(repo, f"{PUSH} origin :main")
     assert decision == "deny"
-    assert "cannot determine" in reason
+    # v0.2.2: a deletion is a policy stop, not a scope failure. It is now
+    # framed as [policy], so it must not claim the gate cannot scope it.
+    assert "role-review gate: [policy]" in reason
+    assert "refused on policy, not scope" in reason
+    assert "cannot determine" not in reason
 
 
 def test_an_open_blocking_incident_denies(repo: Path, tmp_path: Path) -> None:
@@ -530,6 +534,11 @@ def test_an_unreadable_incident_file_gets_the_repair_remedy(
     assert decision == "deny"
     assert "could not be consulted" in reason
     assert "incident-analyst" not in reason
+    # v0.2.2: an unreadable ledger and a real open incident have opposite
+    # remedies, so the unreachable case gets its own [ledger] sub-kind
+    # rather than sharing [incident].
+    assert "role-review gate: [ledger]" in reason
+    assert "role-review gate: [incident]" not in reason
 
 
 def test_the_identity_ignores_other_tables_and_inline_comments(
@@ -696,6 +705,11 @@ def test_a_bare_force_push_is_denied_even_when_fully_attested(
     # The deny must be actionable: name the safe alternative, or the
     # operator is left with a refusal and no path forward.
     assert "--force-with-lease" in reason, option
+    # v0.2.2: a force is a policy stop whose scope IS resolvable, so it is
+    # framed as [policy] and must NOT claim the gate cannot determine scope.
+    assert "role-review gate: [policy]" in reason, option
+    assert "refused on policy, not scope" in reason, option
+    assert "cannot determine" not in reason, option
 
 
 def test_a_force_with_lease_push_still_rides_the_attestation(repo: Path) -> None:
