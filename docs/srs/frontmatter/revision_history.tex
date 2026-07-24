@@ -59,9 +59,10 @@ now reverified on load. REQ-53 gained the normative extraction contract
 (frame construction is skipped as input preparation, any other
 step-less operation raises, and a range yielding no step raises rather
 than producing a silent no-op), and REQ-54 gained the replay contract
-(the recorded call and comment reproduce the state hash, and an
-incompatible target raises with the underlying object and fix
-preserved). The History-entry table gained the \code{step} field, replay
+(the recorded call and comment reproduce the state hash when replayed
+onto the frame the range was lifted from, while a different frame
+reproduces the processing rather than the hash, and an incompatible
+target raises with the underlying object and fix preserved). The History-entry table gained the \code{step} field, replay
 metadata excluded from the state hash and persisted in the \code{.itc}
 archive at schema \code{itaca-itc/2}. Section~\ref{sec:itc-archive} was
 amended to match: it now names both schema versions, the \code{step}

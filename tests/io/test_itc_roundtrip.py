@@ -264,3 +264,107 @@ class TestGuards:
         db = db.compute("CT2 = CT * 2", where="CT > 2", fill=float("inf"))
         with pytest.raises(DataError, match="no RFC 8259 JSON representation"):
             db.save(tmp_path / "campaign.itc")
+
+    def test_an_unknown_schema_is_refused_before_anything_is_rebuilt(
+        self, rich_db: VarFrame, tmp_path: Path
+    ) -> None:
+        """The guard this commit moved had no test, so it was deletable.
+
+        An archive from a future build must be named as such, not
+        reconstructed under this build's assumptions and then rejected
+        for whatever happens to break first.
+        """
+        target = tmp_path / "campaign.itc"
+        rich_db.save(target)
+        future = tmp_path / "future.itc"
+        with (
+            zipfile.ZipFile(target) as source,
+            zipfile.ZipFile(future, "w", zipfile.ZIP_DEFLATED) as out,
+        ):
+            for item in source.namelist():
+                data = source.read(item)
+                if item == "metadata.json":
+                    metadata = json.loads(data)
+                    metadata["schema"] = "itaca-itc/3"
+                    data = json.dumps(metadata).encode()
+                elif item == "history.json":
+                    entries = json.loads(data)
+                    for entry in entries:
+                        if entry.get("step"):
+                            entry["step"]["call"] = "not_a_real_operation"
+                    data = json.dumps(entries).encode()
+                out.writestr(item, data)
+        # Both defects are present; the schema answer must win, because a
+        # reader cannot act on a replay-step complaint about a format
+        # their build was never able to read.
+        with pytest.raises(DataError, match=r"unknown \.itc schema"):
+            itc.open(future)
+
+    def test_a_schema_2_archive_without_steps_is_named_correctly(
+        self, tmp_path: Path
+    ) -> None:
+        """The refusal must not assert something the archive does not do."""
+        csv = tmp_path / "run.csv"
+        csv.write_text("alpha,CT\n0.0,1.0\n2.0,3.0\n", encoding="utf-8")
+        db = itc.load(csv, dims=["alpha"])
+        target = tmp_path / "plain.itc"
+        db.save(target)
+        stripped = tmp_path / "stripped.itc"
+        with (
+            zipfile.ZipFile(target) as source,
+            zipfile.ZipFile(stripped, "w", zipfile.ZIP_DEFLATED) as out,
+        ):
+            for item in source.namelist():
+                data = source.read(item)
+                if item == "metadata.json":
+                    metadata = json.loads(data)
+                    metadata.pop("steps_hash")
+                    data = json.dumps(metadata).encode()
+                out.writestr(item, data)
+        with pytest.raises(DataError, match="declares schema") as excinfo:
+            itc.open(stripped)
+        assert "carries replay steps" not in excinfo.value.operation
+
+    def test_a_non_finite_argument_in_a_read_archive_is_worded_for_reading(
+        self, tmp_path: Path
+    ) -> None:
+        """json.loads accepts Infinity, so the read path reaches the digest.
+
+        Telling a user who opened a file to "pass a finite number for
+        that argument" names an operation they never attempted.
+        """
+        csv = tmp_path / "run.csv"
+        csv.write_text("alpha,CT\n0.0,1.0\n2.0,3.0\n", encoding="utf-8")
+        db = itc.load(csv, dims=["alpha"]).compute("CT2 = CT * 2")
+        target = tmp_path / "campaign.itc"
+        db.save(target)
+        edited = tmp_path / "edited.itc"
+        with (
+            zipfile.ZipFile(target) as source,
+            zipfile.ZipFile(edited, "w", zipfile.ZIP_DEFLATED) as out,
+        ):
+            for item in source.namelist():
+                data = source.read(item)
+                if item == "history.json":
+                    text = data.decode()
+                    entries = json.loads(text)
+                    for entry in entries:
+                        if entry.get("step"):
+                            entry["step"]["kwargs"]["fill"] = float("inf")
+                    data = json.dumps(entries).encode()
+                out.writestr(item, data)
+        with pytest.raises(DataError) as excinfo:
+            itc.open(edited)
+        assert "cannot be written" not in excinfo.value.operation
+        assert "re-export" in excinfo.value.fix
+
+    def test_the_save_refusal_names_the_offending_step(self, tmp_path: Path) -> None:
+        """ "That argument" is unactionable across forty history entries."""
+        csv = tmp_path / "run.csv"
+        csv.write_text("alpha,CT\n0.0,1.0\n2.0,3.0\n", encoding="utf-8")
+        db = itc.load(csv, dims=["alpha"])
+        db = db.compute("CT2 = CT * 2", where="CT > 2", fill=float("inf"))
+        with pytest.raises(DataError) as excinfo:
+            db.save(tmp_path / "campaign.itc")
+        assert "fill" in excinfo.value.obj
+        assert "compute" in excinfo.value.obj

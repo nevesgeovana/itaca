@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 r"""Mandatory role-review gate on git push (PreToolUse hook, Bash + PowerShell).
 
-Why this exists: on 2026-07-23 the v0.3.0 release ran generic
+Why this exists: on 2026-07-23 the pyflightstream v0.3.0 release ran generic
 paraphrased checks instead of invoking the specialist reviewer agents,
 because "role-review" was read as a text instruction rather than the
 skill that spawns the agents. Documentation alone did not prevent it.
@@ -369,8 +369,22 @@ def _push_scope(args_after_push: list[str], root: Path) -> tuple[list[str], str,
             "decision, not something an attestation covers.",
         )
 
-    remote = positional[0] if positional else "origin"
     refspecs = positional[1:]
+    if positional:
+        remote = positional[0]
+    else:
+        # A bare push does not mean origin. Git resolves the remote as
+        # branch.<current>.pushRemote, then remote.pushDefault, then
+        # branch.<current>.remote, then origin. Reading the config for
+        # origin alone left half of "configuration the command does not
+        # show" unguarded.
+        branch = _git(root, "rev-parse", "--abbrev-ref", "HEAD")
+        remote = (
+            _git(root, "config", "--get", f"branch.{branch}.pushRemote")
+            or _git(root, "config", "--get", "remote.pushDefault")
+            or _git(root, "config", "--get", f"branch.{branch}.remote")
+            or "origin"
+        )
     if not refspecs:
         # A bare push does not always mean the current branch. Under
         # push.default=matching, or with remote.<name>.push configured,
@@ -417,6 +431,18 @@ def _push_scope(args_after_push: list[str], root: Path) -> tuple[list[str], str,
             )
         commits.append(commit)
     return commits, "", ""
+
+
+def _push_refs(args_after_push: list[str]) -> list[str]:
+    """Return the ref names this push sends, as the operator wrote them.
+
+    Used to tell the operator which refs to attest. The gate scopes by
+    ref and the writer stamps HEAD by default, so a denial that does not
+    name the refs sends the reader into a loop.
+    """
+    tokens = [_unquote(raw) for raw in args_after_push]
+    positional = [t for t in tokens if not t.startswith("-")]
+    return [spec.lstrip("+").split(":", 1)[0] for spec in positional[1:]]
 
 
 def _release_refs(args_after_push: list[str]) -> list[str]:
@@ -606,7 +632,11 @@ def main() -> None:
             # earlier version synthesized `<oldest>^..<tip>` from list
             # positions, which dies on a root commit and crosses refs on a
             # multi-ref push.
-            span = f"{targets[0]} --not --remotes"
+            # Every ref, not targets[0]: naming the first understated the
+            # scope on a multi-ref push while the count above described
+            # all of it. git accepts several tips in one rev-list.
+            span = " ".join(targets) + " --not --remotes"
+            refs = " ".join(_push_refs(args_after_push)) or "HEAD"
             _decide(
                 "deny",
                 f"ROLE-REVIEW GATE: {len(missing)} of the {len(in_scope)} commit(s) in "
@@ -615,10 +645,13 @@ def main() -> None:
                 "architect, QA, V&V, tech writer, API designer as applicable) over the "
                 f"WHOLE pushed range, which is `{span}`, not only the tip; read "
                 f"it with `git log --oneline {span}`. Fix or register every "
-                "finding and let the "
-                "skill write the attestation. Do NOT paraphrase the review as manual "
-                "checks. If you amended or rebased since attesting, the commits "
-                "changed: re-review and re-attest. Then push.",
+                "finding, then attest with `python .claude/hooks/"
+                f"write_attestation.py review <passes,that,ran> {refs}`. Pass the "
+                "ref: the writer stamps HEAD by default, so a ref behind HEAD "
+                "never becomes covered and the same denial repeats. Do NOT "
+                "paraphrase the review as manual checks. If you amended or rebased "
+                "since attesting, the commits changed: re-review and re-attest. "
+                "Then push.",
             )
 
         if is_release:

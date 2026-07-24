@@ -126,6 +126,12 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 * `db.fill`: the `method` argument is moving to keyword-only for
   consistency with the M1 kernel operations. Passing it positionally
   is deprecated and emits a `FutureWarning` from v0.2.0 (REQ-26).
+* `db.save` refuses an archive whose recorded replay argument has no
+  JSON representation, for example `compute(fill=float("inf"))`, which
+  REQ-35 admits as a value. The refusal is a `DataError` naming the
+  step and the argument; the default NaN fill is unaffected, because it
+  is not recorded. A `.itc` archive must stay readable by any JSON tool
+  (REQ-70), and `Pipeline.save` has refused the same values since B3a.
 * REQ-101 (condition-dependent axes) promoted from draft to stable at
   the M1 Phase B2 checkpoint, once condition-dependent frames were
   implemented and tested.

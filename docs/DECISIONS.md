@@ -537,6 +537,9 @@ management the interpreter already provides through the instance
 
 **Date:** 2026-07-23
 **Status:** confirmed
+**Corrected in place 2026-07-23, see the note in DD-30.** A reader who
+opens only this entry must not have to reach DD-30 to learn that its
+encoding claim was rewritten.
 
 A Pipeline (REQ-53 to REQ-55) replays by re-dispatching structured
 steps, not by re-parsing the History display strings. Every replayable
@@ -675,11 +678,13 @@ schema 1 archives at all. Rejected because the compatibility promise to
 v0.1.0 files is worth keeping, and because it would still rest the
 integrity decision on an unauthenticated field.
 
-**Note on DD-28.** DD-28's encoding claim was corrected in place on
-2026-07-23, before this decision log had ever been pushed, to say what
-the JSON encoding actually does with nested containers and non-finite
-floats rather than claiming no lossy encoding. Entries are append-only
-once published; whether "published" begins at authoring or at the first
-push is a question for the author, and it is registered rather than
-settled here. The correction is recorded in this note so the log
-documents its own edit instead of quietly carrying a rewritten claim.
+**Note on DD-28.** DD-28 entered in commit `23001b4`, which was still
+unpushed, and its encoding claim was corrected in place in commit
+`2047c6b` to say what the JSON encoding actually does with nested
+containers and non-finite floats rather than claiming no lossy
+encoding. The file itself has been published many times; that
+particular entry never had been. The preamble states the rule without
+that qualifier, so on its face the edit is a violation, and whether
+"frozen" begins at authoring or at the first push is a question for the
+author. It is registered, not settled here, and until it is settled the
+strict reading applies.

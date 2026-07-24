@@ -1754,6 +1754,17 @@ class VarFrame:
         pathlib.Path
             The written file.
 
+        Raises
+        ------
+        DraftModeExportError
+            The frame is in draft mode and ``allow_draft`` is False
+            (REQ-11).
+        DataError
+            A recorded replay argument has no JSON representation, for
+            example a non-finite ``fill``. REQ-35 admits the value; the
+            archive must stay readable by any JSON tool (REQ-70), so it
+            cannot be written. The message names the step and argument.
+
         Examples
         --------
         >>> db.save("campaign.itc")  # doctest: +SKIP

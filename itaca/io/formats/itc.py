@@ -45,27 +45,61 @@ FORMAT_SCHEMA = "itaca-itc/2"
 _READABLE_SCHEMAS = frozenset({"itaca-itc/1", "itaca-itc/2"})
 
 
-def _steps_digest(entries: list[dict[str, Any]]) -> str:
+def _locate_unserializable(entries: list[dict[str, Any]]) -> str:
+    """Name the step and argument that has no JSON form, for the message.
+
+    A bulk ``json.dumps`` failure carries no location, and "pass a finite
+    number for that argument" is unactionable across forty history
+    entries. The ``.itc_pipe`` writer names position and keyword; this
+    keeps the two writers of the same structure symmetric.
+    """
+    for position, entry in enumerate(entries, start=1):
+        step = entry.get("step")
+        if not isinstance(step, dict):
+            continue
+        for name, value in (step.get("kwargs") or {}).items():
+            try:
+                json.dumps(value, allow_nan=False)
+            except (TypeError, ValueError):
+                return f"step {position} ({step.get('call')}) argument '{name}'"
+    return "a recorded replay step"
+
+
+def _steps_digest(entries: list[dict[str, Any]], *, target: Path | None = None) -> str:
     """SHA-256 over the replay steps persisted in history.json.
 
     The replay step is deliberately outside the REQ-103 state hash: it
     is provenance metadata, not frame state. But schema 2 makes the
     archive recipe-bearing, so an edited step could steer a replay while
     the state hash still matched. This digest closes that gap without
-    widening REQ-103 scope.
+    widening REQ-103 scope (DD-30).
+
+    ``target`` marks the READ path and names the archive. Both paths
+    reach this function, and ``json.loads`` accepts ``Infinity``, so a
+    hand-edited archive once told the reader that "the archive cannot be
+    written" and to pass a finite argument they never passed.
     """
     try:
         canonical = json.dumps(
             [entry.get("step") for entry in entries], sort_keys=True, allow_nan=False
         )
     except (TypeError, ValueError) as exc:
+        if target is not None:
+            raise DataError(
+                f"archive '{target}'",
+                "itc.open read a replay argument with no RFC 8259 JSON "
+                f"representation, so the stored recipe cannot be verified "
+                f"({exc})",
+                "the archive was hand-edited after it was written; "
+                "re-export it from the source data (REQ-54)",
+            ) from exc
         # REQ-35 admits any scalar fill, including a non-finite one, and
         # it is recorded in the replay kwargs. Only persisting it can
         # fail, and it must fail with the three parts, not with the
         # stdlib ValueError the encoder raises.
         raise DataError(
-            "archive replay steps",
-            "a recorded replay argument has no RFC 8259 JSON "
+            _locate_unserializable(entries),
+            "the recorded replay argument has no RFC 8259 JSON "
             f"representation, so the archive cannot be written ({exc})",
             "pass a finite number or a JSON-native value for that "
             "argument; the archive must stay readable by any JSON tool "
@@ -445,16 +479,24 @@ def open_itc(path: str | Path) -> VarFrame:
     if (carries_steps or schema != "itaca-itc/1") and not isinstance(
         recorded_steps, str
     ):
+        # Two conditions reach here and the message must not assert the
+        # wrong one: a schema 2 archive with no steps is refused for
+        # what it declares, not for what it carries.
+        because = (
+            "it carries replay steps"
+            if carries_steps
+            else f"it declares schema {schema!r}"
+        )
         raise DataError(
             f"archive '{target}'",
-            "itc.open read an archive that carries replay steps but has no "
-            "'steps_hash' in metadata.json, so its stored recipe cannot be "
-            "verified",
-            "a genuine schema 1 archive carries no replay steps; re-export "
-            "this one from the source data (REQ-54)",
+            f"itc.open read an archive that requires a replay-step digest "
+            f"({because}) but has no 'steps_hash' in metadata.json, so its "
+            "stored recipe cannot be verified",
+            "only a genuine schema 1 archive with no replay steps may omit "
+            "it; re-export this one from the source data (REQ-54)",
         )
     if isinstance(recorded_steps, str) and recorded_steps != _steps_digest(
-        history_payload
+        history_payload, target=target
     ):
         raise HashMismatchError(
             f"archive '{target}'",

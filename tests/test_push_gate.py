@@ -515,3 +515,48 @@ def test_the_identity_ignores_other_tables_and_inline_comments(
     ledger = stub_ledger(tmp_path / "ledger", 1, "queried")
     _, reason = judge(repo, f"{PUSH} origin main", ledger=ledger)
     assert "queried itaca\n" in reason or "queried itaca " in reason, reason
+
+
+def test_a_bare_push_resolves_the_remote_it_would_actually_use(repo: Path) -> None:
+    """`git push` with no remote does not always mean origin.
+
+    Git resolves branch.<current>.pushRemote, then remote.pushDefault,
+    then branch.<current>.remote, then origin. Reading the config for
+    `origin` alone closed the push.default half of this hole and left
+    the remote-selection half open.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    git(repo, "remote", "add", "upstream", str(repo.parent / "remote.git"))
+    git(repo, "config", "branch.main.remote", "upstream")
+    git(repo, "config", "remote.upstream.push", "refs/heads/*:refs/heads/*")
+    decision, reason = judge(repo, PUSH)
+    assert decision == "deny"
+    assert "cannot determine" in reason
+
+
+def test_the_review_deny_tells_a_non_head_push_to_pass_the_ref(repo: Path) -> None:
+    """The review check runs first, so it is where the loop happens.
+
+    The release deny carries the "pass the ref" instruction, but a
+    review denial on a ref behind HEAD is reached first, and the skill's
+    documented invocation stamps HEAD again: push, deny, re-attest,
+    deny.
+    """
+    add_commit(repo, "one")
+    _, reason = judge(repo, f"{PUSH} origin main")
+    assert "write_attestation.py review" in reason
+    assert "stamps HEAD by default" in reason
+
+
+def test_the_deny_range_covers_every_ref_it_refused(repo: Path) -> None:
+    """Naming targets[0] understated the scope on a multi-ref push."""
+    head = add_commit(repo, "one")
+    git(repo, "branch", "side")
+    git(repo, "checkout", "-q", "side")
+    add_commit(repo, "unreviewed")
+    git(repo, "checkout", "-q", "main")
+    attest(repo, [head])
+    _, reason = judge(repo, f"{PUSH} origin main side")
+    side = git(repo, "rev-parse", "side")
+    assert side in reason

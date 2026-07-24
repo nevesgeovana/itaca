@@ -100,7 +100,9 @@ operation that records no replayable step raises
 \code{PipelineCompatibilityError}, and a range yielding no step raises
 rather than returning a pipeline that would apply as a silent no-op.
 REQ-54 gained the replay contract: the recorded call and comment
-reproduce the state hash, and an incompatible target raises with the
+reproduce the state hash when replayed onto the frame the range was
+lifted from (onto a different frame the processing is reproduced, not
+the hash), and an incompatible target raises with the
 underlying error's object and suggested fix preserved. The History-entry
 table gained the \code{step} field (replay metadata, excluded from the
 state hash, REQ-103 scope unchanged), and the \code{.itc} archive
