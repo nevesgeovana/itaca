@@ -141,7 +141,10 @@ def test_a_blanket_ref_push_cannot_be_scoped(gate: ModuleType, command: str) -> 
     the honest answer; the deny message asks for the ref by name.
     """
     _, _, args = gate._find_git_push(command)
-    commits, problem, fix = gate._push_scope(args, Path("."))
+    # v0.2.0 (S5b, FIX 3): _push_scope also returns the resolved target
+    # remote so the range can be scoped to it; the blanket forms still
+    # short-circuit before a remote is known, so it comes back empty.
+    commits, problem, fix, _remote = gate._push_scope(args, Path("."))
     assert commits == []
     assert "cannot enumerate" in problem, command
     assert fix, command
@@ -157,3 +160,60 @@ def test_unbalanced_quotes_fail_closed(gate: ModuleType) -> None:
     """An unparseable command that mentions the verbs is treated as a push."""
     is_push, _, _ = gate._find_git_push("git push 'unbalanced")
     assert is_push is True
+
+
+# v0.2.0 (S5b) hardening: the gate must see a push inside a shell wrapper.
+@pytest.mark.parametrize(
+    "command",
+    [
+        # POSIX short-flag clusters that carry an inline command.
+        "bash -c 'git push'",
+        "bash -lc 'git push origin main'",
+        "sh -c \"git push\"",
+        "zsh -ec 'git push'",
+        # PowerShell accepts a case-insensitive prefix of -Command.
+        "powershell -Command 'git push'",
+        "powershell -command \"git push origin main\"",
+        "pwsh -Comm 'git push'",
+        # cmd /c.
+        "cmd /c \"git push\"",
+        # Nested wrapper, still within the bounded recursion depth.
+        "bash -c \"bash -c 'git push'\"",
+    ],
+)
+def test_a_shell_wrapped_push_is_recognized(gate: ModuleType, command: str) -> None:
+    """A wrapped push reaches the remote, so a gate that misses it fails open.
+
+    The v1 matcher looked for a git executable and never recursed into a
+    shell wrapper, so ``bash -lc "git push"`` and every family variant ran
+    a real push while the gate saw a benign ``bash``. The command flag is
+    matched by shell family, not a literal set, so ``-lc`` and ``-command``
+    are caught as well as ``-c`` and ``-Command``.
+    """
+    is_push, _, _ = gate._find_git_push(command)
+    assert is_push is True, f"gate fails open on {command!r}"
+
+
+def test_a_wrapper_that_does_not_run_a_push_is_not_flagged(gate: ModuleType) -> None:
+    """The wrapper recursion must not turn every shell command into a push."""
+    is_push, _, _ = gate._find_git_push("bash -c 'ls -la'")
+    assert is_push is False
+
+
+def test_an_unconditional_force_is_refused_as_author_only(gate: ModuleType) -> None:
+    """``git push --force`` rewrites published history: no attestation covers it.
+
+    Unconditional ``-f`` / ``--force`` were classed as safe options and
+    rode the normal attestation, so a reviewed push could silently rewrite
+    the remote. They are now author-only: ``_push_scope`` refuses on
+    policy before it even resolves the range. The safe variants
+    (``--force-with-lease``) stay on the attestation path, pinned by
+    ``tests/test_push_gate.py``.
+    """
+    for option in ("-f", "--force"):
+        commits, problem, fix, _remote = gate._push_scope(
+            [option, "origin", "main"], Path(".")
+        )
+        assert commits == [], option
+        assert "force" in problem.lower(), option
+        assert fix, option

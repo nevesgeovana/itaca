@@ -287,7 +287,9 @@ def test_an_open_blocking_incident_denies(repo: Path, tmp_path: Path) -> None:
     ledger = stub_ledger(tmp_path / "ledger", 1, "INC-1 open and blocking for")
     decision, reason = judge(repo, f"{PUSH} origin main", ledger=ledger)
     assert decision == "deny"
-    assert "INCIDENT GATE" in reason
+    # v0.2.0 (S5b, FIX 6): every deny opens with one prefix and a
+    # bracketed sub-kind, replacing the divergent "INCIDENT GATE:" voice.
+    assert "role-review gate: [incident]" in reason
     assert "INC-1 open and blocking for" in reason
     # The two failure classes have opposite remedies and must not share
     # a message: this one is a real incident, not an unreadable ledger.
@@ -333,7 +335,9 @@ def test_the_deny_names_the_range_to_review(repo: Path) -> None:
     tip = add_commit(repo, "two")
     decision, reason = judge(repo, f"{PUSH} origin main")
     assert decision == "deny"
-    assert "ROLE-REVIEW GATE" in reason
+    # v0.2.0 (S5b, FIX 6): the review deny now shares the one gate prefix
+    # with a [review] sub-kind, replacing the old "ROLE-REVIEW GATE:" voice.
+    assert "role-review gate: [review]" in reason
     assert f"{tip} --not --remotes" in reason, reason
 
 
@@ -650,3 +654,55 @@ def test_no_partial_coverage_file_survives_a_hook_run(repo: Path) -> None:
     add_commit(repo, "one")
     decide(repo, f"{PUSH} origin main")
     assert not set(root.glob(".coverage.*")) - before
+
+
+@pytest.mark.parametrize("option", ["--force", "-f"])
+def test_a_bare_force_push_is_denied_even_when_fully_attested(
+    repo: Path, option: str
+) -> None:
+    """Unconditional force rewrites published history: an author-only call.
+
+    An attestation certifies that a range was reviewed; it cannot license
+    discarding commits already on the remote. So even a push whose range
+    is fully attested is denied when it carries a bare ``--force`` / ``-f``.
+    Previously these were safe options and such a push was allowed, which
+    is the behavior this case flips.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    decision, reason = judge(repo, f"{PUSH} {option} origin main")
+    assert decision == "deny", option
+    assert "force" in reason.lower(), option
+    assert "author decision" in reason, option
+
+
+def test_a_force_with_lease_push_still_rides_the_attestation(repo: Path) -> None:
+    """The safe force variant refuses on its own if the remote moved.
+
+    It must stay on the normal attestation path, or the author-only deny
+    for bare force would have swept up the safe form too. This is the
+    positive control that a widened force refusal did not overreach.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    assert decide(repo, f"{PUSH} --force-with-lease origin main") == "allow"
+
+
+def test_a_shell_wrapped_unattested_push_is_denied(repo: Path) -> None:
+    """``bash -c "git push"`` reaches the remote, so the gate must see it.
+
+    The wrapper hid the push from the v1 gate, which recognized only a
+    bare git executable and failed open on every shell-wrapped form. An
+    unattested push wrapped in ``bash -c`` must deny exactly as the bare
+    form does.
+    """
+    add_commit(repo, "one")  # unattested
+    decision, _ = judge(repo, f'bash -c "{PUSH} origin main"')
+    assert decision == "deny"
+
+
+def test_a_shell_wrapped_attested_push_is_allowed(repo: Path) -> None:
+    """The wrapper detection must not block a wrapped push that is attested."""
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    assert decide(repo, f'bash -c "{PUSH} origin main"') == "allow"

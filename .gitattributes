@@ -1,0 +1,9 @@
+# Vendored shared-process-kit copies. The tier-1 drift test
+# (tests/test_kit_drift.py) hashes each copy's body, so its bytes must be
+# stable across machines regardless of the platform or core.autocrlf.
+# Force LF on checkout so the stored file matches the pinned body hash and
+# git never rewrites the line endings under it.
+.claude/hooks/role_review_gate.py    text eol=lf
+.claude/hooks/write_attestation.py   text eol=lf
+.claude/agents/incident-analyst.md   text eol=lf
+.claude/kit/**                       text eol=lf
