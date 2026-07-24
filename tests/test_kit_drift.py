@@ -273,3 +273,22 @@ def test_snap_script_matches_the_manifest_where_it_is_deployed() -> None:
         pytest.skip("snap.sh is not present beside a configured plan validator")
     key, path = found
     _assert_matches_manifest(key, path)
+
+
+def test_no_unpinned_python_hides_in_the_vendored_dirs() -> None:
+    """A new .py under a vendored dir must be a pinned copy, or it escapes both.
+
+    ``.claude/hooks`` and ``.claude/kit`` are excluded from ruff because
+    everything in them is a drift-pinned vendored copy, and COMMITTED is a
+    fixed list, not a glob. So a future .py dropped there would be neither
+    linted nor drift-checked. Pin that every .py under them is a committed
+    manifest entry, closing that gap before it opens.
+    """
+    committed = {(_ROOT / rel).resolve() for _, rel in COMMITTED}
+    for vendored_dir in (".claude/hooks", ".claude/kit"):
+        for py in (_ROOT / vendored_dir).glob("*.py"):
+            assert py.resolve() in committed, (
+                f"{py} is under a ruff-excluded vendored directory but is not a "
+                f"pinned COMMITTED kit copy; add it to the manifest and the "
+                f"drift test, or it is neither linted nor drift-checked."
+            )

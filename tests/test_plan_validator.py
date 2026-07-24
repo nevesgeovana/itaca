@@ -80,6 +80,14 @@ def test_the_plan_checker_is_readable_when_configured() -> None:
         f"{checker}. This is a configuration error, not a skip: the plan skill "
         f"runs this path, so a missing or retired target must fail loudly."
     )
+    # A real-but-wrong basename in the direct-file form (the directory also
+    # holds the sister repo's check_plan.py) would otherwise green while the
+    # skill runs the wrong checker, so require the kit checker by name.
+    assert checker.name == _CHECKER_NAME, (
+        f"ITACA_PLAN_VALIDATOR must resolve to {_CHECKER_NAME}, not "
+        f"{checker.name}. The plan ledger is validated only by the shared-kit "
+        f"checker; a different file in the same directory is a misconfiguration."
+    )
 
 
 def test_the_plan_checker_can_still_fail() -> None:

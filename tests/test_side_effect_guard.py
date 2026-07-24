@@ -6,7 +6,7 @@ Usage example (TDD anchor)::
     assert offenders == []  # no side-effecting skill is model-invocable
 
 The guard is the structural replacement for a hardcoded side-effect
-allowlist an allowlist cannot fail on a NEW side-effecting skill. A skill
+allowlist: an allowlist cannot fail on a NEW side-effecting skill. A skill
 declares its own side effects in frontmatter and the guard enforces the
 implication: ``side-effects:`` present -> ``disable-model-invocation:
 true``. The justification lives with the skill and cannot drift from a
