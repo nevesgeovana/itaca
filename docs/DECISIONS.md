@@ -699,3 +699,64 @@ authoring or at the first push is a question for the author. It is
 registered in the working plan ledger as
 `when-does-a-decision-entry-become-frozen`, not settled here, and until
 it is settled the strict reading applies.
+
+## DD-31: The session documents live under a configured management root
+
+**Date:** 2026-07-27
+**Status:** confirmed
+
+The session documents (inbox, handoffs, `NEXT_SESSION.md`, the working
+plan ledger, `progress/`, working decision notes) live outside this
+repository, under a root named by the `ITACA_MANAGEMENT_ROOT`
+environment variable. The operative rule is CLAUDE.md, "Where the
+session documents live"; this entry records why, and what was decided
+by whom.
+
+Two determinations, taken 2026-07-27 when the management content
+migrated to the coordination hub:
+
+**The plan ledger migrated with the rest.** The author's call, product
+owner seat, taken against the implementing session's recommendation.
+That recommendation was that the ledger stays here, because the
+coordination charter lists what never belongs at that level as
+"Requirements, plans, changelogs, architecture and command evidence live
+in their repository", and the ledger is an itaca fact: its ids are cited
+in itaca reviews and handoffs, it is validated by itaca's own skill, and
+CLAUDE.md names it beside `docs/OPEN_QUESTIONS.md` and
+`docs/M1_EXECUTION_PLAN.md`, both committed here. She weighed the
+versioning gain higher. The sister repository did not migrate its
+ledger, so the two libraries currently differ on this point, and the
+divergence is registered at the coordination level rather than resolved
+by either repository alone.
+
+**The location is reached by variable, not by literal.** The rejected
+alternative was rewriting the `_private/` literals to the hub path. It
+was refused on an invariant this repository already held for
+`ITACA_INCIDENT_LEDGER` and `ITACA_PLAN_VALIDATOR`: a hard-coded
+personal path publishes one machine's layout into a public repository
+and is wrong on every other clone, with a remedy the reader cannot
+perform.
+
+**The asymmetry inside the variable family is deliberate.** For the two
+checkers, unset means the check does not run. For the root, unset means
+a different location is used, so it cannot be an unconditional fallback:
+after the migration `_private/` still exists and is empty, and an
+unconditional fallback would write handoffs and ledger entries into a
+directory nobody reads. Unset therefore uses `_private/` only while that
+directory still holds the documents, and is otherwise a configuration
+error. Set is checked for identity and not only existence, because the
+sibling projects sit under one parent and a root pointed one folder
+across would file handoffs into another project while reporting success.
+
+**Guard.** `tests/test_management_root.py`. The three failure modes
+above were each reproduced against it and each fails with a three-part
+message; documentation alone would not have satisfied the incident rule.
+The same test pins `_private/` as git-ignored, which is the actual
+enforcement of the never-committed guarantee once the location became a
+variable, and fails on any machine-absolute path in a committed file.
+It caught one that predated it, in `docs/PYFLIGHTSTREAM_ADOPTIONS.md`.
+
+**Rejected alternative:** a committed pointer file naming the root.
+Rejected because it publishes the same machine path the variable exists
+to keep out, and gitignoring it reproduces the environment variable with
+more machinery and no version control.

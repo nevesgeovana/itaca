@@ -67,8 +67,8 @@ tagged stable may proceed.
 * Never use em dashes or en dashes anywhere, in any file. No exceptions.
 * Example and test data are synthetic or publicly licensed with stated
   provenance. Employer-origin or proprietary data never enter this
-  repository, in any form. `_private/` is gitignored for local staging
-  ("Where the session documents live").
+  repository, in any form. `_private/` is gitignored for local staging;
+  see "Where the session documents live" below.
 
 ## Role passes (adopted 2026-07-23)
 
@@ -77,7 +77,8 @@ applicable reviewer passes (architect, QA, V&V, tech writer, API
 designer; charters in `.claude/agents/`) on the item's diff, and
 every finding is fixed or registered (`docs/OPEN_QUESTIONS.md` for
 design questions, the milestone execution plan for approved scope, or
-the working plan ledger, one file per entry, whose format is defined in
+the working plan ledger, the management root's `plan/` (see "Where the
+session documents live"), one file per entry, whose format is defined in
 that folder's own `README.md`, for everything else).
 Geovana keeps the non-delegable seats:
 product owner, domain expert, numerical analyst. The sister
@@ -125,12 +126,16 @@ push and denied before the attestation runs.
 
 ## Where the session documents live (adopted 2026-07-27)
 
-The session documents (the inbox, handoffs, the forward prompt
-`NEXT_SESSION.md`, the working plan ledger `plan/`, decision notes,
-session logs) live under a **management root** outside this repository,
-and are never committed here. This is the single home of that rule; the
-plan, handoff, role-review, and audit skills point at it rather than
-restating it.
+The session documents live under a **management root** outside this
+repository, and are never committed here: the inbox, handoffs, the
+forward prompt `NEXT_SESSION.md`, the working plan ledger `plan/`, audit
+reports `progress/`, session logs, and working decision notes. Working
+decision notes are drafts and candidates; `docs/DECISIONS.md` is not one
+of them and stays committed here, as the authority chain says.
+
+This section is the single home of the resolution rule below. The plan,
+handoff, role-review, and audit skills point at it and do not restate
+it; where one appears to, this file wins.
 
 The root is named by the `ITACA_MANAGEMENT_ROOT` environment variable,
 never by a literal path in a versioned file, for the same reason
@@ -138,27 +143,62 @@ never by a literal path in a versioned file, for the same reason
 is public, and a hard-coded personal path publishes one machine's layout
 and is wrong on every other clone.
 
-- **Unset falls back to `_private/` in this repository**, its historical
-  home, which stays gitignored. A clone that configured nothing still
-  works exactly as before.
-- **Set but not an existing directory is a configuration error** to
-  report to the author, never a silent fallback. A handoff or a ledger
-  entry written to a path nobody reads is the failure this rule exists
-  to prevent, and it is the same class as a validator that silently
-  skips.
+| Variable | Names | Unset | Set but invalid | Enforced by |
+|---|---|---|---|---|
+| `ITACA_MANAGEMENT_ROOT` | the session-document root | use `_private/` if it still holds the documents, else stop | stop and report | `tests/test_management_root.py` |
+| `ITACA_PLAN_VALIDATOR` | `check_plan_kit.py`, or its directory | skip validation, say so | stop and report | `tests/test_plan_validator.py` |
+| `ITACA_INCIDENT_LEDGER` | `check_incidents.py`, or its directory | check does not apply | push gate denies | `.claude/hooks/role_review_gate.py` |
+
+Unset never blocks anywhere in this family, but it does not mean the
+same thing across it: for the two checkers it means the check does not
+run, while for the root it means a different location is used. That
+asymmetry is deliberate and is why the unset branch carries its own
+condition:
+
+- **Unset uses `_private/` in this repository** when that directory
+  still holds the session documents, which is the pre-migration layout
+  and any clone that never configured anything. `_private/` stays
+  gitignored.
+- **Unset and `_private/` is absent or holds no session documents is a
+  configuration error.** Stop and report; do not create the tree. After
+  the 2026-07-27 migration this is the state on the author's machine, so
+  an unconditional fallback would write handoffs and ledger entries into
+  an empty directory nobody reads.
+- **Set but not an existing directory, or an existing directory that is
+  not itaca's management root, is a configuration error.** Stop and
+  report; never fall back silently. Existence alone is not identity: the
+  sibling projects sit next to this one under the same parent, and a
+  root pointed one folder across would validate the wrong ledger and
+  file handoffs into another project. The root is recognized by
+  `plan/README.md` naming the ITACA plan ledger.
+
+Report a configuration error the way every other error here is reported:
+the object involved, the operation attempted, and the suggested fix. For
+example, "ITACA_MANAGEMENT_ROOT is set to <path>, which is not a
+directory; session documents cannot be written; set it to the itaca
+management root or unset it to use _private/".
+
+State the resolved root and which branch produced it in the session
+record, exactly as a skipped plan validation must be stated. A resolution
+that is never announced cannot be noticed when it is wrong.
 
 Resolve the root before writing, and pass the **resolved** path onward.
-An external tool handed a repository-relative path after the root moved
-validates nothing and reports nothing, which is worse than failing; the
-plan skill's two documented validator commands are where that bites, and
-both take the resolved ledger path.
+A repository-relative path stops meaning the ledger as soon as the root
+moves. Read a checker's entry count and not only its exit code: a
+missing folder is refused loudly, but an **empty** one reports
+`no entries` and exits **zero** (measured 2026-07-27), so a run against
+the wrong path can look like a pass.
 
 The management content migrated to the coordination hub on 2026-07-27
 under an author decision, including the plan ledger, whose migration was
-her product owner call. `_private/` remains in `.gitignore`, remains
-excluded in `tests/test_house_style.py`, and remains the documented
-fallback, so the invariant above that no proprietary material enters
-this repository in any form is unchanged in force and in meaning.
+her product owner call (DD-31). `_private/` remains in `.gitignore`
+(the enforcement, pinned by `tests/test_management_root.py`) and remains
+excluded from the `tests/test_house_style.py` walk (a scanning
+exemption, not enforcement), so the invariant above that no proprietary
+material enters this repository in any form is unchanged in force and in
+meaning. `snap.sh` still snapshots `_private/`, which is now empty; the
+migrated content is covered by the hub's git instead, and the
+pre-migration history stays in snapshot `3f1cd94`.
 
 ## Incidents (adopted 2026-07-23)
 
@@ -214,7 +254,9 @@ sentinel (REQ-105), accessors (REQ-106), dev-only uncertainties
 oracle (DD-25). Stretch scope (same week or fast v0.2.1): options
 registry (REQ-104), plot core, WT builtins, statistics and compare.
 v0.1.0 shipped 2026-07-22 (PyPI and Zenodo). The cross-repo decision
-queue is owned by the coordination level, which the hub charter names as
-the home of the questions that gate work in more than one workspace; it
-is reached through that level rather than by a path into the sister
-repository's private tree, which is itself mid-migration.
+queue is owned by the coordination level, which is the home of the
+questions that gate work in more than one workspace. As of 2026-07-27 it
+is reached through the management root's inbox ("Where the session
+documents live"), not by a path into the sister repository's private
+tree, which is itself migrating; an agent in this repository routes a
+question there rather than resolving a path to it.

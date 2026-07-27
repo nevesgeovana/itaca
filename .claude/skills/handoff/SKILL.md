@@ -28,12 +28,11 @@ live in the repository; the closing commit covers only repository
 changes, never the session documents.
 
 The management root is `$ITACA_MANAGEMENT_ROOT`, resolved exactly as
-CLAUDE.md ("Where the session documents live") defines it: unset falls
-back to `_private/` in this repository, and set but not an existing
-directory is a configuration error to report to the author, never a
-silent fallback. Resolve it before writing anything, and write to the
-resolved path; a handoff written to an assumed path that nobody reads is
-the failure this indirection exists to prevent.
+CLAUDE.md ("Where the session documents live") defines it, including
+what to do when it is unset or invalid. Resolve it before writing
+anything, state the resolved root and its branch in the handoff, and
+write to that path; a handoff written to an assumed path that nobody
+reads is the failure this indirection exists to prevent.
 
 This skill owns `NEXT_SESSION.md` in that root: `out` and `in` are its only
 writers. The plan skill's `next` produces the proposed window but does

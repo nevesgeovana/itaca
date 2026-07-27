@@ -118,8 +118,10 @@ strict green, CHANGELOG updated, role-review passes run.
   the phase.
 * `core/accessors.py` (REQ-106) complete with its snapshot/restore.
 * SYNC S2: on merging axes + accessors to main, lane B posts the S2
-  signal in the DECISION_QUEUE; the pyflightstream exporter lane (D)
-  may then start.
+  signal in the cross-repo decision queue, which the coordination level
+  owns and which is reached through the management root's inbox (see
+  CLAUDE.md, "Where the session documents live"); the pyflightstream
+  exporter lane (D) may then start.
 
 ### Phase B3: Pipeline and processor infrastructure (days 4-5)
 
@@ -165,8 +167,9 @@ strict green, CHANGELOG updated, role-review passes run.
 ## 5. Risks carried from the ultraplan
 
 * Geovana-throughput is the ranked top risk: all questions go
-  through the DECISION_QUEUE and the three batches; only
-  release-blocking findings interrupt.
+  through the cross-repo decision queue (see the SYNC S2 note above for
+  where it now lives) and the three batches; only release-blocking
+  findings interrupt.
 * Axes is the hardest chunk (propagation math plus the full REQ-101
   scope); it is scheduled early inside B2 and never cut.
 * The processor language (.itceq) is architecture, not domain: the

@@ -20,8 +20,11 @@ SRS, and a mismatch is a defect in the code unless the requirement
 itself is wrong, in which case it is routed to the author, never patched
 silently (CLAUDE.md, "When the SRS and this file disagree").
 
-Output: a dated report in the management root's `progress/` (created if
-absent; the
+Output: a dated report in the management root's `progress/`, the root
+being `$ITACA_MANAGEMENT_ROOT` resolved exactly as CLAUDE.md ("Where the
+session documents live") defines it; resolve it before writing, and
+never create the tree to make an unresolved root work. (Created if
+absent within a resolved root; the
 author reads it on mobile) listing every finding with file:line
 evidence, what was fixed in the session with its commit, and what became
 a plan item. Fixes to committed files land as one commit per concern.

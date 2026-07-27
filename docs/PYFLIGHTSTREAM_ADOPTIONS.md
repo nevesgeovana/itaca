@@ -1,7 +1,7 @@
 # Patterns adopted from pyflightstream
 
 Status: adopted 2026-07-21 at Geovana's direction, at the start of M0
-Phase 1. Source: survey of `C:\WORK\ClaudeProjects\pyflightstream`
+Phase 1. Source: survey of the sibling `pyflightstream` repository
 (same author). Where a pyflightstream pattern conflicts with the SRS,
 the SRS wins; the conflicts and their resolutions are listed at the
 end. This file records intent; the SRS remains the specification.
