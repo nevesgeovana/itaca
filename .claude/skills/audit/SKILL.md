@@ -11,7 +11,7 @@ Scope: `$ARGUMENTS` (default `full`). `docs` runs pause points 1 to 3,
 then verified block by block; treat each pause point as a checklist you
 confirm, not a form you fill in. Findings follow one rule: **update or
 delete, never leave for later.** A finding that cannot be fixed in the
-session becomes a `_private/plan/` item (via `/plan`) with a `ref` and
+session becomes a plan ledger item (via `/plan`) with a `ref` and
 an owner named; a design question goes to `docs/OPEN_QUESTIONS.md`;
 approved scope goes to `docs/M1_EXECUTION_PLAN.md`.
 
@@ -20,7 +20,8 @@ SRS, and a mismatch is a defect in the code unless the requirement
 itself is wrong, in which case it is routed to the author, never patched
 silently (CLAUDE.md, "When the SRS and this file disagree").
 
-Output: a dated report in `_private/progress/` (created if absent; the
+Output: a dated report in the management root's `progress/` (created if
+absent; the
 author reads it on mobile) listing every finding with file:line
 evidence, what was fixed in the session with its commit, and what became
 a plan item. Fixes to committed files land as one commit per concern.

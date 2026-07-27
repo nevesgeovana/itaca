@@ -67,7 +67,8 @@ tagged stable may proceed.
 * Never use em dashes or en dashes anywhere, in any file. No exceptions.
 * Example and test data are synthetic or publicly licensed with stated
   provenance. Employer-origin or proprietary data never enter this
-  repository, in any form. `_private/` is gitignored for local staging.
+  repository, in any form. `_private/` is gitignored for local staging
+  ("Where the session documents live").
 
 ## Role passes (adopted 2026-07-23)
 
@@ -76,14 +77,14 @@ applicable reviewer passes (architect, QA, V&V, tech writer, API
 designer; charters in `.claude/agents/`) on the item's diff, and
 every finding is fixed or registered (`docs/OPEN_QUESTIONS.md` for
 design questions, the milestone execution plan for approved scope, or
-the working plan ledger in `_private/plan/`, one file per entry, whose
-format is defined in `_private/plan/README.md`, for everything else).
+the working plan ledger, one file per entry, whose format is defined in
+that folder's own `README.md`, for everything else).
 Geovana keeps the non-delegable seats:
 product owner, domain expert, numerical analyst. The sister
 pyflightstream repository carries the same process (DD-23).
 Session planning, closure, and periodic audit run through the plan,
-handoff, and audit skills in `.claude/skills/` (session documents in
-`_private/`, never committed). The plan ledger is validated by the
+handoff, and audit skills in `.claude/skills/` (session documents under
+the management root below, never committed here). The plan ledger is validated by the
 checker named in the `ITACA_PLAN_VALIDATOR` environment variable (the
 plan skill holds the mechanism): unset skips validation, set but
 unreachable is a configuration error, exactly as `ITACA_INCIDENT_LEDGER`
@@ -121,6 +122,43 @@ this behavior; do not weaken the gate without a test that fails first.
 Write the attestation and the push as separate commands. The hook
 inspects the whole command string, so a combined command is seen as a
 push and denied before the attestation runs.
+
+## Where the session documents live (adopted 2026-07-27)
+
+The session documents (the inbox, handoffs, the forward prompt
+`NEXT_SESSION.md`, the working plan ledger `plan/`, decision notes,
+session logs) live under a **management root** outside this repository,
+and are never committed here. This is the single home of that rule; the
+plan, handoff, role-review, and audit skills point at it rather than
+restating it.
+
+The root is named by the `ITACA_MANAGEMENT_ROOT` environment variable,
+never by a literal path in a versioned file, for the same reason
+`ITACA_INCIDENT_LEDGER` and `ITACA_PLAN_VALIDATOR` are: this repository
+is public, and a hard-coded personal path publishes one machine's layout
+and is wrong on every other clone.
+
+- **Unset falls back to `_private/` in this repository**, its historical
+  home, which stays gitignored. A clone that configured nothing still
+  works exactly as before.
+- **Set but not an existing directory is a configuration error** to
+  report to the author, never a silent fallback. A handoff or a ledger
+  entry written to a path nobody reads is the failure this rule exists
+  to prevent, and it is the same class as a validator that silently
+  skips.
+
+Resolve the root before writing, and pass the **resolved** path onward.
+An external tool handed a repository-relative path after the root moved
+validates nothing and reports nothing, which is worse than failing; the
+plan skill's two documented validator commands are where that bites, and
+both take the resolved ledger path.
+
+The management content migrated to the coordination hub on 2026-07-27
+under an author decision, including the plan ledger, whose migration was
+her product owner call. `_private/` remains in `.gitignore`, remains
+excluded in `tests/test_house_style.py`, and remains the documented
+fallback, so the invariant above that no proprietary material enters
+this repository in any form is unchanged in force and in meaning.
 
 ## Incidents (adopted 2026-07-23)
 
@@ -175,5 +213,8 @@ condition-dependent frames (REQ-38/100/101), pipeline and .itc_pipe
 sentinel (REQ-105), accessors (REQ-106), dev-only uncertainties
 oracle (DD-25). Stretch scope (same week or fast v0.2.1): options
 registry (REQ-104), plot core, WT builtins, statistics and compare.
-v0.1.0 shipped 2026-07-22 (PyPI and Zenodo). Cross-repo decision
-queue: pyflightstream `_private/DECISION_QUEUE.md`.
+v0.1.0 shipped 2026-07-22 (PyPI and Zenodo). The cross-repo decision
+queue is owned by the coordination level, which the hub charter names as
+the home of the questions that gate work in more than one workspace; it
+is reached through that level rather than by a path into the sister
+repository's private tree, which is itself mid-migration.

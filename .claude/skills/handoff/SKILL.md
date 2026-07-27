@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Session closure documentation for itaca. Writes the outgoing session handoff under _private/handoffs/, refreshes the _private/NEXT_SESSION.md forward prompt, and can also ingest an incoming capture. Use at the end of every working session, when a session must hand its context to an integrator who was not in the room, or when a capture from another session or a web thread needs to be folded into itaca's state.
+description: Session closure documentation for itaca. Writes the outgoing session handoff under the management root's handoffs/, refreshes its NEXT_SESSION.md forward prompt, and can also ingest an incoming capture. Use at the end of every working session, when a session must hand its context to an integrator who was not in the room, or when a capture from another session or a web thread needs to be folded into itaca's state.
 argument-hint: "[out|in <file>]"
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
 disable-model-invocation: false
@@ -20,15 +20,22 @@ value is in not making that session rediscover what is already known.
 A handoff is a continuity record, not verified evidence: an ingested
 claim is not true until this repository proves it.
 
-Session documents live in `_private/` (a local synced junction),
-never committed: handoffs under `_private/handoffs/`, the working plan
-ledger at `_private/plan/`, the forward prompt at
-`_private/NEXT_SESSION.md`. The design documents (SRS sources, decision
-log companions) and the public surface live in the repository; the
-closing commit covers only repository changes, never the session
-documents.
+Session documents live under the management root, never committed to
+this repository: handoffs under its `handoffs/`, the working plan ledger
+at its `plan/`, the forward prompt at its `NEXT_SESSION.md`. The design
+documents (SRS sources, decision log companions) and the public surface
+live in the repository; the closing commit covers only repository
+changes, never the session documents.
 
-This skill owns `_private/NEXT_SESSION.md`: `out` and `in` are its only
+The management root is `$ITACA_MANAGEMENT_ROOT`, resolved exactly as
+CLAUDE.md ("Where the session documents live") defines it: unset falls
+back to `_private/` in this repository, and set but not an existing
+directory is a configuration error to report to the author, never a
+silent fallback. Resolve it before writing anything, and write to the
+resolved path; a handoff written to an assumed path that nobody reads is
+the failure this indirection exists to prevent.
+
+This skill owns `NEXT_SESSION.md` in that root: `out` and `in` are its only
 writers. The plan skill's `next` produces the proposed window but does
 not write the file; `out` draws that window in when it refreshes the
 forward prompt, so the forward prompt has one owning skill.
@@ -43,7 +50,7 @@ the reader can verify it at its source.
 
 ## `out`
 
-Write `_private/handoffs/HANDOFF_<lane-or-topic>_<YYYY-MM-DD>.md`
+Write `<management root>/handoffs/HANDOFF_<lane-or-topic>_<YYYY-MM-DD>.md`
 (itaca uses a descriptive name, not a numbered sequence; the folder was
 created in this shape and has no HND counter). Keep it under two pages,
 with:
@@ -61,11 +68,11 @@ with:
    attestation records what ran, not what was intended).
 5. Open questions and contradictions, each routed to its home: a design
    question to `docs/OPEN_QUESTIONS.md`, approved scope to
-   `docs/M1_EXECUTION_PLAN.md`, everything else to a `_private/plan/`
+   `docs/M1_EXECUTION_PLAN.md`, everything else to a plan ledger
    entry via `/plan`.
 6. The single highest-value next action, and why it is next.
 
-Then refresh `_private/NEXT_SESSION.md` from the window proposed by
+Then refresh the root's `NEXT_SESSION.md` from the window proposed by
 `/plan next` (or the current ledger state if none was proposed) so the
 next session opens against a current forward prompt, and commit the
 repository-side changes of the session (the session documents themselves
@@ -89,7 +96,7 @@ error messages, deprecations, examples), confirm before committing that:
    shipped this cycle appears as a requirement or an amendment, with the
    revision history and Chapter 11 updated together.
 
-A session that cannot complete an item records it as a `_private/plan/`
+A session that cannot complete an item records it as a plan ledger
 item in the same close, with a `ref`; silent deferral is the failure
 mode this pause point exists to prevent.
 
@@ -113,16 +120,16 @@ thread). Then:
 
 1. Extract decisions, findings, and next actions, and mark each as
    decided or proposed with its source.
-2. Fold the forward-looking parts into `_private/NEXT_SESSION.md`, and
+2. Fold the forward-looking parts into the root's `NEXT_SESSION.md`, and
    stage candidate items through `/plan add` (so each gets a timestamp id
    and passes the ledger validator, rather than being written straight
-   into `_private/plan/`) as `status: open`, with a note that they await
+   into the ledger folder) as `status: open`, with a note that they await
    the author's confirmation, for her to accept via `/plan`. itaca plan
    statuses are `open`, `doing`, `done`, `dropped`;
    there is no separate proposed state, so an unconfirmed item is an
    `open` item whose note says so.
-3. File the capture into `_private/handoffs/` under the descriptive-name
-   shape so the record is kept.
+3. File the capture into the root's `handoffs/` under the
+   descriptive-name shape so the record is kept.
 
 Never mark an ingested claim as verified without evidence from this
 repository (a passing test, a committed report, or a citation to the

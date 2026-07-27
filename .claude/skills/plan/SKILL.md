@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Planning state over the itaca plan ledger and the milestone map. Report progress, add agreed items, or propose the next work window, then validate the ledger. Use when the author asks for plan status or the state of the milestone, when the author asks to propose the next work window, when a review or a decision produces work that must be registered, or whenever an entry lands in _private/plan/ and its shape should be checked. Session close is the handoff skill's trigger, not this one; that skill writes the forward prompt, drawing on the window this skill proposes.
+description: Planning state over the itaca plan ledger and the milestone map. Report progress, add agreed items, or propose the next work window, then validate the ledger. Use when the author asks for plan status or the state of the milestone, when the author asks to propose the next work window, when a review or a decision produces work that must be registered, or whenever an entry lands in the plan ledger and its shape should be checked. Session close is the handoff skill's trigger, not this one; that skill writes the forward prompt, drawing on the window this skill proposes.
 argument-hint: "[status|add|next]"
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
 disable-model-invocation: false
@@ -16,11 +16,17 @@ derived from SRS Chapter 10 as re-baselined 2026-07-23; it is committed
 and changes through the SRS process. The SRS in `docs/srs/` is the
 authoritative specification; the execution plan never contradicts it.
 
-`_private/plan/` holds the working items, **one file per item**, named
-for its own id. The rules and the entry format are in
-`_private/plan/README.md`; read it before adding anything. Session
-documents live in `_private/` (a local synced junction) and are
-never committed.
+The ledger folder is `plan/` inside the management root, holding the
+working items **one file per item**, named for its own id. The rules and
+the entry format are in its `README.md`; read it before adding anything.
+
+The management root is `$ITACA_MANAGEMENT_ROOT`, resolved exactly as
+CLAUDE.md ("Where the session documents live") defines it: unset falls
+back to `_private/` in this repository, and set but not an existing
+directory is a configuration error to report to the author, never a
+silent fallback. Session documents are never committed to this
+repository either way. Resolve the root once at the start of the
+operation and use the resolved value throughout; never assume a path.
 
 The ledger is one file per entry rather than a shared table for the
 same reason the incident ledger is: two of the three founding failures
@@ -28,9 +34,9 @@ were concurrent writes to one shared file with a central counter. One
 file per entry means there is nothing to contend for, and a truncating
 write can destroy at most one entry.
 
-Rules (`_private/plan/README.md` is the authoritative home of the entry
-format; the rules below are restated only as far as this skill enforces
-them, and any divergence is resolved in the README's favor):
+Rules (the ledger's own `README.md` is the authoritative home of the
+entry format; the rules below are restated only as far as this skill
+enforces them, and any divergence is resolved in the README's favor):
 
 - **Never allocate an id from a counter or a maximum.** A new item gets
   a timestamp id, `ITC-<YYYYMMDD>-<HHMM>-<slug>`, mirroring the incident
@@ -55,7 +61,7 @@ them, and any divergence is resolved in the README's favor):
 Operations (default when empty: `status`, which is read-only and never
 writes an entry):
 
-* `status`: read `_private/plan/`, `docs/M1_EXECUTION_PLAN.md`, and the
+* `status`: read the ledger folder, `docs/M1_EXECUTION_PLAN.md`, and the
   git log. Report per milestone phase: done, in progress, blocked, with
   the blocking reason and the distance to the phase exit criterion.
   Separate real milestone work from review-generated polish, because a
@@ -73,7 +79,7 @@ writes an entry):
   criterion in `docs/M1_EXECUTION_PLAN.md`. Never decide alone; iterate
   with Geovana, then `add` the agreed items. `next` produces the proposed
   window and registers the items; it does not write
-  `_private/NEXT_SESSION.md`, which the handoff skill owns and refreshes
+  `NEXT_SESSION.md` in the management root, which the handoff skill owns and refreshes
   at session close (`/handoff out`) drawing on this window, so the forward
   prompt keeps a single writer.
 
@@ -113,18 +119,32 @@ assume a path.
 - Set but pointing at no readable checker is a configuration error to
   report to the author, not a silent skip.
 
-When it is set and readable, run it against the ledger folder, for
-example:
+When it is set and readable, run it against the ledger folder. Pass the
+ledger by its **resolved** path, never a path relative to this
+repository: the checker is external, so a repository-relative argument
+stops meaning the ledger as soon as the root moves. Both forms below
+take the same argument, and both must be kept correct; fixing one and
+leaving the other is how this breaks quietly.
 
 ```
-python "$ITACA_PLAN_VALIDATOR/check_plan_kit.py" _private/plan
+python "$ITACA_PLAN_VALIDATOR/check_plan_kit.py" "$ITACA_MANAGEMENT_ROOT/plan"
 ```
 
 or, when the variable names the file directly:
 
 ```
-python "$ITACA_PLAN_VALIDATOR" _private/plan
+python "$ITACA_PLAN_VALIDATOR" "$ITACA_MANAGEMENT_ROOT/plan"
 ```
+
+When `ITACA_MANAGEMENT_ROOT` is unset, the ledger is at `_private/plan`
+and that is the argument.
+
+Read the entry count, not just the exit code. A folder that does not
+exist is refused loudly (`not a directory`, non-zero), but an **empty**
+folder reports `no entries` and exits **zero**, so a run against the
+wrong path can look like a pass. Verified 2026-07-27. The count in the
+output is what distinguishes a clean ledger from an empty one, and it
+should match the number of entry files you expect.
 
 A non-zero exit names the file and the failing check (a bad header, an
 illegal `status` or `priority`, a `dropped` entry with no reason, an

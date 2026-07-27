@@ -48,8 +48,9 @@ them what to read. Wait for all passes before acting on any finding.
 For each finding, in severity order: fix it in-session, or append it
 to `docs/OPEN_QUESTIONS.md` with the next free OQ id (design
 questions), or to the current milestone execution plan (approved
-scope), or to the working plan ledger in `_private/plan/`, one file per
-entry, whose format is defined in `_private/plan/README.md`
+scope), or to the working plan ledger (the management root's `plan/`,
+resolved as CLAUDE.md defines), one file per
+entry, whose format is defined in that folder's own `README.md`
 (everything else), or record in the session notes why it is not a
 defect (with the reviewer named, so the disagreement is auditable). Findings that
 require a non-delegable seat (product owner, domain expert,
