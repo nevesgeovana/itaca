@@ -53,7 +53,8 @@ the root being `$ITACA_MANAGEMENT_ROOT` resolved exactly as CLAUDE.md
 ("Where the session documents live") defines it), one file per
 entry, whose format is defined in that folder's own `README.md`
 (everything else), or record in the session notes why it is not a
-defect (with the reviewer named, so the disagreement is auditable). Findings that
+defect (with the reviewer named, so the disagreement is auditable).
+Findings that
 require a non-delegable seat (product owner, domain expert,
 numerical analyst) become questions to the author, never an agent's
 call. Re-run a reviewer only when its findings forced substantive

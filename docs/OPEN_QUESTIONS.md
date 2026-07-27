@@ -382,3 +382,35 @@ with the OQ-18/OQ-24 uncertainty work (Q-004). Until resolved, the
 independence assumption is stated in the REQ-101 reqbox and the
 `rotate` docstring, and the raise stands.
 **SRS:** REQ-101, REQ-40, REQ-98; OQ-23.
+
+## OQ-27: Findings routed to the ledger are unauditable from a clone
+
+**Raised:** 2026-07-27 (V and V pass on the management-root migration,
+DD-31)
+**Status:** open
+**Question:** The working plan ledger left this repository on 2026-07-27
+(DD-31), so every finding a review routes there is now unreachable from
+a clone, and unreachable from CI. The `role-review` skill routes
+findings to one of three homes: `docs/OPEN_QUESTIONS.md` and
+`docs/M1_EXECUTION_PLAN.md`, both committed here, and the ledger, which
+is not. Before the migration all three were at least present on the same
+machine; now the third is behind an environment variable that a public
+reader cannot satisfy. The migration commit itself cites two ledger ids
+in `CLAUDE.md` and one in `docs/DECISIONS.md`, which a reader of those
+files cannot open.
+
+This is not the same as the incident ledger, whose detail was
+deliberately placed outside the repository with a headline kept here.
+That trade was made explicitly. This one was a side effect of moving the
+plan ledger, and was not discussed when the move was decided.
+
+**Proposed handling:** the product owner seat decides one of: accept it,
+on the same reasoning as the incident ledger, and state the trade where
+a reader meets a ledger id; or require that anything cited from a
+committed file also exists in a committed home, so a ledger id never
+appears in `docs/` or `CLAUDE.md` without a committed counterpart; or
+bring the ledger back and solve its versioning another way. Related to
+the registered question of whether the ledger was management content at
+all.
+
+**SRS:** none directly; process, DD-31, DD-23.

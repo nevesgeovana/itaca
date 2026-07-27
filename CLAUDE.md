@@ -85,7 +85,8 @@ product owner, domain expert, numerical analyst. The sister
 pyflightstream repository carries the same process (DD-23).
 Session planning, closure, and periodic audit run through the plan,
 handoff, and audit skills in `.claude/skills/` (session documents under
-the management root below, never committed here). The plan ledger is validated by the
+the management root below, never committed here). The plan ledger is
+validated by the
 checker named in the `ITACA_PLAN_VALIDATOR` environment variable (the
 plan skill holds the mechanism): unset skips validation, set but
 unreachable is a configuration error, exactly as `ITACA_INCIDENT_LEDGER`
@@ -143,27 +144,29 @@ never by a literal path in a versioned file, for the same reason
 is public, and a hard-coded personal path publishes one machine's layout
 and is wrong on every other clone.
 
-| Variable | Names | Unset | Set but invalid | Enforced by |
-|---|---|---|---|---|
-| `ITACA_MANAGEMENT_ROOT` | the session-document root | use `_private/` if it still holds the documents, else stop | stop and report | `tests/test_management_root.py` |
-| `ITACA_PLAN_VALIDATOR` | `check_plan_kit.py`, or its directory | skip validation, say so | stop and report | `tests/test_plan_validator.py` |
-| `ITACA_INCIDENT_LEDGER` | `check_incidents.py`, or its directory | check does not apply | push gate denies | `.claude/hooks/role_review_gate.py` |
+| Variable | Names | Unset | Set but invalid | Mechanism | Guard |
+|---|---|---|---|---|---|
+| `ITACA_MANAGEMENT_ROOT` | the session-document root | use `_private/` if it still holds the documents, else stop | stop and report | the skills | `tests/test_management_root.py` |
+| `ITACA_PLAN_VALIDATOR` | `check_plan_kit.py`, or its directory | skip validation, say so | stop and report | the plan skill | `tests/test_plan_validator.py` |
+| `ITACA_INCIDENT_LEDGER` | `check_incidents.py`, or its directory | check does not apply, silently | push gate denies | `.claude/hooks/role_review_gate.py` | `tests/test_review_gate.py` |
 
-Unset never blocks anywhere in this family, but it does not mean the
-same thing across it: for the two checkers it means the check does not
-run, while for the root it means a different location is used. That
-asymmetry is deliberate and is why the unset branch carries its own
-condition:
+Unset never blocks a clone that configured nothing, which is the point
+of the branch, but it does not mean the same thing across the family:
+for the two checkers it means the check does not run, while for the root
+it means a different location is used. The root is therefore the one
+member whose unset branch has a stop case, because a location that does
+not exist cannot be silently substituted the way a skipped check can:
 
 - **Unset uses `_private/` in this repository** when that directory
   still holds the session documents, which is the pre-migration layout
-  and any clone that never configured anything. `_private/` stays
-  gitignored.
+  and any clone that never configured anything.
 - **Unset and `_private/` is absent or holds no session documents is a
   configuration error.** Stop and report; do not create the tree. After
-  the 2026-07-27 migration this is the state on the author's machine, so
-  an unconditional fallback would write handoffs and ledger entries into
-  an empty directory nobody reads.
+  the 2026-07-27 migration this is the state in this repository, so an
+  unconditional fallback would write handoffs and ledger entries into an
+  empty directory nobody reads. Non-emptiness is not the test:
+  `_private/` is also local staging, so one staged file there is not the
+  session documents.
 - **Set but not an existing directory, or an existing directory that is
   not itaca's management root, is a configuration error.** Stop and
   report; never fall back silently. Existence alone is not identity: the
@@ -178,9 +181,9 @@ example, "ITACA_MANAGEMENT_ROOT is set to <path>, which is not a
 directory; session documents cannot be written; set it to the itaca
 management root or unset it to use _private/".
 
-State the resolved root and which branch produced it in the session
-record, exactly as a skipped plan validation must be stated. A resolution
-that is never announced cannot be noticed when it is wrong.
+State the resolved root and which resolution branch produced it in the
+session record, exactly as a skipped plan validation must be stated. A
+resolution that is never announced cannot be noticed when it is wrong.
 
 Resolve the root before writing, and pass the **resolved** path onward.
 A repository-relative path stops meaning the ledger as soon as the root
@@ -196,9 +199,16 @@ her product owner call (DD-31). `_private/` remains in `.gitignore`
 excluded from the `tests/test_house_style.py` walk (a scanning
 exemption, not enforcement), so the invariant above that no proprietary
 material enters this repository in any form is unchanged in force and in
-meaning. `snap.sh` still snapshots `_private/`, which is now empty; the
-migrated content is covered by the hub's git instead, and the
-pre-migration history stays in snapshot `3f1cd94`.
+meaning.
+
+On the backup that the migration displaced: as of 2026-07-27 the kit's
+`snap.sh` snapshotted `_private/`, which is now empty, so it protects
+nothing here and the migrated content relies on the hub's git instead.
+The pre-migration history remains in the local snapshot repository that
+tool maintains, at the commit recorded in the migration's plan entry.
+That the hub actually tracks every migrated file is the hub's to
+guarantee, not this repository's, and it did not hold at the moment of
+the move: the routing note carries the evidence and the open item.
 
 ## Incidents (adopted 2026-07-23)
 
@@ -254,9 +264,11 @@ sentinel (REQ-105), accessors (REQ-106), dev-only uncertainties
 oracle (DD-25). Stretch scope (same week or fast v0.2.1): options
 registry (REQ-104), plot core, WT builtins, statistics and compare.
 v0.1.0 shipped 2026-07-22 (PyPI and Zenodo). The cross-repo decision
-queue is owned by the coordination level, which is the home of the
-questions that gate work in more than one workspace. As of 2026-07-27 it
-is reached through the management root's inbox ("Where the session
-documents live"), not by a path into the sister repository's private
-tree, which is itself migrating; an agent in this repository routes a
-question there rather than resolving a path to it.
+queue is owned by the coordination level, the home of the questions that
+gate work in more than one workspace. It sits above this repository and
+above the management root, which is itaca's alone, so it has no locator
+here by design: a session raises such a question to the author and she
+routes it, rather than resolving a path to another workspace's tree. The
+former pointer into the sister repository's private tree was removed on
+2026-07-27, because a path into another repository's private layout is
+exactly what this repository does not depend on.

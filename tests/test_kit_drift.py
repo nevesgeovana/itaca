@@ -33,10 +33,15 @@ Two vendoring shapes are covered:
 - committed copies (the hooks, the of-record agent charter, the two S3
   guard artifacts under ``.claude/kit``) are always present and always
   checked; and
-- shared tools located by an environment variable (the incident checker,
-  the ``_private`` snapshot script, the kit plan checker) are checked when
-  configured and skipped when not, exactly as the incident gate skips an
-  unset ledger, so a clone with no configuration still runs a green suite.
+- shared tools located by an environment variable (the incident checker
+  and the kit plan checker) are checked when configured and skipped when
+  not, exactly as the incident gate skips an unset ledger, so a clone
+  with no configuration still runs a green suite.
+
+``snap.sh``, the snapshot script for the ``_private`` trees, has no
+locator variable of its own, so it is drift-checked best-effort where it
+happens to sit beside a configured plan validator (``_snap_if_present``)
+rather than through the env-located path above.
 
 The ``.md`` charter closes its provenance with an HTML ``-->`` after the
 marker line; that delimiter is part of the header, not the body, so it is

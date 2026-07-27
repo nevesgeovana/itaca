@@ -20,16 +20,19 @@ SRS, and a mismatch is a defect in the code unless the requirement
 itself is wrong, in which case it is routed to the author, never patched
 silently (CLAUDE.md, "When the SRS and this file disagree").
 
-Output: a dated report in the management root's `progress/`, the root
-being `$ITACA_MANAGEMENT_ROOT` resolved exactly as CLAUDE.md ("Where the
-session documents live") defines it; resolve it before writing, and
-never create the tree to make an unresolved root work. (Created if
-absent within a resolved root; the
-author reads it on mobile) listing every finding with file:line
-evidence, what was fixed in the session with its commit, and what became
-a plan item. Fixes to committed files land as one commit per concern.
-An audit that ran clean says so; an empty findings list from a real
-sweep is information, not a formality.
+Output: a dated report in `progress/` under the management root, which
+is `$ITACA_MANAGEMENT_ROOT` resolved exactly as CLAUDE.md ("Where the
+session documents live") defines it. Resolve the root before writing,
+and state it and which resolution branch produced it in the report
+header beside the date. Never create the root itself to make an
+unresolved one work; `progress/` inside an already resolved root is
+created if absent. The author reads the report on mobile.
+
+The report lists every finding with file:line evidence, what was fixed
+in the session with its commit, and what became a plan item. Fixes to
+committed files land as one commit per concern. An audit that ran clean
+says so; an empty findings list from a real sweep is information, not a
+formality.
 
 ## Pause point 1: version and metadata truth
 

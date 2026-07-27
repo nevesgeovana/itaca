@@ -5,8 +5,9 @@ It is the long-form companion to the design-decision boxes (DD-01 to DD-22)
 in the SRS; later entries (DD-23 onward) are recorded here first and enter
 the SRS at its next baseline. The SRS states the decision; this file
 records why.
-Since 2026-07-21 this file is tracked in the research workspace
-(`threads/itaca/`); the SRS carries the same baseline as DLV-008.
+A snapshot of this file was carried in the research workspace thread
+(`threads/itaca/`, DLV-008) from 2026-07-21, and the SRS carries that
+same baseline; this repository is its living home.
 
 Every entry is a frozen record. New decisions are appended; old decisions
 are never edited in place. If a decision is overturned, a new entry
@@ -700,6 +701,8 @@ registered in the working plan ledger as
 `when-does-a-decision-entry-become-frozen`, not settled here, and until
 it is settled the strict reading applies.
 
+---
+
 ## DD-31: The session documents live under a configured management root
 
 **Date:** 2026-07-27
@@ -748,13 +751,26 @@ error. Set is checked for identity and not only existence, because the
 sibling projects sit under one parent and a root pointed one folder
 across would file handoffs into another project while reporting success.
 
-**Guard.** `tests/test_management_root.py`. The three failure modes
-above were each reproduced against it and each fails with a three-part
-message; documentation alone would not have satisfied the incident rule.
-The same test pins `_private/` as git-ignored, which is the actual
-enforcement of the never-committed guarantee once the location became a
-variable, and fails on any machine-absolute path in a committed file.
-It caught one that predated it, in `docs/PYFLIGHTSTREAM_ADOPTIONS.md`.
+**Guard.** `tests/test_management_root.py`. The rule is executable there
+as `resolve_management_root`, driven over constructed environments
+rather than over the machine's, so every branch runs on CI, where
+nothing is configured, and so a developer's unexported variable is not
+mistaken for a repository defect. Each refusal was reproduced and each
+carries a three-part message; documentation alone would not have
+satisfied the incident rule.
+
+The same module pins four repository facts: that no tracked file matches
+a session-document shape; that `_private/` is ignored by the committed
+`.gitignore` specifically, rather than by any effective ignore source,
+since that entry is the actual enforcement of the never-committed
+guarantee once the location became a variable; that no tracked text file
+carries a machine-absolute path in the drive-letter, MSYS or POSIX-home
+form (it caught one that predated it, in `docs/PYFLIGHTSTREAM_ADOPTIONS.md`);
+and that every skill reaching the session documents names the variable
+and cites the section heading this rule lives under. The path sweep
+recognizes those three forms and skips binary suffixes; it is a guard
+against the known shapes, not a proof that no absolute path of any form
+can exist.
 
 **Rejected alternative:** a committed pointer file naming the root.
 Rejected because it publishes the same machine path the variable exists

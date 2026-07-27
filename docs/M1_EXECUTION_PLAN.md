@@ -118,10 +118,9 @@ strict green, CHANGELOG updated, role-review passes run.
   the phase.
 * `core/accessors.py` (REQ-106) complete with its snapshot/restore.
 * SYNC S2: on merging axes + accessors to main, lane B posts the S2
-  signal in the cross-repo decision queue, which the coordination level
-  owns and which is reached through the management root's inbox (see
-  CLAUDE.md, "Where the session documents live"); the pyflightstream
-  exporter lane (D) may then start.
+  signal in the cross-repo decision queue (CLAUDE.md, "Current
+  milestone", for who owns it and how a session reaches it); the
+  pyflightstream exporter lane (D) may then start.
 
 ### Phase B3: Pipeline and processor infrastructure (days 4-5)
 

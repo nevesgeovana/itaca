@@ -23,8 +23,9 @@ the entry format are in its `README.md`; read it before adding anything.
 The management root is `$ITACA_MANAGEMENT_ROOT`, resolved exactly as
 CLAUDE.md ("Where the session documents live") defines it, including
 what to do when it is unset or invalid. Resolve it once at the start of
-the operation, state the resolved root and its branch in the session
-record, and use that value throughout; never assume a path.
+the operation, state the resolved root and which resolution branch
+produced it in the session record, and use that value throughout; never
+assume a path.
 
 The ledger is one file per entry rather than a shared table for the
 same reason the incident ledger is: two of the three founding failures
@@ -77,7 +78,8 @@ writes an entry):
   criterion in `docs/M1_EXECUTION_PLAN.md`. Never decide alone; iterate
   with Geovana, then `add` the agreed items. `next` produces the proposed
   window and registers the items; it does not write
-  `NEXT_SESSION.md` in the management root, which the handoff skill owns and refreshes
+  `NEXT_SESSION.md` in the management root, which the handoff skill owns
+  and refreshes
   at session close (`/handoff out`) drawing on this window, so the forward
   prompt keeps a single writer.
 
@@ -120,11 +122,11 @@ assume a path.
 When it is set and readable, run it against the ledger folder. Both
 arguments are **resolved absolute paths**: the checker is external, so a
 path relative to this repository stops meaning the ledger as soon as the
-root moves. Resolve the ledger first (the management root's `plan/`,
-including in the unset-fallback case, where it is the absolute path of
-this repository's `_private/plan`), then substitute it. Both forms below
-take that same argument and both must be kept correct; fixing one and
-leaving the other is how this breaks quietly.
+root moves. Resolve the ledger first: it is `plan/` under the resolved
+management root, resolved per CLAUDE.md including its unset and invalid
+branches. Then substitute that path. Both forms below take that same
+argument and both must be kept correct; fixing one and leaving the other
+is how this breaks quietly.
 
 These blocks are bash, which is the shell this skill is allowed. In
 PowerShell the variables are `$env:ITACA_PLAN_VALIDATOR` and

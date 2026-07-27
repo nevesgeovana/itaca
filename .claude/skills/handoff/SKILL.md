@@ -30,9 +30,10 @@ changes, never the session documents.
 The management root is `$ITACA_MANAGEMENT_ROOT`, resolved exactly as
 CLAUDE.md ("Where the session documents live") defines it, including
 what to do when it is unset or invalid. Resolve it before writing
-anything, state the resolved root and its branch in the handoff, and
-write to that path; a handoff written to an assumed path that nobody
-reads is the failure this indirection exists to prevent.
+anything, state the resolved root and which resolution branch produced
+it in the handoff, and write to that path; a handoff written to an
+assumed path that nobody reads is the failure this indirection exists to
+prevent.
 
 This skill owns `NEXT_SESSION.md` in that root: `out` and `in` are its only
 writers. The plan skill's `next` produces the proposed window but does
