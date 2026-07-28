@@ -182,6 +182,30 @@ baseline and are implemented here as written, with
 raised when a reapplication is refused and warned when \code{force}
 permits one.
 
+\paragraph{Changed (B3b, REQ-47 and Section~\ref{sec:itceq}).} Three
+author-seat calls at the B3b checkpoint, each raised by the role-review
+passes. \stable{} REQ-47 now recognizes a reapplication from the
+produced variables being present \emph{and} the History recording the
+processor; matching names alone warn and then apply. Detection by names
+alone refused a first application over a frame that legitimately
+carried those names, which taught the caller to pass \code{force=True}
+by reflex, the habit the requirement exists to prevent (DD-35). REQ-47
+also admits \code{[meta] idempotent} as a declaration, so a
+file-defined processor no longer has to be subclassed in Python to
+declare that reapplying it is meaningful; it is the one typed field in
+a strings-only section, and a quoted \code{"True"} is refused rather
+than silently ignored (DD-36). Section~\ref{sec:itceq} gained three
+section rules the parser enforces: a name declared in
+\code{[constants]} may not also be an equation or correction target,
+since a constant is substituted into every read and such an equation
+would run with its result unreachable (DD-37); a forward reference in
+file order is refused when the file is read, because the VarFrame may
+carry the same name and the equation would silently use that value
+before a later line overwrote it; and \code{[corrections]} may replace
+a variable the VarFrame supplies, not only one \code{[equations]}
+produced, which is the ordinary case of correcting a measured channel
+in place. Requirement scope is otherwise unchanged.
+
 \paragraph{Added (docs adoption).} Non-functional requirement REQ-108
 (published documentation site on GitHub Pages, ProperDocs with markdown
 SRS chapters and a build-time-generated API reference, mirroring the

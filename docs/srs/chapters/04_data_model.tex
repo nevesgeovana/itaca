@@ -413,7 +413,13 @@ CL_corr  = "CL * blockage"
 \subsection{Section Rules}
 
 \begin{itemize}[noitemsep,topsep=2pt]
-  \item \code{[meta]}: required. All sub-fields are optional strings.
+  \item \code{[meta]}: required. All sub-fields are optional strings,
+    with one typed exception: \code{idempotent} is a boolean declaring
+    whether reapplying the workflow is meaningful (REQ-47). It is
+    written unquoted; a quoted \code{"True"} is refused rather than
+    silently ignored. Idempotence lives in the file because REQ-48 makes
+    the file define the workflow in full, and idempotence decides
+    whether that workflow may legally re-run (DD-36).
   \item \code{[constants]}: key-value pairs, all numeric. Constants are
     registered before any equation is evaluated.
   \item \code{[uncertainties]}: values are float (absolute) or string
@@ -424,7 +430,22 @@ CL_corr  = "CL * blockage"
     evaluated in file order). Cyclic dependencies raise
     \code{ItceqCycleError} at parse time.
   \item \code{[corrections]}: evaluated after \code{[equations]}. May
-    replace existing variables.
+    replace existing variables, whether the variable was produced by
+    \code{[equations]} or supplied by the VarFrame; a correction that
+    reads the name it writes reads the value that existed before it, and
+    a variable a correction replaces but the file does not produce is a
+    required input.
+  \item A name declared in \code{[constants]} may not also be an
+    equation or correction target. A constant is substituted into every
+    read before evaluation, so such an equation would run and its result
+    would never be read by anything in the file (DD-37). Redefinition
+    within the equation sections is a different thing and stays legal:
+    that is the replacement rule above.
+  \item In file order, an equation may only read what an earlier line
+    produced. A forward reference is refused when the file is read,
+    because the VarFrame may carry the same name, in which case the
+    equation would silently use that value and the later line would
+    overwrite it (REQ-48, DD-17).
 \end{itemize}
 
 \section{The .itc Native Binary Format}

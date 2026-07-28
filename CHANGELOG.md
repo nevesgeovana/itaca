@@ -26,6 +26,28 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   (DD-17). `[corrections]` run after `[equations]` and may replace a
   variable they produced, so `CL = "CL * blockage"` is a replacement
   there and a cycle inside `[equations]`.
+* Reapplication is recognized from the data *and* the History: a
+  processor refuses a second run only when the frame carries every
+  variable it produces and the History records this processor. Matching
+  names alone warn and then apply, so a CSV that arrives carrying `CL`
+  and `q_inf` beside the raw forces is processed rather than refused on
+  its first application. Detection by names alone taught the caller to
+  write `force=True` by reflex, which is the habit DD-16 exists to
+  prevent (REQ-47 amended, DD-35). The evidence survives a save and
+  reopen, since History is persisted in the `.itc` archive; a draft
+  frame that never recorded keeps only the warning.
+* Idempotence is declarable in the file: `[meta] idempotent = true`
+  (REQ-47 amended, DD-36). It is the one typed field in a strings-only
+  section, and a quoted `"True"` is refused rather than accepted and
+  silently ignored, which is what the old rule did. Without it, the only
+  way to declare idempotence for a file-defined processor was to
+  subclass `EquationProcessor` and bypass `itc.processor`.
+* A name declared in `[constants]` may no longer also be an equation or
+  correction target (DD-37). A constant is substituted into every read,
+  so such an equation ran with its result unreachable: measured,
+  `k = 2.0` with `k = "rho * 100.0"` made `x = "k + 1"` evaluate to
+  `3.0` and History record `x = 2.0 + 1`. Replacement inside the
+  equation sections is unaffected and stays legal.
 * Applying a processor assigns the declared `[uncertainties]` as the
   systematic component (SRS Chapter 8, REQ-99) and evaluates each
   equation through the ordinary `db.compute` path, so uncertainty

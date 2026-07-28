@@ -777,13 +777,25 @@ evaluation-order choice is reachable wherever a processor is built.
 
 \begin{reqbox}{REQ-47}{\stable}
 \textbf{Processor idempotence policy.}\\
-A processor may declare \code{idempotent: bool} as a class attribute
-indicating whether reapplication is meaningful. By default
-(\code{idempotent=False}), \code{proc(proc(db))} raises
-\code{ProcessorIdempotenceWarning} and refuses to re-run unless the
-caller passes \code{force=True}. Reapplication, when allowed, always
-emits the warning and records the second application in History as a
-distinct entry. There is no silent no-op.
+A processor may declare \code{idempotent: bool}, as a class attribute
+or as the \code{[meta] idempotent} field of its \code{.itceq} file
+(Section~\ref{sec:itceq}), indicating whether reapplication is
+meaningful. By default (\code{idempotent=False}),
+\code{proc(proc(db))} raises \code{ProcessorIdempotenceWarning} and
+refuses to re-run unless the caller passes \code{force=True}.
+Reapplication, when allowed, emits the warning and records the second
+application in History as a distinct entry. There is no silent no-op.
+
+Reapplication is recognized from two pieces of evidence together: the
+VarFrame carries every variable the processor produces, \emph{and} its
+History records this processor. Matching names alone are not evidence
+of a previous run, so a frame that merely arrives carrying those names
+is warned about and processed rather than refused; refusing it would
+teach the caller to pass \code{force=True} by reflex, which is the
+habit this requirement exists to prevent. The History evidence is
+persisted in the \code{.itc} archive, so the recognition survives a
+save and reopen; a draft frame whose operations were never recorded
+(REQ-10) keeps only the warning, which is the accepted cost (DD-35).
 \end{reqbox}
 
 \begin{reqbox}{REQ-48}{\stable}

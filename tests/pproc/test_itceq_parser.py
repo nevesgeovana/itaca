@@ -151,6 +151,60 @@ def test_malformed_toml_is_refused(tmp_path: Path) -> None:
         parse_itceq(write(tmp_path, "[meta\nname = "))
 
 
+def test_a_constant_shadowing_an_equation_target_is_refused(tmp_path: Path) -> None:
+    # Measured before the rule existed: k = 2.0 in [constants] with
+    # k = "rho * 100.0" in [equations] made x = "k + 1" evaluate to 3.0
+    # and History record `x = 2.0 + 1`. The equation ran and its result
+    # was unreachable, silently.
+    text = (
+        '[meta]\nname = "x"\n\n[constants]\nk = 2.0\n\n'
+        '[equations]\nk = "rho * 100.0"\nx = "k + 1"\n'
+    )
+    with pytest.raises(ItceqParseError, match="would never be read"):
+        parse_itceq(write(tmp_path, text))
+
+
+def test_a_constant_shadowing_a_correction_target_is_refused(tmp_path: Path) -> None:
+    text = (
+        '[meta]\nname = "x"\n\n[constants]\nblockage = 1.02\n\n'
+        '[corrections]\nblockage = "1 + CL"\n'
+    )
+    with pytest.raises(ItceqParseError, match="\\['blockage'\\]"):
+        parse_itceq(write(tmp_path, text))
+
+
+def test_a_correction_replacing_an_equation_target_stays_legal(tmp_path: Path) -> None:
+    # The refusal above is about a constant and a target sharing a name,
+    # not about redefinition inside the equation sections, which is what
+    # SRS Section 4.6 provides for.
+    text = (
+        '[meta]\nname = "x"\n\n[equations]\nCL = "FZ / q"\n\n'
+        '[corrections]\nCL = "CL * 1.02"\n'
+    )
+    assert parse_itceq(write(tmp_path, text)).targets == ("CL",)
+
+
+def test_meta_idempotent_is_read_as_a_boolean(tmp_path: Path) -> None:
+    # REQ-48 says the file defines the workflow in full, and idempotence
+    # decides whether it may legally re-run, so it is declared here.
+    text = '[meta]\nname = "x"\nidempotent = true\n'
+    spec = parse_itceq(write(tmp_path, text))
+    assert spec.idempotent is True
+    assert "idempotent" not in spec.meta  # the mapping stays strings-only
+
+
+def test_meta_idempotent_defaults_to_false(tmp_path: Path) -> None:
+    assert parse_itceq(write(tmp_path, '[meta]\nname = "x"\n')).idempotent is False
+
+
+def test_a_quoted_idempotent_is_refused_rather_than_ignored(tmp_path: Path) -> None:
+    # The old strings-only rule accepted "True" and nothing ever read
+    # it, so its suggested fix produced a silently ignored field.
+    text = '[meta]\nname = "x"\nidempotent = "True"\n'
+    with pytest.raises(ItceqParseError, match="unquoted"):
+        parse_itceq(write(tmp_path, text))
+
+
 def test_non_utf8_bytes_are_refused(tmp_path: Path) -> None:
     path = tmp_path / "latin.itceq"
     path.write_bytes(b'[meta]\nname = "caf\xe9"\n')

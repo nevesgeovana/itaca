@@ -112,6 +112,10 @@ class EquationProcessor:
         lines.append(f"  source: {self.spec.source.name}")
         order = "resolved by auto_sort" if self.spec.sorted else "file order"
         lines.append(f"  evaluation order: {order}")
+        lines.append(
+            f"  idempotent: {self.idempotent or self.spec.idempotent} "
+            "(reapplication refused unless True or force=True)"
+        )
         if self.constants:
             declared = self.spec.constants
             lines.append("  constants:")
@@ -294,25 +298,58 @@ class EquationProcessor:
     # -- internals ----------------------------------------------------------
 
     def _check_idempotence(self, db: VarFrame, *, force: bool) -> None:
-        """Refuse or warn on a reapplication (REQ-47, DD-16).
+        """Refuse or warn on a reapplication (REQ-47, DD-16, DD-35).
 
-        Already-processed is read off the data rather than off History:
-        the frame is what a second application would corrupt, and the
-        test then survives a save and reopen, and holds for a draft
-        frame whose operations were never recorded (REQ-10).
+        Two pieces of evidence, and the action depends on both:
+
+        ==================  ==================  ====================
+        targets all present History signed      action
+        ==================  ==================  ====================
+        no                  n/a                 apply
+        yes                 no                  warn, then apply
+        yes                 yes                 refuse unless allowed
+        ==================  ==================  ====================
+
+        Names alone are not evidence of a previous run: a CSV that
+        arrives carrying ``CL`` and ``q_inf`` beside the forces would
+        otherwise be refused on its FIRST application, teaching the user
+        to write ``force=True`` by reflex, which is the habit DD-16
+        exists to prevent. The History signature is the actual evidence,
+        and it survives a save and reopen because History is persisted
+        in the ``.itc`` archive. A draft frame that never recorded keeps
+        only the warning, which DD-35 records as the accepted cost.
         """
         targets = self.spec.targets
         if not targets or not set(targets) <= set(db.vars):
             return
+        signed = any(
+            entry.comment is not None and self.signature in entry.comment
+            for entry in db.history
+        )
+        if not signed:
+            warnings.warn(
+                ProcessorIdempotenceWarning(
+                    f"processor '{self.name}' (version {self.version})",
+                    f"the VarFrame already carries every variable it "
+                    f"produces, {list(targets)}, and its History does not "
+                    "record this processor, so they are being overwritten "
+                    "rather than reapplied",
+                    "check the frame is the one you meant; nothing is "
+                    "refused here, because matching names are not evidence "
+                    "of a previous run (REQ-47, DD-35)",
+                ),
+                stacklevel=3,
+            )
+            return
         warning = ProcessorIdempotenceWarning(
             f"processor '{self.name}' (version {self.version})",
             f"the VarFrame already carries every variable it produces, "
-            f"{list(targets)}, so this is a reapplication and corrections "
-            "would be applied twice",
+            f"{list(targets)}, and its History records this processor, so "
+            "this is a reapplication and corrections would be applied twice",
             "pass force=True to re-run deliberately, or apply the processor "
             "to the unprocessed frame (REQ-47, DD-16)",
         )
-        if not force and not self.idempotent:
+        if not force and not (self.idempotent or self.spec.idempotent):
             raise warning
         warnings.warn(warning, stacklevel=3)
 

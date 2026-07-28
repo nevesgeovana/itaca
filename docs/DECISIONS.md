@@ -940,3 +940,124 @@ machinery paid to preserve a collision rather than to remove it.
 import. Rejected because `import itaca.pproc as pp` returning a
 function is a silent trap, and because REQ-49 to REQ-51 would have had
 to be rewritten away from the form they are specified in.
+
+
+---
+
+## DD-35: Reapplication is recognized from the data AND the History
+
+**Date:** 2026-07-27
+**Status:** confirmed. Refines the detection rule of [[DD-16]], whose
+warn-and-refuse stance is unchanged.
+
+A processor refuses a second application only when the VarFrame carries
+every variable it produces **and** the History records this processor.
+Matching names alone warn and then apply.
+
+**Why the second piece of evidence.** Detection was originally by names
+alone, on the reasoning that the frame is what a second application
+would corrupt. The review pass asked what happens to a frame that
+legitimately arrives carrying those names: a CSV with `CL` and `q_inf`
+beside the raw forces, a hand-built frame, a reopened archive, or a
+second processor with overlapping outputs. All of them were refused on
+their FIRST application, with `force=True` the only way through. That
+teaches the caller to pass `force=True` by reflex, which is precisely
+the habit DD-16 exists to prevent, so name-only detection was working
+against its own purpose.
+
+**Why the warning stays on the names-only branch.** Overwriting four
+variables that already exist is worth saying out loud even when it is
+not a reapplication. What changed is that it no longer refuses.
+
+**The accepted cost.** A draft frame whose operations were never
+recorded (REQ-10) has no History evidence, so a genuine second
+application there warns rather than refuses. That is narrower than it
+sounds: History is persisted in the `.itc` archive, so a save and
+reopen keeps the evidence, and draft mode is for exploration by
+declaration (REQ-08, the note under REQ-12), not for results.
+
+**Guard.** `tests/pproc/test_processor.py` pins all three rows of the
+table: names absent applies, names present without the signature warns
+and applies, names present with the signature refuses. A fourth test
+pins that the evidence survives a save and reopen, which is the property
+the whole rule rests on.
+
+**Rejected alternative:** warn and never refuse. Rejected as
+contradicting DD-16 head on, since silent re-runs corrupt data by
+applying corrections twice, and warnings are filtered by default.
+
+**Rejected alternative:** keep names-only detection and document the
+false positive. Rejected because the documentation would be a note
+telling users when to bypass the guard.
+
+---
+
+## DD-36: Idempotence is declared in the .itceq file
+
+**Date:** 2026-07-27
+**Status:** confirmed
+
+`[meta] idempotent` is a boolean, and it is the one typed field in a
+section whose other fields are strings.
+
+**Why.** REQ-48 says an `.itceq` file fully defines a reproducible
+workflow, and idempotence decides whether that workflow may legally
+re-run. With it only on the Python class (REQ-47), the sole way to
+declare it for a file-defined processor was to subclass
+`EquationProcessor` and construct it directly, going around
+`itc.processor` entirely, so the property lived outside the
+version-controlled artifact that is supposed to carry the workflow.
+
+**Why the typed exception is explicit rather than a general loosening.**
+`[meta]` stays strings-only for everything else, and the parser refuses
+a quoted `idempotent = "True"` instead of accepting it. Under the old
+rule that quoted form parsed cleanly and nothing ever read it, so the
+error message's own suggested fix produced a silently ignored field,
+which is a fail-loud defect in a guard rather than a formatting
+preference. The flag is kept off the `meta` mapping on the spec, so
+that mapping stays honestly typed as strings.
+
+**Rejected alternative:** a new `[options]` section for processor flags.
+Rejected for now as a sixth section in a format the SRS describes as
+having five, for a single field; revisit if `auto_sort` or other
+per-file options follow it, which would change the balance.
+
+**Rejected alternative:** state that idempotence is Python-side only.
+Rejected because it writes an exception into REQ-48's promise to buy
+nothing.
+
+---
+
+## DD-37: A constant may not share a name with an equation target
+
+**Date:** 2026-07-27
+**Status:** confirmed
+
+A name declared in `[constants]` and also written by `[equations]` or
+`[corrections]` is refused when the file is read.
+
+**Why.** Constants are substituted into every read before an expression
+evaluates, so an equation writing that name produces a variable nothing
+in the file can ever read: the equation runs and its result is
+unreachable. Measured before the rule existed: `k = 2.0` in
+`[constants]` with `k = "rho * 100.0"` in `[equations]` made
+`x = "k + 1"` evaluate to `3.0`, and History recorded `x = 2.0 + 1`. A
+wrong number, no error, and the substituted expression in the record so
+not even the provenance showed it.
+
+The parser already refuses seven other malformed shapes; this was the
+one it accepted. A name with two definitions of different kinds has no
+obvious reading, and the one the parser picks is invisible in the file,
+so it is refused rather than resolved by a rule nobody can see.
+
+**What stays legal.** Redefinition within the equation sections:
+`[corrections]` replacing an `[equations]` target is the replacement
+semantics SRS Section 4.6 provides for, and it is a different thing from
+a constant and a target colliding.
+
+**Rejected alternative:** let the constant win, documented. Rejected
+because the wrongness is silent and the documentation would have to be
+read before the file is written.
+
+**Rejected alternative:** let the equation win. Rejected as inverting
+the current behavior while staying just as silent.

@@ -68,6 +68,15 @@ _EXPRESSION_CONSTANTS = frozenset({"pi", "e"})
 _NAMESPACE = "np"
 """The one attribute namespace expressions may call into (REQ-44)."""
 
+_META_BOOLEAN = frozenset({"idempotent"})
+"""The typed exception to the strings-only ``[meta]`` rule (REQ-47).
+
+Idempotence decides whether a workflow may legally re-run, and REQ-48
+says the file defines the workflow in full, so it is declared in the
+file rather than only in Python. It is kept out of ``meta`` on the spec
+so that mapping stays honestly strings-only.
+"""
+
 
 @dataclass(frozen=True)
 class Equation:
@@ -110,6 +119,10 @@ class ItceqSpec:
     corrections : tuple of Equation
         The ``[corrections]`` section, in evaluation order. Runs after
         ``equations`` and may replace variables it produced.
+    idempotent : bool
+        The ``[meta] idempotent`` declaration (REQ-47). Whether
+        reapplying this workflow is meaningful; ``False`` by default,
+        so a second application is refused unless the caller forces it.
     sorted : bool
         Whether the order above was resolved by ``auto_sort``.
     required_variables : tuple of str
@@ -131,6 +144,7 @@ class ItceqSpec:
     uncertainties: Mapping[str, float | str]
     equations: tuple[Equation, ...] = ()
     corrections: tuple[Equation, ...] = ()
+    idempotent: bool = False
     sorted: bool = False
     required_variables: tuple[str, ...] = ()
 
@@ -193,11 +207,13 @@ def parse_itceq(path: str | Path, *, auto_sort: bool = False) -> ItceqSpec:
             "it has no [meta] section, which is required",
             'add a [meta] section, for example name = "Balance: power off" (REQ-48)',
         )
-    meta = _meta(source, raw["meta"])
+    meta, idempotent = _meta(source, raw["meta"])
     constants = _constants(source, raw.get("constants", {}))
     uncertainties = _uncertainties(source, raw.get("uncertainties", {}))
     equations = _equations(source, raw.get("equations", {}), "equations")
     corrections = _equations(source, raw.get("corrections", {}), "corrections")
+
+    _refuse_shadowed_constants(source, constants, equations, corrections)
 
     # Stage by stage: [constants] first, then [equations], then
     # [corrections]. Each stage resolves against what the earlier ones
@@ -215,6 +231,7 @@ def parse_itceq(path: str | Path, *, auto_sort: bool = False) -> ItceqSpec:
         uncertainties=MappingProxyType(uncertainties),
         equations=equations,
         corrections=corrections,
+        idempotent=idempotent,
         sorted=auto_sort,
         required_variables=required,
     )
@@ -250,16 +267,32 @@ def _read(source: Path) -> dict[str, Any]:
     return parsed
 
 
-def _meta(source: Path, section: Any) -> Mapping[str, str]:
+def _meta(source: Path, section: Any) -> tuple[Mapping[str, str], bool]:
+    """Split ``[meta]`` into its string fields and the one typed flag."""
     table = _table(source, section, "meta")
+    fields: dict[str, str] = {}
+    idempotent = False
     for key, value in table.items():
+        if key in _META_BOOLEAN:
+            if not isinstance(value, bool):
+                raise ItceqParseError(
+                    f"[meta] field '{key}' in '{source.name}'",
+                    f"it is {type(value).__name__}, and this field is a "
+                    "boolean rather than a string",
+                    f"write it unquoted, as {key} = true or {key} = false "
+                    "(REQ-47, REQ-48)",
+                )
+            idempotent = value
+            continue
         if not isinstance(value, str):
             raise ItceqParseError(
                 f"[meta] field '{key}' in '{source.name}'",
-                f"it is {type(value).__name__}, but every [meta] field is a string",
+                f"it is {type(value).__name__}, but every [meta] field is a "
+                f"string except {sorted(_META_BOOLEAN)}",
                 f'quote the value, for example {key} = "{value}" (REQ-48)',
             )
-    return MappingProxyType(dict(table))
+        fields[key] = value
+    return MappingProxyType(fields), idempotent
 
 
 def _constants(source: Path, section: Any) -> dict[str, float]:
@@ -350,6 +383,39 @@ def _is_float(text: str) -> bool:
 # ---------------------------------------------------------------------------
 # Dependencies, cycles, and the opt-in order (REQ-48, DD-17)
 # ---------------------------------------------------------------------------
+
+
+def _refuse_shadowed_constants(
+    source: Path,
+    constants: Mapping[str, float],
+    equations: tuple[Equation, ...],
+    corrections: tuple[Equation, ...],
+) -> None:
+    """Refuse a name declared both as a constant and as a target.
+
+    A constant is substituted into every read before the expression
+    runs, so an equation writing the same name produces a variable
+    nothing in the file can ever read: the equation runs and its result
+    is unreachable, silently. A name with two definitions of different
+    kinds has no obvious reading, and the one the parser would pick is
+    invisible in the file, so it is refused rather than resolved.
+
+    Redefinition WITHIN the equation sections is a different thing and
+    stays legal: ``[corrections]`` replacing an ``[equations]`` target
+    is what SRS Section 4.6 provides for.
+    """
+    targets = {equation.target for equation in (*equations, *corrections)}
+    shadowed = sorted(set(constants) & targets)
+    if shadowed:
+        raise ItceqParseError(
+            f"name(s) {shadowed} in '{source.name}'",
+            "each is declared in [constants] and as an equation target, and "
+            "a constant is substituted into every read, so the equation "
+            "would run and its result would never be read",
+            "rename one of the two; a value that is computed belongs in "
+            "[equations], a value that is declared belongs in [constants] "
+            "(REQ-48, SRS Section 4.6)",
+        )
 
 
 def _required(

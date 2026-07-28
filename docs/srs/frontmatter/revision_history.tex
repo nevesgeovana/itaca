@@ -97,7 +97,23 @@ REQ-50 could never have resolved. Renaming the factory rather than the
 package leaves every module path and both requirement texts true as
 written (DD-34). The Chapter~\ref{ch:contributing} worked example was
 amended with it, since it used the same token for a third thing, the
-processor instance.\\
+processor instance. Three author-seat calls closed the phase, each
+amending a \stable{} requirement or its section rules. \stable{} REQ-47
+now recognizes a reapplication from two pieces of evidence together,
+the produced variables being present \emph{and} the History recording
+the processor, because matching names alone refused a first
+application over inconveniently named channels and taught the caller to
+pass \code{force=True} by reflex (DD-35). REQ-47 also admits
+\code{[meta] idempotent} as a declaration, so a file-defined processor
+no longer has to be subclassed in Python to say that reapplying it is
+meaningful (DD-36). Section~\ref{sec:itceq} gained three section rules
+the parser enforces: a name declared in \code{[constants]} may not also
+be an equation target, because a constant is substituted into every
+read and such an equation would run unreachable (DD-37); a forward
+reference in file order is refused when the file is read; and
+\code{[corrections]} may replace a variable the VarFrame supplies, not
+only one \code{[equations]} produced, which is the ordinary wind tunnel
+case of correcting a measured channel in place.\\
 \addlinespace
 0.1.1 & 2026-07-21 & Geovana Neves &
 REQ-98 and REQ-99 promoted from draft to stable after the M0

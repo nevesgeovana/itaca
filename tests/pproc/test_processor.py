@@ -69,6 +69,17 @@ CL    = "FZ / q_inf"
 q_inf = "0.5 * rho * V**2 * 2.0"
 """
 
+# Declares idempotence in the file, so no Python subclass is needed to
+# say that reapplying this workflow is meaningful (REQ-47, REQ-48).
+IDEMPOTENT = """\
+[meta]
+name       = "idem"
+idempotent = true
+
+[equations]
+q = "0.5 * rho * V**2"
+"""
+
 
 @pytest.fixture
 def itceq(tmp_path: Path) -> Path:
@@ -384,6 +395,59 @@ def test_a_first_application_does_not_warn(itceq: Path, db: VarFrame) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         processor(db)
+
+
+def test_matching_names_alone_warn_but_do_not_refuse(itceq: Path, db: VarFrame) -> None:
+    """DD-35: names are not evidence of a previous run.
+
+    A frame that arrives already carrying every target name, with no
+    History record of this processor, is the first application over
+    inconveniently named channels. Refusing it would teach the user to
+    write force=True by reflex, which is the habit DD-16 exists to
+    prevent.
+    """
+    processor = itc.processor(itceq, auto_sort=True)
+    seeded = db
+    for target in ("q_inf", "CL", "blockage", "CL_corr"):
+        seeded = seeded.compute(f"{target} = 1.0")
+    with pytest.warns(ProcessorIdempotenceWarning, match="does not record"):
+        out = processor(seeded)
+    assert "CL_corr" in out.vars  # applied, not refused
+
+
+def test_a_real_reapplication_is_refused_on_the_history_evidence(
+    itceq: Path, db: VarFrame
+) -> None:
+    processor = itc.processor(itceq, auto_sort=True)
+    processed = processor(db)
+    with pytest.raises(ProcessorIdempotenceWarning, match="records this processor"):
+        processor(processed)
+
+
+def test_the_history_evidence_survives_a_save_and_reopen(
+    itceq: Path, db: VarFrame, tmp_path: Path
+) -> None:
+    # History is persisted in the .itc archive, which is what makes the
+    # evidence-based rule hold across a round trip (DD-35).
+    processor = itc.processor(itceq, auto_sort=True)
+    archive = processor(db).save(tmp_path / "run.itc")
+    reopened = itc.open(archive)
+    with pytest.raises(ProcessorIdempotenceWarning, match="records this processor"):
+        processor(reopened)
+
+
+def test_idempotent_declared_in_the_file_permits_the_rerun(
+    tmp_path: Path, db: VarFrame
+) -> None:
+    # REQ-47 via [meta], so a file-defined processor can declare it
+    # without subclassing in Python and bypassing itc.processor.
+    path = tmp_path / "idem.itceq"
+    path.write_text(IDEMPOTENT, encoding="utf-8")
+    processor = itc.processor(path)
+    processed = processor(db)
+    with pytest.warns(ProcessorIdempotenceWarning):
+        again = processor(processed)
+    assert again.state_hash != processed.state_hash
 
 
 def test_a_partial_overlap_is_not_a_reapplication(itceq: Path, db: VarFrame) -> None:
