@@ -108,8 +108,8 @@ pass \code{force=True} by reflex (DD-35). REQ-47 also admits
 no longer has to be subclassed in Python to say that reapplying it is
 meaningful (DD-36). Section~\ref{sec:itceq} gained three section rules
 the parser enforces: a name declared in \code{[constants]} may not also
-be an equation target, because a constant is substituted into every
-read and such an equation would run unreachable (DD-37); a forward
+be an equation or correction target, because a constant is substituted
+into every read and such an equation would run unreachable (DD-37); a forward
 reference in file order is refused when the file is read; and
 \code{[corrections]} may replace a variable the VarFrame supplies, not
 only one \code{[equations]} produced, which is the ordinary wind tunnel

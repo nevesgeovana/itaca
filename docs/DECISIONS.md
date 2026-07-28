@@ -969,12 +969,17 @@ against its own purpose.
 variables that already exist is worth saying out loud even when it is
 not a reapplication. What changed is that it no longer refuses.
 
-**The accepted cost.** A draft frame whose operations were never
-recorded (REQ-10) has no History evidence, so a genuine second
-application there warns rather than refuses. That is narrower than it
-sounds: History is persisted in the `.itc` archive, so a save and
-reopen keeps the evidence, and draft mode is for exploration by
-declaration (REQ-08, the note under REQ-12), not for results.
+**The accepted cost.** Where the History does not travel with the
+data, the evidence is absent and a genuine second application warns
+rather than refuses. That is narrower than it first looks, and narrower
+than this entry first claimed: the draft-mode case named in the first
+draft of this entry does not arise, because `__call__` passes
+`history=True` on every write it makes, so a draft application is
+signed exactly as a production one is. What remains is a frame rebuilt
+from a CSV or JSON export, and one whose History was truncated by a
+multi-input operation such as `concat`, which keeps only the first
+input's. The `.itc` archive carries History, so the ordinary save and
+reopen keeps the evidence.
 
 **Guard.** `tests/pproc/test_processor.py` pins all three rows of the
 table: names absent applies, names present without the signature warns

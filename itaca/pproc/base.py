@@ -322,10 +322,7 @@ class EquationProcessor:
         targets = self.spec.targets
         if not targets or not set(targets) <= set(db.vars):
             return
-        signed = any(
-            entry.comment is not None and self.signature in entry.comment
-            for entry in db.history
-        )
+        signed = any(self._signs(entry.comment) for entry in db.history)
         if not signed:
             warnings.warn(
                 ProcessorIdempotenceWarning(
@@ -352,6 +349,27 @@ class EquationProcessor:
         if not force and not (self.idempotent or self.spec.idempotent):
             raise warning
         warnings.warn(warning, stacklevel=3)
+
+    def _signs(self, comment: str | None) -> bool:
+        """Whether this comment was written BY this processor (DD-35).
+
+        Exactly as permissive as the writer and no more. ``__call__``
+        writes either the signature alone or ``"<signature>: <user
+        comment>"``, always at offset zero, so those two shapes are the
+        whole contract.
+
+        Containment would be wrong in both directions, and both were
+        reachable. A user comment quoting the signature, which REQ-19
+        invites, would sign a frame this processor never touched, which
+        is the false refusal DD-35 exists to remove arriving through
+        another door. And ``"pproc bal v1"`` is contained in
+        ``"pproc bal v1.2: ..."``, so one version would read another
+        version's History as its own while the version is part of the
+        identity the signature asserts.
+        """
+        if comment is None:
+            return False
+        return comment == self.signature or comment.startswith(f"{self.signature}: ")
 
     def _substitute(self, equation: Equation) -> str:
         """Replace declared constants by their values in an expression.

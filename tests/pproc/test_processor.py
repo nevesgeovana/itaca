@@ -412,7 +412,11 @@ def test_matching_names_alone_warn_but_do_not_refuse(itceq: Path, db: VarFrame) 
         seeded = seeded.compute(f"{target} = 1.0")
     with pytest.warns(ProcessorIdempotenceWarning, match="does not record"):
         out = processor(seeded)
-    assert "CL_corr" in out.vars  # applied, not refused
+    # Applied, not merely returned: the seeded placeholder is gone and
+    # the application's own entries are in History. Asserting only that
+    # the name is present would be true of the input too.
+    assert out.vars["CL_corr"].values.ravel()[0] != 1.0
+    assert len(out.history) > len(seeded.history)
 
 
 def test_a_real_reapplication_is_refused_on_the_history_evidence(
@@ -508,3 +512,71 @@ def test_arrays_stay_read_only(itceq: Path, db: VarFrame) -> None:
     processed = itc.processor(itceq, auto_sort=True)(db)
     values: Any = processed.vars["CL"].values
     assert values.flags.writeable is False
+
+
+# ---------------------------------------------------------------------------
+# DD-35: what counts as this processor's signature in History
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("comment", "signs"),
+    [
+        ("pproc Balance: power off v2.1", True),
+        ("pproc Balance: power off v2.1: run 12", True),
+        (None, False),
+        ("", False),
+        ("smoothed before processing", False),
+        # A user comment ABOUT the processor is not one written BY it.
+        # REQ-19 invites free text, so containment would let a note sign
+        # a frame this processor never touched.
+        ("compare against pproc Balance: power off v2.1", False),
+        # The version is part of the identity the signature asserts, so
+        # a longer version must not be read as this one.
+        ("pproc Balance: power off v2.10: run 3", False),
+        # A different processor of the same family.
+        ("pproc Balance: power on v2.1", False),
+    ],
+)
+def test_only_this_processor_signature_signs(
+    itceq: Path, comment: str | None, signs: bool
+) -> None:
+    processor = itc.processor(itceq, auto_sort=True)
+    assert isinstance(processor, EquationProcessor)
+    assert processor._signs(comment) is signs
+
+
+def test_the_signature_carries_the_version(itceq: Path) -> None:
+    processor = itc.processor(itceq, auto_sort=True)
+    assert isinstance(processor, EquationProcessor)
+    assert processor.signature == "pproc Balance: power off v2.1"
+
+
+def test_a_first_application_made_with_a_comment_is_still_detected(
+    itceq: Path, db: VarFrame
+) -> None:
+    # The writer prefixes the user's comment, so the reader has to match
+    # that shape too; an equality-only match would miss every run made
+    # with comment= and apply the corrections twice.
+    processor = itc.processor(itceq, auto_sort=True)
+    processed = processor(db, comment="run 12")
+    with pytest.raises(ProcessorIdempotenceWarning, match="records this processor"):
+        processor(processed)
+
+
+def test_a_file_that_produces_nothing_is_never_a_reapplication(
+    tmp_path: Path, db: VarFrame
+) -> None:
+    # An empty target set is a subset of anything, so without the
+    # explicit guard this would be refused vacuously on its second run,
+    # the same empty-set hazard the push gate carries a guard for.
+    path = tmp_path / "unc_only.itceq"
+    path.write_text(
+        '[meta]\nname = "unc only"\n\n[uncertainties]\nFZ = 0.005\n', encoding="utf-8"
+    )
+    processor = itc.processor(path)
+    once = processor(db)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        twice = processor(once)
+    assert twice.state_hash != once.state_hash

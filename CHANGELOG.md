@@ -21,11 +21,17 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   enforces every section rule, and refuses a cyclic dependency at parse
   time before any computation, in both ordering modes (REQ-48, OQ-04).
   Equations run in file order by default; `auto_sort=True` resolves the
-  dependency order, breaks ties by file order so the result is a
-  minimal reproducible rearrangement, and reports the resolved order
-  (DD-17). `[corrections]` run after `[equations]` and may replace a
-  variable they produced, so `CL = "CL * blockage"` is a replacement
-  there and a cycle inside `[equations]`.
+  dependency order and reports it. The resolved order is the stable
+  topological order, at each step the equation earliest in file order
+  whose dependencies are met: deterministic and independent of parser
+  internals, which is what DD-17 asks for, and explicitly not an
+  edit-distance-minimal reordering. `[corrections]` run after
+  `[equations]` and may replace an existing variable, whether
+  `[equations]` produced it or the VarFrame supplies it, so
+  `CL = "CL * blockage"` is a replacement there and a cycle inside
+  `[equations]`; a variable a correction replaces but the file does not
+  produce is a required input. A forward reference in file order is
+  refused when the file is read.
 * Reapplication is recognized from the data *and* the History: a
   processor refuses a second run only when the frame carries every
   variable it produces and the History records this processor. Matching
@@ -33,9 +39,15 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   and `q_inf` beside the raw forces is processed rather than refused on
   its first application. Detection by names alone taught the caller to
   write `force=True` by reflex, which is the habit DD-16 exists to
-  prevent (REQ-47 amended, DD-35). The evidence survives a save and
-  reopen, since History is persisted in the `.itc` archive; a draft
-  frame that never recorded keeps only the warning.
+  prevent (REQ-47 amended, DD-35). "Records this processor" is an exact
+  match on the shapes the processor itself writes, the signature alone
+  or `"<signature>: <user comment>"`, and never a substring search: a
+  user comment quoting the signature, which REQ-19 invites, must not
+  sign a frame the processor never touched, and one version must not
+  read another version's History as its own. The evidence survives a
+  save and reopen, since History is persisted in the `.itc` archive;
+  where History does not travel with the data, a frame rebuilt from a
+  CSV or JSON export, only the warning remains.
 * Idempotence is declarable in the file: `[meta] idempotent = true`
   (REQ-47 amended, DD-36). It is the one typed field in a strings-only
   section, and a quoted `"True"` is refused rather than accepted and
@@ -61,11 +73,9 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   (REQ-47, DD-16): `ProcessorIdempotenceWarning` is raised when the
   frame already carries every variable the workflow produces, and
   `force=True` permits the re-run while still warning and recording a
-  distinct History entry. Already-processed is read off the data rather
-  than off History, so the check survives a save and reopen and holds
-  for a draft frame whose operations were never recorded. A processor
-  that declares `idempotent = True` re-runs without being refused, and
-  still warns.
+  distinct History entry. A processor that declares `idempotent = True`,
+  in Python or in the file, re-runs without being refused and still
+  warns. How a reapplication is recognized is the bullet above.
 * The exception hierarchy gains the `ProcessorError` leaves the SRS
   specified at the 0.1.0 baseline: `ProcessorNotFoundError` (with the
   registered alternatives in the message), `ProcessorValidationError`,

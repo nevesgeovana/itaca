@@ -546,3 +546,102 @@ what the incident rule asks of a guard.
 
 **SRS:** Chapter 5 (top-level API surface, module tree); REQ-46; OQ-29,
 DD-34.
+
+---
+
+## OQ-31: A `[constants]` name that the VarFrame also carries is silent
+
+**Raised:** 2026-07-27 (V and V re-review of the DD-37 decision)
+**Status:** open
+**Question:** DD-37 refuses a name declared in `[constants]` that is
+also an equation target, because a constant is substituted into every
+read and the equation would run with its result unreachable. The
+file-versus-frame form of the same collision is not refused and is not
+reported: a file declaring `rho = 1.225` in `[constants]`, applied to a
+frame carrying a measured `rho` channel, substitutes the declared number
+into every read and ignores the measurement entirely. Nothing says so.
+`_required` deliberately removes constants from `required_variables`,
+so `validate` never inspects the overlap.
+
+DD-37's stated reason for refusing the in-file case is that a name with
+two definitions of different kinds has no obvious reading and the one
+the parser picks is invisible in the file. That reasoning transfers
+whole. The difference is only where the second definition lives, and the
+parser cannot see the frame while `validate(db)` can.
+
+This one is worse than the in-file case in one respect: a declared
+constant silently overriding a measured channel is a wrong number
+produced from correct-looking inputs, and the wind tunnel case that
+makes it likely, a nominal `rho` or `S_ref` declared in the file while
+the acquisition system also logs it, is the common one rather than the
+exotic one.
+
+**Proposed handling:** the author decides between warning in `validate`
+and refusing there, with `force=` or an explicit `[constants]` override
+marker as the escape. Whichever way, the check belongs in `validate`,
+which is the REQ-45 lifecycle step that exists to answer "can this frame
+feed this processor" before anything runs.
+
+**SRS:** REQ-45, REQ-46, REQ-48, Section 4.6; DD-37.
+
+---
+
+## OQ-32: `auto_sort` is not in the file, while idempotence now is
+
+**Raised:** 2026-07-27 (V and V re-review of the DD-36 decision)
+**Status:** open
+**Question:** DD-36 moved idempotence into `[meta]` on REQ-48's promise
+that an `.itceq` file fully defines a reproducible workflow. The same
+argument applies verbatim to `auto_sort`, which remains a caller
+argument only, and which changes results in two ways: it reorders
+evaluation, and it makes a file run that file order would refuse as a
+forward reference. So after DD-36 the "fully defines" claim is more true
+on one axis and unchanged on the axis that changes numbers.
+
+`spec.sorted` and the `info()` line mitigate by disclosure, not by
+definition: the same file still computes different things depending on
+how it was opened.
+
+This is registered here rather than left where it was first written.
+DD-36 parked it in its own rejected-alternative paragraph ("revisit if
+`auto_sort` or other per-file options follow it"), and the decision log
+is frozen and append-only, so nothing would ever revisit it there. An
+open question is the surface that gets read again.
+
+**Proposed handling:** the author decides whether the evaluation-order
+choice belongs in the file, which is the DD-36 argument applied
+consistently, and if so whether both flags move into a typed `[options]`
+section, which was DD-36's rejected alternative and becomes the better
+shape once there are two of them. Revisit at v0.2.1, with the built-in
+processors as the first real files.
+
+**SRS:** REQ-46, REQ-48, Section 4.6; DD-17, DD-36.
+
+---
+
+## OQ-33: Units have no home in the `.itceq` format
+
+**Raised:** 2026-07-27 (API-designer pass on M1 phase B3b)
+**Status:** deferred (revisit when the built-in processors are written,
+v0.2.1)
+**Question:** `[constants]` and `[uncertainties]` carry units only in
+`#` comments, which `tomllib` discards. So `info()` can never print
+them, a `config=` override is a bare number with no unit anywhere in the
+object, and the SRS sample's own annotations (`# m^2, reference wing
+area`, `# N, balance calibration`) are illustration rather than data.
+`itc.units` exists in `utils/` and the file format sits outside it.
+
+**Deferral, by the author, 2026-07-27:** decide when `WT_propeller` and
+`WT_balance_off` are written, with real files in hand. The format has no
+external user yet, and the right shape depends on how many quantities
+actually need a unit, which the builtins will show rather than argue.
+The candidate form, recorded so the deferral is not a blank: a value may
+be written either as a bare number or as
+`{ value = 0.1963, unit = "m^2" }`, with the bare form remaining valid.
+
+**Proposed handling on revisit:** the author decides between that
+optional form, a statement in Section 4.6 that absolute values are in
+the unit of the variable they name and constants are pure numbers whose
+unit is the author's responsibility, and leaving it as is.
+
+**SRS:** Section 4.6; REQ-46, REQ-48, REQ-99.

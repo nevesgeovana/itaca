@@ -160,8 +160,12 @@ def test_a_constant_shadowing_an_equation_target_is_refused(tmp_path: Path) -> N
         '[meta]\nname = "x"\n\n[constants]\nk = 2.0\n\n'
         '[equations]\nk = "rho * 100.0"\nx = "k + 1"\n'
     )
-    with pytest.raises(ItceqParseError, match="would never be read"):
+    with pytest.raises(ItceqParseError) as caught:
         parse_itceq(write(tmp_path, text))
+    message = str(caught.value)
+    assert "['k']" in message  # the object
+    assert "would never be read" in message  # what failed
+    assert "belongs in [constants]" in message  # the fix (REQ-81)
 
 
 def test_a_constant_shadowing_a_correction_target_is_refused(tmp_path: Path) -> None:
@@ -184,6 +188,29 @@ def test_a_correction_replacing_an_equation_target_stays_legal(tmp_path: Path) -
     assert parse_itceq(write(tmp_path, text)).targets == ("CL",)
 
 
+@pytest.mark.parametrize(
+    ("declared", "expected"),
+    [("\nidempotent = true", True), ("\nidempotent = false", False), ("", False)],
+)
+def test_meta_idempotent_is_read_in_both_directions(
+    tmp_path: Path, declared: str, expected: bool
+) -> None:
+    # false is asserted explicitly: reading the declared value only in
+    # the true direction would let `idempotent = value` degrade to
+    # `idempotent = True` unnoticed, permitting a re-run that must raise.
+    text = f'[meta]\nname = "x"{declared}\n'
+    spec = parse_itceq(write(tmp_path, text))
+    assert spec.idempotent is expected
+    assert "idempotent" not in spec.meta  # the mapping stays strings-only
+
+
+def test_the_strings_only_message_names_the_typed_exception(tmp_path: Path) -> None:
+    # Otherwise there is no path from "every [meta] field is a string"
+    # to the one field that is not.
+    with pytest.raises(ItceqParseError, match="idempotent"):
+        parse_itceq(write(tmp_path, "[meta]\nversion = 1.0\n"))
+
+
 def test_meta_idempotent_is_read_as_a_boolean(tmp_path: Path) -> None:
     # REQ-48 says the file defines the workflow in full, and idempotence
     # decides whether it may legally re-run, so it is declared here.
@@ -201,8 +228,12 @@ def test_a_quoted_idempotent_is_refused_rather_than_ignored(tmp_path: Path) -> N
     # The old strings-only rule accepted "True" and nothing ever read
     # it, so its suggested fix produced a silently ignored field.
     text = '[meta]\nname = "x"\nidempotent = "True"\n'
-    with pytest.raises(ItceqParseError, match="unquoted"):
+    with pytest.raises(ItceqParseError) as caught:
         parse_itceq(write(tmp_path, text))
+    message = str(caught.value)
+    assert "[meta] field 'idempotent'" in message  # the object
+    assert "boolean rather than a string" in message  # what failed
+    assert "unquoted" in message  # the fix (REQ-81, three parts)
 
 
 def test_non_utf8_bytes_are_refused(tmp_path: Path) -> None:

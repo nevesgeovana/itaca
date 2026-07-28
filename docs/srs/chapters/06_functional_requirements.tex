@@ -794,8 +794,10 @@ is warned about and processed rather than refused; refusing it would
 teach the caller to pass \code{force=True} by reflex, which is the
 habit this requirement exists to prevent. The History evidence is
 persisted in the \code{.itc} archive, so the recognition survives a
-save and reopen; a draft frame whose operations were never recorded
-(REQ-10) keeps only the warning, which is the accepted cost (DD-35).
+save and reopen. Where the History does not travel with the data, a
+frame rebuilt from a CSV or JSON export, or one whose History was
+truncated by a multi-input operation, the evidence is absent and only
+the warning remains; that is the accepted cost (DD-35).
 \end{reqbox}
 
 \begin{reqbox}{REQ-48}{\stable}
