@@ -2,19 +2,29 @@
 
 Usage example (TDD anchor)::
 
-    body = _kit_body(Path(".claude/hooks/role_review_gate.py").read_text())
-    assert _sha256(body) == MANIFEST["role_review_gate.py"].body_sha256
+    text = (_ROOT / ".claude/hooks/role_review_gate.py").read_text(
+        encoding="utf-8"
+    )
+    assert _sha256(_kit_body(text)) == MANIFEST["role_review_gate.py"].body_sha256
 
 The shared process kit (canonical masters at the coordination level) is
 vendored into this repository as derived copies. A copy carries a
 provenance header, a line ``END KIT PROVENANCE``, and then the artifact
 body verbatim. This test recomputes each vendored body's sha256 and
 asserts it equals the value this repository pinned when it vendored the
-kit. A hand-edit of a committed vendored copy changes its body, the
-recomputed hash no longer matches, and CI goes red: the committed copies
-cannot silently diverge from the kit again. The env-located shared tools
-are checked only when their variable is set (see below), so in a clone
-that never configured them they are not drift-guarded in ordinary CI.
+kit.
+
+What that does and does not prove, stated exactly, because the strong
+form of the claim is false and a counterexample sits in this very file.
+It proves a committed copy cannot be silently HAND-EDITED: the body
+changes, the recomputed hash stops matching, and CI goes red. It does
+NOT prove a copy is CURRENT with the kit, because the manifest below is
+an inlined frozen copy rather than a live read of the master. A
+repository that has fallen behind stays green until someone moves a pin,
+which is exactly the state of the two plan-checker entries described
+below. The env-located shared tools are checked only when their variable
+is set (see below), so in a clone that never configured them they are not
+drift-guarded in ordinary CI.
 
 The fixture is the manifest (kit ``README.md``), inlined here so the test
 needs no cross-repo filesystem access and cannot deadlock a push. A MIXED
@@ -23,16 +33,33 @@ expected and correct, and the pins below are per file:
 
 - 0.2.4, the privacy promotion: ``role_review_gate.py``,
   ``incident-analyst.md`` and ``snap.sh``. Incidental personal
-  identifiers left the three bodies; ``snap.sh`` additionally stopped
-  hardcoding a name and email and now reads them from the ambient git
-  configuration. No logic changed and no allow or deny decision changed.
-- 0.2.2: both S3 side-effect-guard artifacts, and both kit plan-checker
+  identifiers left all three bodies. For ``role_review_gate.py`` that is
+  the whole change: three deny-message strings, no control flow, and no
+  allow or deny decision moved. ``snap.sh`` is NOT behavior-neutral and
+  must not be described as though it were. It changed twice: git identity
+  now comes from the ambient configuration with a neutral fallback, and
+  the shared incident-ledger tree stopped being a literal path and became
+  ``${COORD_SHARED_LEDGER_TREE:-}``. The second is a new dependency on
+  machine configuration whose unset branch does NOT behave as the body's
+  own comment claims; see ``_snap_if_present`` below and the registered
+  entry it cites.
+- 0.2.2: both side-effect-guard artifacts, and both kit plan-checker
   artifacts. The plan-checker pair is a KNOWN LAG: the kit is at 0.2.3
   for those two (adoption-review hardening), and itaca still pins and
   runs 0.2.2. Re-vendoring them is separate work, out of scope for the
-  privacy promotion, and moving the pin without moving the deployed copy
-  would redden this suite for a change made outside this repository.
+  privacy promotion.
 - 0.1.0: ``write_attestation.py`` and ``check_incidents.py``, unchanged.
+
+The rule that decides both of those, stated once so the asymmetry is not
+mistaken for an oversight: a pin for an artifact deployed OUTSIDE this
+repository moves only together with the deployed copy it names. The
+``snap.sh`` pin moved because the deployed copy was moved to the same
+body in the same operation. The plan-checker pins did not move because
+their deployed copies were not, and moving them alone would redden this
+suite for a change made elsewhere. A reader who repoints
+``ITACA_PLAN_VALIDATOR`` at a directory holding a different kit version
+will see this suite fail; that is configuration, not drift, and the
+remedy the failure message suggests (re-vendor) is the wrong one for it.
 
 The vendored copies carry a per-copy ``note:`` line ("derived copy ...");
 the header, including that line, is not hashed, so restamping it does not
@@ -40,18 +67,26 @@ affect the body sha256.
 
 Two vendoring shapes are covered:
 
-- committed copies (the hooks, the of-record agent charter, the two S3
-  guard artifacts under ``.claude/kit``) are always present and always
-  checked; and
+- committed copies (the hooks, the of-record agent charter, the two
+  side-effect-guard artifacts under ``.claude/kit``) are always present,
+  always checked, and are additionally required to still CARRY their
+  provenance stamp, so that deleting the header cannot quietly downgrade
+  a stamped-copy check into a hash-only one; and
 - shared tools located by an environment variable (the incident checker
   and the kit plan checker) are checked when configured and skipped when
   not, exactly as the incident gate skips an unset ledger, so a clone
-  with no configuration still runs a green suite.
+  with no configuration still runs a green suite. These may legitimately
+  be deployed raw, so the stamp requirement above is not applied to them.
 
 ``snap.sh``, the snapshot script for the ``_private`` trees, has no
 locator variable of its own, so it is drift-checked best-effort where it
 happens to sit beside a configured plan validator (``_snap_if_present``)
-rather than through the env-located path above.
+rather than through the env-located path above. Two consequences worth
+naming rather than discovering: CI sets neither locator, so this pin is
+NOT exercised there, and the 0.2.4 body carries a kit-owned defect in
+which an unset ``COORD_SHARED_LEDGER_TREE`` reports a snapshot it did not
+take instead of skipping. Both are registered, the second also by the
+sister repository as ``PLN-20260728-1615-snap-shared-tree-false-success``.
 
 The ``.md`` charter closes its provenance with an HTML ``-->`` after the
 marker line; that delimiter is part of the header, not the body, so it is
@@ -79,8 +114,11 @@ class Pin:
     kit_version: str
 
 
-# The kit README manifest, inlined as the fixture (per-file versions: a
-# mix of 0.2.4, 0.2.2 and 0.1.0 is correct; see the module docstring).
+# The kit README manifest, inlined as the fixture, with two DELIBERATE
+# deviations marked in place below (per-file versions: a mix of 0.2.4,
+# 0.2.2 and 0.1.0 is correct; see the module docstring). This is not a
+# verbatim copy of the manifest of record and must not be resynced from
+# it wholesale.
 MANIFEST: dict[str, Pin] = {
     "role_review_gate.py": Pin(
         "0a927d38feaed7b78b86e0d4dc860e80141ca46f55423bd0914adc88eb4b65b9", "0.2.4"
@@ -103,6 +141,9 @@ MANIFEST: dict[str, Pin] = {
     "snap.sh": Pin(
         "7c9573aabe398576dd00c2a8a5acf0312fa289ff497ae56681225954d843f4cd", "0.2.4"
     ),
+    # KNOWN LAG, deliberate: the kit is at 0.2.3 for these two. Do NOT sync
+    # them from the manifest of record without also moving the deployed
+    # copies these pins name; see the module docstring.
     "check_plan_kit.py": Pin(
         "d7b7126a83ad96196c5a063d3b6d6c771747af84e590a9c97a3d702b057b9e52", "0.2.2"
     ),
@@ -172,10 +213,29 @@ def _header_fields(text: str) -> dict[str, str]:
     return fields
 
 
-def _assert_matches_manifest(key: str, path: Path) -> None:
-    """The load-bearing check: body hash, and header fields when stamped."""
+def _assert_matches_manifest(
+    key: str, path: Path, *, require_stamp: bool = False
+) -> None:
+    """The load-bearing check: body hash, and header fields when stamped.
+
+    ``require_stamp`` is passed for COMMITTED copies, which must carry
+    their provenance header. Without it the header assertions below are
+    opt-in: an unstamped file skips them, and because ``_kit_body`` falls
+    back to "no marker means the whole file is the body", DELETING the
+    provenance block leaves the body hash correct and the suite green.
+    That would silently downgrade a stamped-copy check to a hash-only one
+    and discard the only in-repo record of which kit version a copy is at.
+    Env-located tools are legitimately deployed raw, so they do not set it.
+    """
     pin = MANIFEST[key]
     text = path.read_text(encoding="utf-8")
+    if require_stamp:
+        assert _MARKER in _normalize(text), (
+            f"{path} has lost its kit provenance stamp (no {_MARKER!r} line). "
+            f"A committed vendored copy must keep its header: without it the "
+            f"kit-version and body-sha256 assertions below do not run at all. "
+            f"Re-vendor from the kit; do not strip the header."
+        )
     computed = _sha256(_kit_body(text))
     assert computed == pin.body_sha256, (
         f"{path} body sha256 {computed} != pinned {pin.body_sha256}. The "
@@ -202,7 +262,7 @@ def test_a_committed_kit_copy_matches_the_manifest(key: str, rel: str) -> None:
     """Every committed vendored copy reproduces its pinned body hash."""
     path = _ROOT / rel
     assert path.is_file(), f"vendored kit copy missing at {path}"
-    _assert_matches_manifest(key, path)
+    _assert_matches_manifest(key, path, require_stamp=True)
 
 
 def test_the_runtime_agent_body_matches_the_of_record_copy() -> None:
@@ -216,11 +276,31 @@ def test_the_runtime_agent_body_matches_the_of_record_copy() -> None:
     """
     runtime = _ROOT / ".claude" / "agents" / "incident-analyst.md"
     of_record = _ROOT / ".claude" / "kit" / "incident-analyst.md"
-    assert runtime.is_file() and of_record.is_file()
+    assert runtime.is_file(), (
+        f"the runtime agent charter is missing at {runtime}; the "
+        f"incident-analyst agent will not load. Materialize it from the "
+        f"of-record copy at {of_record} (its body, with the header dropped)."
+    )
+    assert of_record.is_file(), (
+        f"the drift-of-record copy is missing at {of_record}; the runtime "
+        f"charter has nothing to be checked against. Re-vendor it from the kit."
+    )
     runtime_body = _normalize(runtime.read_text(encoding="utf-8"))
     of_record_body = _kit_body(of_record.read_text(encoding="utf-8"))
-    assert runtime_body == of_record_body
-    assert _sha256(runtime_body) == MANIFEST["incident-analyst.md"].body_sha256
+    assert runtime_body == of_record_body, (
+        f"{runtime} has drifted from its drift-of-record copy {of_record}. "
+        f"The runtime charter is a DERIVED kit copy, not a source: the fix is "
+        f"to re-vendor {of_record} from the kit and rewrite the runtime file "
+        f"from that body. Do not hand-edit either, and do not sync the "
+        f"of-record copy to the runtime one, which would defeat the pin. Run "
+        f"pytest -vv to see the full body diff."
+    )
+    assert _sha256(runtime_body) == MANIFEST["incident-analyst.md"].body_sha256, (
+        f"{runtime} body sha256 {_sha256(runtime_body)} != pinned "
+        f"{MANIFEST['incident-analyst.md'].body_sha256}. The runtime charter "
+        f"has drifted from kit incident-analyst.md; re-vendor from the kit, "
+        f"do not hand-edit the copy."
+    )
 
 
 def _env_located() -> list[tuple[str, Path]]:
@@ -296,20 +376,55 @@ def test_snap_script_matches_the_manifest_where_it_is_deployed() -> None:
     _assert_matches_manifest(key, path)
 
 
-def test_no_unpinned_python_hides_in_the_vendored_dirs() -> None:
-    """A new .py under a vendored dir must be a pinned copy, or it escapes both.
+def test_the_run_reports_which_pins_it_could_not_check() -> None:
+    """Name the unchecked pins, so a skip is an inventory and not a shrug.
+
+    Four of the nine manifest entries are reachable only through an
+    environment locator, and CI sets none, so they are routinely unchecked
+    there. A pin nobody reads can be moved to anything and the suite stays
+    green, which is the failure this repository already names elsewhere as
+    reading a checker's exit code without reading its entry count. This
+    test never fails on a legitimately unconfigured clone; it exists so the
+    run states WHICH pins went unread rather than emitting a bare skip.
+    """
+    checked = {key for key, _ in COMMITTED}
+    checked.update(key for key, path in _env_located() if path.is_file())
+    snap = _snap_if_present()
+    if snap is not None:
+        checked.add(snap[0])
+    unchecked = sorted(set(MANIFEST) - checked)
+    assert checked, "no manifest entry was checked at all; the fixture is inert"
+    if unchecked:
+        pytest.skip(
+            f"{len(checked)} of {len(MANIFEST)} pinned kit artifacts were "
+            f"verified in this run. NOT verified, because their locator is "
+            f"unset or the file is absent: {unchecked}. These pins are "
+            f"unread here and a wrong value in them would not redden this run."
+        )
+
+
+def test_no_unpinned_artifact_hides_in_the_vendored_dirs() -> None:
+    """A new artifact under a vendored dir must be pinned, or it escapes both.
 
     ``.claude/hooks`` and ``.claude/kit`` are excluded from ruff because
     everything in them is a drift-pinned vendored copy, and COMMITTED is a
-    fixed list, not a glob. So a future .py dropped there would be neither
-    linted nor drift-checked. Pin that every .py under them is a committed
-    manifest entry, closing that gap before it opens.
+    fixed list, not a glob. So a future file dropped there would be neither
+    linted nor drift-checked. Pin that every artifact under them is a
+    committed manifest entry, closing that gap before it opens.
+
+    The sweep covers ``.md`` and ``.sh`` as well as ``.py``. Checking only
+    ``.py`` reproduced the gap one suffix over: ``.claude/kit`` already
+    holds a pinned ``.md`` (the of-record incident-analyst charter), so a
+    second ``.md`` dropped beside it would have escaped both layers, which
+    is the exact shape this test exists to prevent.
     """
     committed = {(_ROOT / rel).resolve() for _, rel in COMMITTED}
     for vendored_dir in (".claude/hooks", ".claude/kit"):
-        for py in (_ROOT / vendored_dir).glob("*.py"):
-            assert py.resolve() in committed, (
-                f"{py} is under a ruff-excluded vendored directory but is not a "
-                f"pinned COMMITTED kit copy; add it to the manifest and the "
-                f"drift test, or it is neither linted nor drift-checked."
-            )
+        for suffix in ("*.py", "*.md", "*.sh"):
+            for artifact in (_ROOT / vendored_dir).glob(suffix):
+                assert artifact.resolve() in committed, (
+                    f"{artifact} is under a ruff-excluded vendored directory "
+                    f"but is not a pinned COMMITTED kit copy; add it to the "
+                    f"manifest and the drift test, or it is neither linted nor "
+                    f"drift-checked."
+                )
