@@ -22,13 +22,19 @@ __all__ = [
     "FitDegreeError",
     "HashMismatchError",
     "ITACAError",
+    "ItceqCycleError",
+    "ItceqParseError",
     "LoadCoordinateError",
     "MissingDependencyError",
     "NonNumericDimensionError",
     "OperatingModeMixError",
+    "PipelineCompatibilityError",
     "PivotDuplicateError",
     "PivotError",
     "ProcessorError",
+    "ProcessorIdempotenceWarning",
+    "ProcessorNotFoundError",
+    "ProcessorValidationError",
     "ProvenanceError",
     "RotationMatrixError",
     "SelectionError",
@@ -207,8 +213,40 @@ class PipelineCompatibilityError(ProvenanceError):
 
 
 # ---------------------------------------------------------------------------
-# UncertaintyError leaves (M0)
+# ProcessorError leaves (M1)
 # ---------------------------------------------------------------------------
+
+
+class ProcessorNotFoundError(ProcessorError):
+    """itc.processor received a name that is not registered (REQ-46)."""
+
+
+class ProcessorValidationError(ProcessorError):
+    """A variable a processor needs is absent from the VarFrame (REQ-45)."""
+
+
+class ItceqParseError(ProcessorError):
+    """An .itceq file is malformed or violates a section rule (REQ-48)."""
+
+
+class ItceqCycleError(ProcessorError):
+    """.itceq equations depend on each other cyclically (REQ-48, DD-17)."""
+
+
+class ProcessorIdempotenceWarning(ProcessorError, Warning):  # noqa: N818
+    """A processor was reapplied to already-processed data (REQ-47, DD-16).
+
+    Both an ITACA error and a warning, because REQ-47 gives it both
+    roles: it is *raised* when a reapplication is refused, and passed to
+    ``warnings.warn`` when ``force=True`` or a declared
+    ``idempotent=True`` permits one. Silent no-ops hide bugs and silent
+    re-runs corrupt data, so neither path is quiet.
+
+    The name keeps the ``Warning`` suffix N818 objects to, because the
+    SRS exception hierarchy names this class (Chapter 5) and the class
+    genuinely is a warning; renaming it would leave the specification
+    and the code disagreeing to satisfy a naming convention.
+    """
 
 
 class UncertaintyKeyError(UncertaintyError):

@@ -314,8 +314,9 @@ def fill(self, along: str, method: str = "linear",
 
 \subsection{NumPy-Only in Core}
 
-The \code{core/}, \code{ops/}, and \code{uncertainty/} packages import
-only from the Python standard library and NumPy. A \code{ruff}
+Every \itc{} package imports only the Python standard library and
+NumPy, except \code{io/} and \code{utils/}, which may import pandas
+lazily (REQ-82 as amended, REQ-05, REQ-84). A \code{ruff}
 import-policy rule flags any other import in these packages.
 
 \subsection{Language and Orthography}
@@ -385,8 +386,8 @@ verified:
   \item Docstring in NumPy format with Examples section
   \item Every new VarFrame-returning method records History and updates
         the HistoryFrame when applicable
-  \item No pandas/xarray/dask imports in \code{core/}, \code{ops/}, or
-        \code{uncertainty/}
+  \item No pandas/xarray/dask imports in any package except \code{io/}
+        and \code{utils/} (REQ-82 as amended)
   \item All code, comments, and docstrings in American English with Z
   \item Example and test data synthetic or publicly licensed, provenance stated
   \item \code{CHANGELOG.md} updated if public API changed
@@ -401,11 +402,11 @@ the TDD loop above.
 
 \paragraph{Step 1: usage example.}
 \begin{lstlisting}
-pproc = itc.pproc("ft_drag_polar", config={"S_ref": 50.0})
-pproc.info()                         # prints: equations, uncertainties, required vars
-pproc.validate(db)                   # raises ProcessorValidationError if vars missing
-db_out = pproc(db, comment="initial polar from FT-2026-A")
-db_out = pproc(db, report="reports/ft_drag.pdf")
+polar = itc.processor("ft_drag_polar", config={"S_ref": 50.0})
+polar.info()                         # prints: equations, uncertainties, required vars
+polar.validate(db)                   # raises ProcessorValidationError if vars missing
+db_out = polar(db, comment="initial polar from FT-2026-A")
+db_out = polar(db, report="reports/ft_drag.pdf")
 \end{lstlisting}
 
 \paragraph{Step 2: companion \code{.itceq}.} Create

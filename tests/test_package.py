@@ -33,11 +33,22 @@ def test_m0_target_version() -> None:
 
 
 def test_subpackages_importable() -> None:
-    import itaca.core
-    import itaca.io
-    import itaca.ops
-    import itaca.uncertainty
-    import itaca.utils
+    # Discovered, not enumerated: a package added later was named in no
+    # list and this check silently stopped covering it (DD-33).
+    import importlib
+    from pathlib import Path
 
-    for pkg in (itaca.core, itaca.io, itaca.ops, itaca.uncertainty, itaca.utils):
+    import itaca
+
+    root = Path(itaca.__file__).parent
+    names = sorted(
+        entry.name
+        for entry in root.iterdir()
+        if entry.is_dir() and (entry / "__init__.py").is_file()
+    )
+    assert {"core", "io", "ops", "pproc", "uncertainty", "utils"} <= set(names), (
+        f"the subpackage walk found {names}; it is the input to this check, "
+        "so an empty or broken walk would pass it while importing nothing."
+    )
+    for pkg in (importlib.import_module(f"itaca.{name}") for name in names):
         assert pkg.__doc__, f"{pkg.__name__} must carry a module docstring"

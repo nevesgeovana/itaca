@@ -82,10 +82,18 @@ are the elementwise mean of the inputs, with uncertainty propagated under the
 declared correlation structure.
 
 \item[pproc]
+The processor subpackage, \code{itaca.pproc}, reached as \code{itc.pproc}.
+Holds the \code{Processor} protocol, the \code{.itceq} parser, the
+registry, and the built-in processors. It is not the factory and not an
+instance: those are \code{itc.processor} and a \emph{processor}
+respectively (DD-34).
+
+\item[processor]
 Processor object in \itc{}. Receives a VarFrame and returns an enriched
 VarFrame. Encapsulates a complete analysis workflow including corrections,
 derivations, and uncertainty propagation. Conforms to the \code{Processor}
-typing protocol.
+typing protocol, and is constructed by
+\code{itc.processor(name\_or\_path)}.
 
 \item[.itceq]
 \itc{} equation file. A TOML-structured text file that defines metadata,

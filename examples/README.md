@@ -22,7 +22,19 @@ policy; release provenance-scrub gate, SRS Chapter 10).
   a human-readable `.itc_pipe` file. Outputs land in `examples/output/`
   (not tracked).
 
+* `processor_itceq.py`: processors and the `.itceq` equation file
+  (REQ-45 to REQ-48). Writes a small `.itceq` workflow, builds a
+  processor from it (`itc.processor`), inspects it, validates a synthetic
+  balance run against it, and applies it so the coefficients are derived
+  with automatic GUM propagation from the declared `[uncertainties]`.
+  The file declares `q_inf` after the coefficients that consume it, so
+  it also shows both halves of DD-17: file order by default,
+  `auto_sort=True` resolving and reporting the dependency order. It ends
+  on the REQ-47 idempotence refusal and a `[constants]` override.
+  Outputs land in `examples/output/` (not tracked).
+
 Run from the repository root::
 
     python examples/wt_campaign.py
     python examples/pipeline_reuse.py
+    python examples/processor_itceq.py

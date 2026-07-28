@@ -739,7 +739,7 @@ applicable) \code{d\_db()}, and is independently testable. Property-based
 tests are required (Chapter~\ref{ch:nonfunctional}).
 \end{reqbox}
 
-\section{Processors: \code{itc.pproc()}}
+\section{Processors: \code{itc.processor()}}
 
 \begin{reqbox}{REQ-45}{\stable}
 \textbf{Processor protocol.}\\
@@ -759,24 +759,27 @@ class Processor(Protocol):
         force: bool = False,
     ) -> VarFrame: ...
 \end{lstlisting}
-The canonical lifecycle is \code{validate} $\to$ \code{info} $\to$
-\code{apply} $\to$ \code{report}.
+The canonical lifecycle is \code{validate}, then \code{info}, then
+the call itself; a report is requested through the call (REQ-51).
 \end{reqbox}
 
 \begin{reqbox}{REQ-46}{\stable}
 \textbf{Processor factory.}\\
-\code{itc.pproc(name\_or\_path, config=\{\})} creates a processor either by
+\code{itc.processor(name\_or\_path, config=\{\})} creates a processor either by
 registered name (e.g.\ \code{"WT\_propeller"}) or by path to a
 \code{.itceq} file. Configuration keys override defaults declared in
 \code{[constants]}. Unknown processor names raise
 \code{ProcessorNotFoundError} listing the registered alternatives.
+The factory forwards the keyword-only \code{auto\_sort} flag of
+REQ-48 to the parser, and to a registered constructor, so the
+evaluation-order choice is reachable wherever a processor is built.
 \end{reqbox}
 
 \begin{reqbox}{REQ-47}{\stable}
 \textbf{Processor idempotence policy.}\\
 A processor may declare \code{idempotent: bool} as a class attribute
 indicating whether reapplication is meaningful. By default
-(\code{idempotent=False}), \code{pproc(pproc(db))} raises
+(\code{idempotent=False}), \code{proc(proc(db))} raises
 \code{ProcessorIdempotenceWarning} and refuses to re-run unless the
 caller passes \code{force=True}. Reapplication, when allowed, always
 emits the warning and records the second application in History as a
@@ -823,7 +826,8 @@ interpolated onto the reference grid via \code{db.interpolate}.
 warnings=True, keep\_tex=False)} generates a structured PDF using a
 LaTeX backend. The PDF contains processor metadata, variable summary,
 diagnostic plots, tabulated results, and warnings. Equivalently invokable
-via \code{pproc(db, report=path)}. When \code{keep\_tex=True} is passed,
+via \code{proc(db, report=path)} on a constructed processor. When
+\code{keep\_tex=True} is passed,
 the underlying \code{.tex} sources and any auxiliary files are retained
 alongside the output PDF. The dependency on the LaTeX toolchain
 (\code{tectonic} preferred, \code{pdflatex} fallback) is checked lazily.

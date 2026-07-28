@@ -16,6 +16,7 @@ from itaca.core.version import __version__
 from itaca.io.formats.itc import open_itc as open
 from itaca.io.loader import load
 from itaca.ops.concat import concat
+from itaca.pproc.factory import processor
 
 __all__ = [
     "Axis",
@@ -28,6 +29,7 @@ __all__ = [
     "load_pipeline",
     "no_default",
     "open",
+    "processor",
     "register_accessor",
     "set_mode",
     "set_user",

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "itaca"
 description = "Integrated Toolkit for Aerospace Computation and Analysis: rigorous engineering data management, analysis, and computation"
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.11,<3.14"
 license = { text = "MIT" }
 authors = [{ name = "Geovana Neves" }]
 keywords = [
@@ -23,7 +23,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -72,7 +71,7 @@ version = { attr = "itaca.core.version.__version__" }
 
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py311"
 # Forward-looking: Markdown formatting is preview-only in the pinned
 # ruff, so this excludes nothing today. It keeps the formatter's scope
 # stable when that graduates, since .md files here are prose and
@@ -97,15 +96,24 @@ ignore = ["D105"]
 convention = "numpy"
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
-"xarray".msg = "NumPy-only rule (REQ-82, DD-02): xarray is barred from core/, ops/, and uncertainty/"
-"dask".msg = "NumPy-only rule (REQ-82, DD-02): dask is barred from core/, ops/, and uncertainty/"
-"pandas".msg = "NumPy-only rule (REQ-82, DD-02): pandas is barred from core/, ops/, and uncertainty/; io/ uses it lazily"
+# The ban is repository-wide and the exemptions are below, so the
+# scope of these three is every itaca package except io/ and utils/,
+# which is exactly what REQ-82 requires as amended on 2026-07-27
+# (DD-33). Stated that way, a package added later is restricted by
+# default rather than escaping a list nobody remembered to extend.
+"xarray".msg = "NumPy-only rule (REQ-82, DD-02): xarray is barred from every itaca package except io/ and utils/"
+"dask".msg = "NumPy-only rule (REQ-82, DD-02): dask is barred from every itaca package except io/ and utils/"
+"pandas".msg = "NumPy-only rule (REQ-82, DD-02): pandas is barred from every itaca package except io/ and utils/, which import it lazily (REQ-05, REQ-84)"
 "scipy".msg = "Dev-only geometry oracle (DD-26): scipy is barred from library code; use it only under tests/oracle/"
 "uncertainties".msg = "Dev-only GUM oracle (DD-25): uncertainties is barred from library code; use it only under tests/oracle/"
 
 [tool.ruff.lint.per-file-ignores]
-# The NumPy-only ban targets core/, ops/, and uncertainty/ (REQ-82).
-# io/ and utils/ may use pandas lazily (REQ-05, REQ-84); tests may use anything.
+# These are the exemptions the ban above is scoped by. io/ and utils/
+# may use pandas lazily (REQ-05, REQ-84); tests may use anything.
+# tests/test_import_policy.py parses the itaca/ keys here rather than
+# retyping them, so the AST guard and this list cannot drift apart. The
+# tests/** key has no counterpart there, because tests/ is not a
+# package that guard walks; it is excluded on that side by name.
 "itaca/io/**" = ["TID251"]
 "itaca/utils/**" = ["TID251"]
 "tests/**" = ["TID251", "D"]
@@ -116,7 +124,8 @@ convention = "numpy"
 
 [tool.mypy]
 # No python_version pin: NumPy 2.x stubs need the 3.12 grammar. The
-# 3.10 floor is exercised by the CI test matrix (REQ-83), not by mypy.
+# 3.11 floor is exercised by the CI test matrix (REQ-83) and pinned
+# against its restatements by tests/test_python_floor.py, not by mypy.
 strict = true
 files = ["itaca"]
 

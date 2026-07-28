@@ -414,3 +414,135 @@ the registered question of whether the ledger was management content at
 all.
 
 **SRS:** none directly; process, DD-31, DD-23.
+
+---
+
+## OQ-28: How does the `.itceq` parser read TOML against a 3.10 floor?
+
+**Raised:** 2026-07-23 (M1 review, finding D2; blocked phase B3b)
+**Status:** resolved 2026-07-27 (none of the three options; the floor
+rises)
+**Question:** SRS Section 4.6 specifies `.itceq` as a TOML-structured
+file and REQ-48 makes the parser the whole job of M1 phase B3b. Against
+the 3.10 floor of REQ-83 there was no TOML reader in the standard
+library, and the NumPy-only rule (REQ-82) bars a third-party one from
+library code. Three options were put to the author: vendor a minimal
+reader, hand-write a parser for the fixed grammar, or take `tomli` as a
+conditional dependency with a REQ-82 and REQ-83 amendment.
+
+**Resolution:** none of the three. The Python floor rises from 3.10 to
+3.11, so `tomllib` is in the standard library and the parser reads TOML
+with no dependency, no vendored code, and no format code of ours.
+REQ-82 is untouched. REQ-83 is amended through the normal SRS process:
+it is `\stable` and carries the language baseline, and the amendment
+moved the CI matrix, the PyPI classifiers, and the `ruff` target
+version with it. The registered fact that the floor was guarded only by
+accident was closed at the same time:
+`tests/test_python_floor.py` pins every restatement to the single
+`requires-python` declaration, and refuses a floor below any
+standard-library module the library imports.
+
+**Why:** each of the three options answered the question by paying for
+TOML somewhere else, and this one removes the problem instead of
+relocating it. It also makes Section 4.6's claim that `.itceq` is TOML
+true rather than approximate. The cost is users on 3.10; none were
+identified, and the decision was taken with that gap visible. DD-32
+carries the full reasoning, including why DD-28 and the JSON
+`.itc_pipe` encoding are unaffected: `tomllib` reads and does not
+write, so the reason a pipeline cannot be TOML never depended on the
+floor.
+
+**SRS:** REQ-48, REQ-83, Section 4.6; DD-32, DD-28, DD-17, OQ-04.
+
+---
+
+## OQ-29: `itc.pproc` is a function and `itaca.pproc` is a package
+
+**Raised:** 2026-07-27 (M1 phase B3b implementation)
+**Status:** resolved 2026-07-27 (the factory is renamed to
+`itc.processor`; the package keeps its name)
+**Question:** The SRS named both, and they collided on one attribute.
+Chapter 5's top-level API surface gave `itc.pproc(name_or_path)` as the
+processor factory, and Chapter 5's module tree gives `pproc/` as the
+package holding it. Binding the factory at the package top level
+shadows the subpackage attribute, so `itc.pproc(...)` called the
+factory while `itc.pproc.parse_itceq` did not resolve and
+`import itaca.pproc as pp` returned the function rather than the
+module.
+
+It cost nothing while everything the package exports was reached by
+import. It would have started costing at REQ-49 to REQ-51, which are
+written as `pproc.statistics(db, along="repeat")`,
+`pproc.compare(reference=..., **named)`, and `pproc.report(db, ...)`.
+Measuring the token across the SRS turned up a third sense: Chapter 9's
+worked example opens `pproc = itc.pproc("ft_drag_polar", ...)`, so the
+same name also served as the conventional variable for a processor
+instance. REQ-51 depends on that instance reading, since
+`pproc(db, report=path)` is given as equivalent to
+`pproc.report(db, output=path)`, while REQ-49 depends on the namespace
+reading. One token, three meanings, and no single one assignable by
+implementation alone.
+
+**Resolution:** the factory is renamed to `itc.processor`; the package
+keeps `pproc`. The attribute `itc.pproc` is therefore the module again,
+`itc.pproc.statistics(db)` will resolve when REQ-49 lands, and
+`itc.processor` follows the constructor pattern the top-level API
+surface already uses for `itc.datavis` and `itc.surrogate`. REQ-46 is
+`\stable`, so the rename went through the SRS process; the Chapter 9
+example variable was renamed with it.
+
+**Why this rather than renaming the package:** measured across
+`docs/srs/`, the token appears as an API name in 6 places, as a module
+path in 13, and as a `pproc.<callable>` prefix in 16. Renaming the
+factory touches only the 6 and makes the 16 correct as written.
+Renaming the package would have cost the 13 plus the directory and
+every import, and left the 16 to rewrite anyway. DD-34 carries the
+reasoning and the rejected alternatives, including the callable
+namespace object that would have satisfied both readings.
+
+**Guard:** `tests/pproc/test_processor.py` pins that `itc.pproc` is the
+module, that `itc.processor` is callable, and that `itaca.__all__` does
+not export `pproc`, which is the one-line change that would reintroduce
+the shadow.
+
+**SRS:** Chapter 5 (top-level API surface, module tree, DD-04); REQ-46,
+REQ-49, REQ-50, REQ-51; DD-34.
+
+---
+
+## OQ-30: `itc.surrogate` will collide with `itaca.surrogate` exactly as `pproc` did
+
+**Raised:** 2026-07-27 (V and V pass on M1 phase B3b, while checking the
+OQ-29 resolution)
+**Status:** open
+**Question:** OQ-29 was resolved by renaming the processor factory,
+because binding a function at the package top level under its own
+package's name shadows the subpackage attribute. The same shape is
+already specified elsewhere and has not been built yet: Chapter 5 gives
+`itc.surrogate(...)` in the top-level API table and `surrogate/` in the
+module tree. Binding that factory will shadow `itaca.surrogate` on that
+attribute, exactly as `itc.pproc` shadowed `itaca.pproc`.
+
+The V and V pass found this while checking that the OQ-29 resolution
+cited a sound precedent. It did not: both the resolution text and the
+`itaca.pproc` module docstring justified `itc.processor` by the pattern
+"already used for `itc.datavis` and `itc.surrogate`". `itc.datavis` is
+sound, its package being `plot/`. `itc.surrogate` is the second instance
+of the defect, not a precedent for avoiding it.
+
+`surrogate/` is M3 (v0.4.0), so nothing is broken today. Registering it
+now is the point: the choice is cheap before the package exists and
+expensive after, which is the whole lesson of OQ-29.
+
+**Proposed handling:** the API designer seat decides, before `surrogate/`
+is created, whether to rename that factory as REQ-46's was, rename the
+package, or accept the shadow with the consequences stated. Whichever
+way, generalize the guard: `tests/pproc/test_processor.py` currently
+asserts only that `itaca.__all__` omits the literal name `pproc`, which
+blocks the first instance and nothing else. A guard asserting that no
+member of `itaca.__all__` equals a subpackage directory name under
+`itaca/` would have caught this class rather than this case, which is
+what the incident rule asks of a guard.
+
+**SRS:** Chapter 5 (top-level API surface, module tree); REQ-46; OQ-29,
+DD-34.

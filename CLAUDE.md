@@ -50,9 +50,15 @@ tagged stable may proceed.
   implementation, then refactor. Pull requests without tests are
   rejected regardless of correctness.
 * Coverage at or above 90 percent, hard CI gate (`pytest-cov`).
-* `core/`, `ops/`, and `uncertainty/` import only NumPy and the standard
-  library. No xarray, dask, or pandas there, enforced by a ruff
-  import-policy rule and a guard test.
+* Every package imports only NumPy and the standard library, except
+  `io/` and `utils/`, which may import pandas lazily (REQ-05, REQ-84).
+  No xarray, dask, or pandas anywhere else, enforced by a ruff
+  import-policy rule and a guard test. REQ-82 was amended to this
+  exception-list form on 2026-07-27 (DD-33); it previously named
+  `core/`, `ops/`, and `uncertainty/`, which was narrower than what CI
+  enforced. Both halves of the enforcement discover packages rather
+  than enumerate them, so a package added later is restricted by
+  default and an exemption is a deliberate act.
 * Every operation returns a new object and records itself in History
   (REQ-18), and declares its UncFrame effect (REQ-98). Arrays are
   read-only (`writeable=False`, REQ-102).

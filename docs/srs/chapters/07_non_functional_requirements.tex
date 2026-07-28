@@ -102,9 +102,30 @@ derive from the \code{ITACAError} hierarchy
 
 \begin{reqbox}{REQ-82}{\stable}
 \textbf{NumPy-only core.}\\
-The \code{core/}, \code{ops/}, and \code{uncertainty/} packages depend
-only on NumPy. No xarray, dask, or pandas imports appear in these
-modules. CI enforces this with a \code{ruff} import-policy rule.
+Every \itc{} package depends only on NumPy and the standard library,
+with two named exceptions: \code{io/} and \code{utils/}, which may
+import pandas lazily as the DataFrame bridge (REQ-05, REQ-84). No
+xarray, dask, or pandas imports appear in any other package, at module
+level or inside a function.
+
+The scope is stated as \emph{everything except two} rather than as a
+list of the packages it covers. A list has to be extended whenever a
+package is added, and a package added but not listed would inherit no
+restriction at exactly the moment it is least reviewed; stated this
+way, a new package is restricted by default and an exemption is a
+deliberate act. At the 0.1.0 baseline the covered packages were
+\code{core/}, \code{ops/}, and \code{uncertainty/}, which is how this
+requirement was originally written; \code{pproc/} joined them at the M1
+Phase B3b checkpoint without the text needing to change, which is the
+property the restatement buys.
+
+CI enforces this with a \code{ruff} import-policy rule, banning the
+three packages repository-wide with per-file exemptions for the two
+above. A guard test enforces it independently over the abstract syntax
+tree, so the policy survives a lint-configuration regression. Both
+sides discover packages rather than enumerate them, and the two
+exemption declarations are checked against each other, so neither can
+quietly stop covering a package the other still covers.
 \end{reqbox}
 
 \begin{reqbox}{REQ-83}{\stable}
@@ -114,12 +135,24 @@ modules. CI enforces this with a \code{ruff} import-policy rule.
 minimum tested version, the upper bound, and whether the dependency is
 required, optional, or development-only. CI runs the full test suite
 against the minimum and the latest compatible versions.
+
+The language baseline is normative in both directions: it may not fall
+below a standard-library module the implementation already depends on.
+The floor rose from 3.10 to 3.11 at the M1 Phase B3b checkpoint so that
+\code{tomllib} is available, which is what lets the \code{.itceq}
+parser (REQ-48) read the TOML structure of Section~\ref{sec:itceq} with
+no dependency, no vendored reader, and no hand-written parser (OQ-28,
+DD-32). The floor is declared once in \code{pyproject.toml} and
+restated by the PyPI classifiers, the \code{ruff} target version, and
+the lowest leg of the CI test matrix; the four are pinned to each
+other, and to the standard-library modules the library imports, by
+\code{tests/test\_python\_floor.py}.
 \end{reqbox}
 
 \begin{table}[H]
 \centering
-\caption{Dependency version policy for \itc{} v0.1.0. Bounds are
-expressed as PEP 440 specifiers.}
+\caption{Dependency version policy for \itc{}, as amended at the M1
+Phase B3b checkpoint. Bounds are expressed as PEP 440 specifiers.}
 \label{tab:dependency-versions}
 \small
 \begin{tabularx}{\textwidth}{@{}llXl@{}}
@@ -127,7 +160,7 @@ expressed as PEP 440 specifiers.}
 \textbf{Dependency} & \textbf{Role} & \textbf{Used for} & \textbf{Range}\\
 \midrule
 \code{numpy}        & required  & Core arrays, RPN, propagation, ops          & \code{>=1.26,<3.0}\\
-\code{python}       & required  & Language baseline                            & \code{>=3.10,<3.14}\\
+\code{python}       & required  & Language baseline                            & \code{>=3.11,<3.14}\\
 \code{matplotlib}   & optional  & Default plotting backend                     & \code{>=3.8,<4.0}\\
 \code{plotly}       & optional  & Interactive plotting backend                 & \code{>=5.20,<6.0}\\
 \code{pandas}       & optional  & DataFrame bridge                             & \code{>=2.1,<3.0}\\

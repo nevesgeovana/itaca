@@ -69,7 +69,35 @@ amended to match: it now names both schema versions, the \code{step}
 member of \code{history.json}, and the \code{steps\_hash} digest in
 \code{metadata.json}, with the scope boundary against the REQ-103 state
 hash stated there and the reasoning recorded in DD-30. The scope of
-REQ-103 is unchanged.\\
+REQ-103 is unchanged. M1 Phase B3b amended \stable{} REQ-83: the
+language baseline rises from \code{>=3.10,<3.14} to
+\code{>=3.11,<3.14}, so \code{tomllib} is in the standard library and
+the \code{.itceq} parser of REQ-48 reads the TOML structure of
+Section~\ref{sec:itceq} with no dependency, no vendored reader, and no
+hand-written parser. This resolves OQ-28, which had blocked the phase
+since 2026-07-23, by taking none of the three options it offered;
+DD-32 records why, and why it leaves DD-28 and the JSON
+\code{.itc\_pipe} encoding standing. REQ-83 also gained the normative
+statement that the baseline may not fall below a standard-library
+module the implementation depends on, and the note that its four
+restatements (the PyPI classifiers, the \code{ruff} target version, the
+CI matrix floor, and the imports themselves) are pinned to one
+declaration by \code{tests/test\_python\_floor.py}. Phase B3b
+implemented REQ-45 to REQ-48 in the new \code{pproc/} package, and
+amended two further \stable{} requirements at the same checkpoint.
+REQ-82 now states the NumPy-only scope as every package except
+\code{io/} and \code{utils/}, rather than naming the three that existed
+at the 0.1.0 baseline: enforcement already had that scope, and stated
+as an exception list a package added later is restricted by default
+instead of inheriting nothing (DD-33). REQ-46's factory is renamed from
+\code{itc.pproc} to \code{itc.processor}, resolving OQ-29: the former
+name shadowed the \code{pproc} package on that attribute, so the
+\code{pproc.statistics} and \code{pproc.compare} forms of REQ-49 and
+REQ-50 could never have resolved. Renaming the factory rather than the
+package leaves every module path and both requirement texts true as
+written (DD-34). The Chapter~\ref{ch:contributing} worked example was
+amended with it, since it used the same token for a third thing, the
+processor instance.\\
 \addlinespace
 0.1.1 & 2026-07-21 & Geovana Neves &
 REQ-98 and REQ-99 promoted from draft to stable after the M0

@@ -116,6 +116,72 @@ DD-28 also records the replay representation itself:
 structured step re-dispatch rather than re-parsing the History display
 strings.
 
+\paragraph{Changed (B3b).} \stable{} REQ-83
+(Chapter~\ref{ch:nonfunctional}) is amended: the language baseline in
+Table~\ref{tab:dependency-versions} rises from \code{>=3.10,<3.14} to
+\code{>=3.11,<3.14}. The reason is REQ-48. \code{.itceq} is specified
+as a TOML-structured file (Chapter~\ref{ch:datamodel},
+Section~\ref{sec:itceq}), and only from 3.11 does the standard library
+ship a TOML reader, so the parser now reads it with \code{tomllib}:
+no dependency, no vendored reader, and no hand-written parser. This
+resolves OQ-28, open since 2026-07-23 and blocking phase B3b, by
+taking none of the three options it offered (a vendored reader, a hand
+parser, or \code{tomli} as a conditional dependency with a REQ-82
+amendment); DD-32 records why, and why DD-28 and the JSON
+\code{.itc\_pipe} encoding stand unchanged, \code{tomllib} being
+read-only. REQ-83 gains two normative additions: the baseline may not
+fall below a standard-library module the implementation depends on,
+and the floor is declared once with its restatements (the PyPI
+classifiers, the \code{ruff} target version, and the lowest leg of the
+CI test matrix) pinned to that declaration. The table caption now
+names the amending checkpoint rather than the v0.1.0 baseline.
+
+\paragraph{Changed (B3b, REQ-82).} \stable{} REQ-82
+(Chapter~\ref{ch:nonfunctional}) states the NumPy-only scope as every
+package except \code{io/} and \code{utils/}, replacing the list of the
+three packages that existed at the 0.1.0 baseline. This is what CI
+already enforced, since the \code{ruff} ban is repository-wide with
+per-file exemptions; the requirement text had not kept up. Stated as an
+exception list, a package added later is restricted by default rather
+than inheriting nothing at the moment it is least reviewed, which
+\code{pproc/} demonstrated in this same phase by arriving covered with
+no text change. DD-33 records the reasoning and the matching defect in
+the guard test, which enumerated the same package names and has been
+changed to discover them. The DD-02 box in
+Chapter~\ref{ch:architecture} gained a pointer; the decision itself is
+not overturned and its statement still holds.
+
+\paragraph{Changed (B3b, REQ-46).} \stable{} REQ-46's factory is
+renamed from \code{itc.pproc(name\_or\_path, config=\{\})} to
+\code{itc.processor(name\_or\_path, config=\{\})}, and the top-level
+API surface of Chapter~\ref{ch:architecture} moves with it. This
+resolves OQ-29. Binding the factory under the package's own name
+shadows the attribute the import machinery sets for \code{itaca.pproc},
+so the \code{pproc.statistics} and \code{pproc.compare} forms in which
+REQ-49 and REQ-50 are specified could never have resolved, and
+\code{import itaca.pproc as pp} would have returned a function
+silently. Renaming the factory rather than the package leaves all
+thirteen module-path citations and all sixteen \code{pproc.<callable>}
+citations true as written; DD-34 records the measurement. The worked
+example in Chapter~\ref{ch:contributing} was amended in the same
+change, because it used \code{pproc} for a third thing, the constructed
+processor instance, and DD-04 now names the factory where it shows the
+call shape. Requirement scope is otherwise unchanged: REQ-45, REQ-47
+and REQ-48 are untouched.
+
+\paragraph{Added (B3b).} Processor infrastructure, REQ-45 to REQ-48
+with DD-16 and DD-17, implemented in the new \code{pproc/} package of
+Chapter~\ref{ch:architecture}: the \code{Processor} protocol, the
+\code{itc.processor()} factory, the idempotence policy, and the
+\code{.itceq} parser with cycle detection at parse time and opt-in
+topological sorting that reports the resolved order. No requirement
+text changed: the \code{ProcessorError} leaves of
+Table~\ref{tab:exception-hierarchy} were specified at the 0.1.0
+baseline and are implemented here as written, with
+\code{ProcessorIdempotenceWarning} carrying both roles REQ-47 gives it,
+raised when a reapplication is refused and warned when \code{force}
+permits one.
+
 \paragraph{Added (docs adoption).} Non-functional requirement REQ-108
 (published documentation site on GitHub Pages, ProperDocs with markdown
 SRS chapters and a build-time-generated API reference, mirroring the

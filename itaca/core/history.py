@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -140,7 +140,7 @@ class History:
         History
             A new object; ``self`` is unchanged.
         """
-        stamp = timestamp if timestamp is not None else datetime.now(timezone.utc)
+        stamp = timestamp if timestamp is not None else datetime.now(UTC)
         entry = HistoryEntry(
             index=len(self.entries) + 1,
             operation=operation,

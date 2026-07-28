@@ -776,3 +776,167 @@ can exist.
 Rejected because it publishes the same machine path the variable exists
 to keep out, and gitignoring it reproduces the environment variable with
 more machinery and no version control.
+
+---
+
+## DD-32: The Python floor rises to 3.11 so `.itceq` is read by `tomllib`
+
+**Date:** 2026-07-27
+**Status:** confirmed
+
+`.itceq` is a TOML-structured file (SRS Section 4.6, REQ-48), and the
+parser that reads it is the whole job of M1 phase B3b. Against the
+former 3.10 floor there was no way to read TOML from the standard
+library, and OQ-28 put three options to the author: vendor a minimal
+reader, hand-write a parser for the fixed grammar, or take `tomli` as a
+conditional dependency with a REQ-82 and REQ-83 amendment.
+
+She took none of them. The floor rises from 3.10 to 3.11, `tomllib`
+enters the standard library, and the parser reads TOML with no
+dependency, no vendored code, and no format code of ours. The
+amendment lands on REQ-83, which is `\stable` and carries the language
+baseline in its dependency table, through the normal SRS process.
+
+**Why this over the three.** Each of the three answered the question by
+paying for TOML somewhere else. A vendored reader is third-party code
+we do not maintain but must keep, lint, and drift-pin. A hand parser is
+format code of ours to maintain and test, refused already in DD-28 for
+the writing direction and no better here. A conditional dependency puts
+a third-party import in the path of a core feature and forces an
+amendment to REQ-82 as well, weakening the NumPy-only rule for a file
+format. Raising the floor pays nothing at all: it removes the problem
+rather than relocating it, and it makes the data model chapter's claim
+that `.itceq` is TOML true rather than approximate. What it costs is
+users on 3.10, and none were identified when the decision was taken,
+with that gap visible to the author at the time.
+
+**This does not overturn DD-28.** `.itc_pipe` stays JSON. `tomllib`
+reads and does not write, so the reason a pipeline cannot be TOML is
+untouched by which interpreters ship it; the 3.11 half of that entry's
+parenthetical is simply no longer load-bearing, and the null-type and
+nesting reasons never depended on the floor. The asymmetry is the
+direction of travel: `.itceq` is read and never written by the library,
+`.itc_pipe` is both.
+
+**Guard.** `tests/test_python_floor.py`. The floor was previously
+guarded only by accident, by the REQ-105 sentinel test happening to
+follow imports into the package on the oldest CI leg, so a refactor
+could have removed the guard with nothing failing. The floor is now
+declared once in `pyproject.toml` and every restatement is checked
+against it: the PyPI classifiers, the `ruff` target version, and the
+lowest leg of the CI test matrix. A fourth check binds the floor to the
+code, refusing a floor below any standard-library module the library
+imports, so removing 3.11 while `tomllib` is imported fails rather than
+shipping a package that installs where it cannot import. The guard was
+proven by mutation: moving `requires-python` alone turned the other
+three red, each naming its own file and fix.
+
+**Rejected alternative:** keeping the floor and reading `.itceq` with
+one of the three OQ-28 options. Recorded above. **Rejected
+alternative:** raising the floor silently as package metadata. Refused
+because the baseline is normative in a `\stable` requirement, binds the
+CI matrix and the published classifiers, and a metadata-only change
+would leave the specification saying 3.10 while the package said 3.11.
+
+
+---
+
+## DD-33: The NumPy-only scope is stated as an exception list, not a package list
+
+**Date:** 2026-07-27
+**Status:** confirmed. Widens the enforcement scope of [[DD-02]], which
+is not overturned: its statement about `core/`, `ops/` and
+`uncertainty/` still holds.
+
+REQ-82 named three packages, because at the 0.1.0 baseline those were
+the packages that existed. Enforcement had already outgrown the text:
+the ruff rule bans the three imports repository-wide with per-file
+exemptions for `io/` and `utils/`, so the real scope was everything
+except two. The amendment makes the requirement say that.
+
+**Why an exception list.** A list of covered packages has to be
+extended whenever a package is added, and the moment a package is added
+is the moment it is least reviewed, so an unextended list silently
+grants a new package no restriction at all. Stated as an exception
+list, a new package is restricted by default and an exemption becomes a
+deliberate act with a name attached. `pproc/` proved the point the same
+week: it was created under the amended rule and was covered with no
+text change.
+
+**The guard had the same defect and was fixed with it.**
+`tests/test_import_policy.py` enumerated package names in two literal
+tuples, so the AST half of the enforcement stopped covering the newest
+package while the ruff half kept covering it: the belt held and the
+braces did not, in exactly the case the guard's own docstring says it
+exists for. Both halves now discover packages by walking, and the two
+exemption declarations are checked against each other by parsing
+`per-file-ignores` rather than retyping it. The comparison is over
+library package keys only, because `per-file-ignores` also exempts
+`tests/`, which is not a package the AST guard walks; written as a
+plain set equality it would fail on a correct configuration.
+
+**Guard evidence.** Both failure modes were reproduced by mutation
+before the fix was accepted: a new package importing pandas, which the
+old guard passed and the new one names by file; and an exemption added
+to ruff alone, which the new cross-check names on both sides.
+
+**Rejected alternative:** extend the enumerated list to include
+`pproc/` and move on. Rejected because it fixes one instance of a
+defect whose structural cause is the enumeration itself, and the next
+package would reintroduce it. The incident rule here is that a defect
+is fixed at its structural cause on its first occurrence.
+
+**Rejected alternative:** state REQ-82 as covering literally every
+package with no exceptions, and move the pandas bridge out of `io/`.
+Rejected as a much larger change to serve a tidier sentence: REQ-05 and
+REQ-84 put the DataFrame bridge in `io/` deliberately and lazily, and
+that is the design, not a concession.
+
+---
+
+## DD-34: The processor factory is named apart from the package it lives in
+
+**Date:** 2026-07-27
+**Status:** confirmed. Resolves OQ-29.
+
+The factory is `itc.processor(name_or_path)`. The package is
+`itc.pproc`. The SRS had given both the name `pproc`, and binding a
+function under the package's own name shadows the attribute the import
+machinery sets, so `itc.pproc.statistics(db)` could never resolve and
+`import itaca.pproc as pp` would hand back a function without saying
+so.
+
+**Why rename the factory and not the package.** Measured across
+`docs/srs/`, the name appears as an API name in 6 places, as a module
+path in 13, and as a `pproc.<callable>` prefix in 16, the last being
+REQ-49 to REQ-51. Renaming the factory touches only the 6, leaves the
+13 paths untouched, and makes the 16 correct as written, because the
+attribute goes back to being the module. Renaming the package would
+have cost the 13 plus the directory and every import, and would still
+have left the 16 to rewrite.
+
+**A third sense was found while measuring, and it is why this needed
+deciding rather than working around.** Chapter 9's worked example opens
+`pproc = itc.pproc("ft_drag_polar", ...)`, so the SRS also used the
+token as the conventional variable name for a processor instance. One
+token meant the factory, the package, and an instance. REQ-51 depends
+on the instance reading (`pproc(db, report=path)` as the equivalent of
+`pproc.report(db, output=path)`) while REQ-49 depends on the namespace
+reading, so no single meaning could be assigned by implementation
+alone. The example's variable was renamed with the factory.
+
+**Guard.** `tests/pproc/test_processor.py`, which asserts that
+`itc.pproc` is the module, that `itc.pproc.parse_itceq` resolves, that
+`itc.processor` is callable, and that `itaca.__all__` does not export
+the name `pproc`. The last is the regression that matters: re-exporting
+the factory under the package name is a one-line change that would
+reintroduce the shadow silently.
+
+**Rejected alternative:** a callable namespace object exported as
+`itc.pproc`, satisfying both readings. Rejected by the author as
+machinery paid to preserve a collision rather than to remove it.
+
+**Rejected alternative:** keep the shadow and reach everything by
+import. Rejected because `import itaca.pproc as pp` returning a
+function is a silent trap, and because REQ-49 to REQ-51 would have had
+to be rewritten away from the form they are specified in.

@@ -12,7 +12,7 @@ Usage example (the contract under test)::
     assert history[0].index == 1
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import numpy as np
 import pytest
@@ -27,7 +27,7 @@ def _entry(index: int, operation: str = "op") -> HistoryEntry:
     return HistoryEntry(
         index=index,
         operation=operation,
-        timestamp=datetime(2026, 7, 21, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 7, 21, tzinfo=UTC),
         state_hash="f" * 64,
     )
 

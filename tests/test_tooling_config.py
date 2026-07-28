@@ -11,11 +11,12 @@ both ruff commands, and the hooks still declare both ruff ids with
 nothing narrowing what they read. A hook that lints nothing is the same
 divergence wearing a matching version number.
 
-The two checks that read ``pyproject.toml`` need ``tomllib`` and so run
-only on Python 3.11 and up. In CI that is the 3.13 test leg alone; both
-3.10 legs skip them, and the lint job never runs pytest. The remaining
-checks carry no such precondition and run on every supported
-interpreter, including the 3.10 floor.
+The two checks that read ``pyproject.toml`` need ``tomllib``. That used
+to make them conditional: against the former 3.10 floor they ran on the
+3.13 leg alone and both 3.10 legs skipped them, so the mirror was
+verified on one interpreter out of three. The 3.11 floor (REQ-83) puts
+``tomllib`` in the standard library on every supported interpreter, so
+they now run on every leg with no skip, like the rest of this module.
 
 Markdown exclusion is a project convention, not a requirement: ``.md``
 files are prose plus illustrative samples, not sources ``ruff format``
@@ -26,6 +27,7 @@ rationale lives next to the setting in ``pyproject.toml``.
 import importlib.metadata
 import itertools
 import re
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -98,7 +100,6 @@ def _pre_commit_ruff_rev() -> str:
 
 
 def _pyproject() -> dict[str, Any]:
-    tomllib = pytest.importorskip("tomllib", reason="reading pyproject needs 3.11+")
     parsed: dict[str, Any] = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     return parsed
 

@@ -8,6 +8,51 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Added
 
+* M1 Phase B3b, processors and the `.itceq` equation file (REQ-45 to
+  REQ-48, DD-16, DD-17). `itc.processor(name_or_path, config=None, *, auto_sort=False)` builds a
+  processor from a registered name or from a
+  path to an `.itceq` file, whose `[constants]` defaults the `config`
+  mapping overrides (REQ-46). A processor satisfies the `Processor`
+  typing protocol (`name`, `version`, `info()`, `validate(db)`, and the
+  call itself, REQ-45); `itaca.pproc` also exports `EquationProcessor`,
+  `parse_itceq`, `ItceqSpec`, `Equation` (one `target = expression`
+  line), `register_processor`, and `registered_processors`. The parser reads the five sections of SRS
+  Section 4.6 with the standard-library `tomllib` (REQ-83, DD-32),
+  enforces every section rule, and refuses a cyclic dependency at parse
+  time before any computation, in both ordering modes (REQ-48, OQ-04).
+  Equations run in file order by default; `auto_sort=True` resolves the
+  dependency order, breaks ties by file order so the result is a
+  minimal reproducible rearrangement, and reports the resolved order
+  (DD-17). `[corrections]` run after `[equations]` and may replace a
+  variable they produced, so `CL = "CL * blockage"` is a replacement
+  there and a cycle inside `[equations]`.
+* Applying a processor assigns the declared `[uncertainties]` as the
+  systematic component (SRS Chapter 8, REQ-99) and evaluates each
+  equation through the ordinary `db.compute` path, so uncertainty
+  propagates automatically (REQ-41), every step is recorded, and a
+  whole application lifts into a `Pipeline` (REQ-53). Declared
+  constants are substituted into the expressions before they run, so
+  History records the numbers the workflow actually used. Every entry
+  the application writes carries the processor name and version in its
+  comment alongside the user's own (REQ-19).
+* Reapplying a processor is refused rather than silently repeated
+  (REQ-47, DD-16): `ProcessorIdempotenceWarning` is raised when the
+  frame already carries every variable the workflow produces, and
+  `force=True` permits the re-run while still warning and recording a
+  distinct History entry. Already-processed is read off the data rather
+  than off History, so the check survives a save and reopen and holds
+  for a draft frame whose operations were never recorded. A processor
+  that declares `idempotent = True` re-runs without being refused, and
+  still warns.
+* The exception hierarchy gains the `ProcessorError` leaves the SRS
+  specified at the 0.1.0 baseline: `ProcessorNotFoundError` (with the
+  registered alternatives in the message), `ProcessorValidationError`,
+  `ItceqParseError`, `ItceqCycleError`, and
+  `ProcessorIdempotenceWarning`, which is both an `ITACAError` and a
+  `Warning` because REQ-47 gives it both roles.
+  `examples/processor_itceq.py` is the walkthrough. `report=` is accepted by the
+  call signature and raises until REQ-51 ships in v0.3.0, rather than
+  being silently ignored.
 * M1 Phase B3a, reusable pipelines. `db.history.to_pipeline(start=,
   end=)` lifts a contiguous range of History entries into a `Pipeline`
   (REQ-53), `pipeline.apply(db_new)` replays the recorded sequence onto
@@ -123,6 +168,21 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Changed
 
+* **The minimum supported Python is now 3.11** (was 3.10). This is a
+  breaking change for anyone on 3.10: `pip install itaca` there will
+  resolve to v0.1.0 rather than upgrading. The reason is `.itceq`,
+  which the SRS specifies as a TOML-structured file (REQ-48) and which
+  M1 Phase B3b implements: only from 3.11 does the standard library
+  ship a TOML reader, so the parser uses `tomllib` and the format needs
+  no dependency, no vendored reader, and no parser of ours. This
+  resolves OQ-28 by taking none of the three options it put forward,
+  and it amends REQ-83, a stable requirement, through the SRS process;
+  DD-32 records why, including why the JSON `.itc_pipe` encoding of
+  DD-28 is unaffected (`tomllib` reads and does not write). The CI test
+  matrix, the PyPI classifiers, and the `ruff` target version moved
+  with the floor, and `tests/test_python_floor.py` now pins all of them
+  to the single `requires-python` declaration, and pins the floor
+  against the standard-library modules the library imports.
 * `db.fill`: the `method` argument is moving to keyword-only for
   consistency with the M1 kernel operations. Passing it positionally
   is deprecated and emits a `FutureWarning` from v0.2.0 (REQ-26).
@@ -154,6 +214,68 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Fixed
 
+* The processor factory is `itc.processor`, not `itc.pproc`. Binding it
+  under the package's own name shadowed the `itaca.pproc` attribute the
+  import machinery sets, so `itc.pproc.parse_itceq` did not resolve and
+  `import itaca.pproc as pp` returned a function without saying so.
+  REQ-49 to REQ-51 are specified as `pproc.statistics`, `pproc.compare`
+  and `pproc.report`, which that shadow would have made unreachable.
+  Renaming the factory rather than the package leaves every module path
+  and both requirement texts true as written; `\stable` REQ-46 was
+  amended through the SRS process, OQ-29 records the measurement behind
+  the choice, and DD-34 the reasoning. Nothing shipped under the old
+  name: the factory is new in this release.
+* REQ-82 now states the NumPy-only scope as every package except `io/`
+  and `utils/`, instead of naming `core/`, `ops/` and `uncertainty/`.
+  No behavior changed, because the ruff ban was already repository-wide
+  with per-file exemptions; the requirement text had not kept up, and
+  `pproc/` arrived in this release already covered by a rule that did
+  not mention it. Stated as an exception list, a package added later is
+  restricted by default. DD-33 records why; CLAUDE.md, the `pyproject`
+  ban messages, and the Chapter 9 contributor checklist moved with it.
+* Three guards that enumerated names now discover them, after the
+  role-review passes found the same defect class DD-33 names in two
+  more files. `tests/test_errors.py` walked a hand-written leaf-to-family
+  map, so the five new `ProcessorError` leaves were checked by nothing
+  and a public error outside the `ITACAError` hierarchy would have
+  shipped; it now discovers every leaf and additionally refuses one that
+  belongs to no family. That walk immediately found a real omission:
+  `PipelineCompatibilityError` was never added to `errors.__all__` and
+  is now exported. `tests/test_package.py` imported five named
+  subpackages and never `itaca.pproc`. `tests/test_import_policy.py`
+  composed paths from a package list, so modules directly under
+  `itaca/`, today `itaca/__init__.py`, were walked by neither half while
+  the repository-wide ruff ban covered them; the root is now walked as
+  its own unit. All three were proven by mutation.
+* `tests/test_python_floor.py` reads stdlib *symbols*, not only modules.
+  `from datetime import UTC` is 3.11 while `datetime` is not, so a
+  module-granular check reported the library as 3.10-safe when it would
+  have failed at import. Lowering the floor now names `datetime.UTC`
+  alongside `tomllib`.
+* The NumPy-only AST guard no longer enumerates package names.
+  `tests/test_import_policy.py` listed `("core", "ops", "uncertainty")`
+  and `("core", "ops", "uncertainty", "io", "utils")` in two literal
+  tuples, so a package added later was named in neither and the guard
+  silently stopped covering the newest part of the library, in exactly
+  the case its own docstring says it exists for. The ruff half held,
+  since that ban is repository-wide with per-file exemptions, so the
+  belt held and the braces did not. Packages are now discovered by
+  walking `itaca/` for subdirectories carrying an `__init__.py`, and
+  the exemption set is checked against the `per-file-ignores` keys in
+  `pyproject.toml` by parsing rather than retyping, comparing library
+  package keys only, since `tests/**` is exempt in ruff and is not a
+  package the AST guard walks. A third check refuses an exemption
+  naming a package that does not exist, and a fourth refuses a
+  discovery that comes back empty, which would otherwise pass every
+  check vacuously. Both failure modes were reproduced by mutation
+  before the fix was accepted.
+* The three NumPy-only ban messages in `pyproject.toml` said an import
+  was "barred from core/, ops/, and uncertainty/" while the ban's real
+  scope is every itaca package except `io/` and `utils/`. A developer
+  hitting it inside any other package got an error naming three
+  packages that did not include theirs. The messages now state the
+  scope REQ-82 requires, which after the amendment above is the same
+  scope, so the requirement and its enforcement no longer differ.
 * Python 3.10 typing conformance: `mypy --strict` failed on the 3.10
   legs of the CI matrix only, because the NumPy stubs resolve
   differently per interpreter, and the failures were invisible in a

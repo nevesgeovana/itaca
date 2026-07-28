@@ -2,7 +2,7 @@
 
 import os
 from collections.abc import Callable, Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -75,7 +75,7 @@ def prov() -> Provenance:
     return Provenance(
         itaca_version="0.1.0.dev0",
         user="tester@testhost",
-        created_at=datetime(2026, 7, 21, 12, 0, 0, tzinfo=timezone.utc),
+        created_at=datetime(2026, 7, 21, 12, 0, 0, tzinfo=UTC),
         source_files=(),
         source_hash="0" * 64,
         mode="production",

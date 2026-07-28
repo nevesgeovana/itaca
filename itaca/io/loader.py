@@ -18,7 +18,7 @@ import hashlib
 import logging
 import re
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -148,7 +148,7 @@ def load(
     provenance = Provenance(
         itaca_version=__version__,
         user=user if user is not None else current_user(),
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         source_files=tuple(files),
         source_hash=source_hash,
         mode=resolved_mode,
