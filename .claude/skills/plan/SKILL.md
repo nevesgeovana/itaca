@@ -76,7 +76,7 @@ writes an entry):
 * `next`: propose the next work window: which items, in what order,
   with what acceptance criteria, against the current phase exit
   criterion in `docs/M1_EXECUTION_PLAN.md`. Never decide alone; iterate
-  with Geovana, then `add` the agreed items. `next` produces the proposed
+  with the author, then `add` the agreed items. `next` produces the proposed
   window and registers the items; it does not write
   `NEXT_SESSION.md` in the management root, which the handoff skill owns
   and refreshes

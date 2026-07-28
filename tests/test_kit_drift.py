@@ -17,16 +17,26 @@ are checked only when their variable is set (see below), so in a clone
 that never configured them they are not drift-guarded in ordinary CI.
 
 The fixture is the manifest (kit ``README.md``), inlined here so the test
-needs no cross-repo filesystem access and cannot deadlock a push. itaca
-tracks kit 0.2.2: ``role_review_gate.py`` (the ``\\x01`` heredoc-byte fix
-plus the deny-message taxonomy), both S3 side-effect-guard artifacts, and
-both kit plan-checker artifacts are at 0.2.2; ``write_attestation.py``,
-``incident-analyst.md``, ``check_incidents.py`` and ``snap.sh`` are
-unchanged and stay at 0.1.0. A MIXED manifest (per-file body hashes and
-versions, not one kit-wide hash) is expected and correct. The vendored
-copies carry a per-copy ``note:`` line ("derived copy ..."); the header,
-including that line, is not hashed, so restamping it does not affect the
-body sha256.
+needs no cross-repo filesystem access and cannot deadlock a push. A MIXED
+manifest (per-file body hashes and versions, not one kit-wide hash) is
+expected and correct, and the pins below are per file:
+
+- 0.2.4, the privacy promotion: ``role_review_gate.py``,
+  ``incident-analyst.md`` and ``snap.sh``. Incidental personal
+  identifiers left the three bodies; ``snap.sh`` additionally stopped
+  hardcoding a name and email and now reads them from the ambient git
+  configuration. No logic changed and no allow or deny decision changed.
+- 0.2.2: both S3 side-effect-guard artifacts, and both kit plan-checker
+  artifacts. The plan-checker pair is a KNOWN LAG: the kit is at 0.2.3
+  for those two (adoption-review hardening), and itaca still pins and
+  runs 0.2.2. Re-vendoring them is separate work, out of scope for the
+  privacy promotion, and moving the pin without moving the deployed copy
+  would redden this suite for a change made outside this repository.
+- 0.1.0: ``write_attestation.py`` and ``check_incidents.py``, unchanged.
+
+The vendored copies carry a per-copy ``note:`` line ("derived copy ...");
+the header, including that line, is not hashed, so restamping it does not
+affect the body sha256.
 
 Two vendoring shapes are covered:
 
@@ -69,17 +79,17 @@ class Pin:
     kit_version: str
 
 
-# The kit README 0.2.2 manifest, inlined as the fixture (per-file
-# versions: mixed 0.2.2 and 0.1.0 is correct).
+# The kit README manifest, inlined as the fixture (per-file versions: a
+# mix of 0.2.4, 0.2.2 and 0.1.0 is correct; see the module docstring).
 MANIFEST: dict[str, Pin] = {
     "role_review_gate.py": Pin(
-        "762297b3d7752710aa6146719e8c4540b6b05bbf851f71f5a66105b9db58134e", "0.2.2"
+        "0a927d38feaed7b78b86e0d4dc860e80141ca46f55423bd0914adc88eb4b65b9", "0.2.4"
     ),
     "write_attestation.py": Pin(
         "0c6aa3f9bc7e68aadb921463371b0f4a30a3f4bd9da9f1e3915bc48e8f243a91", "0.1.0"
     ),
     "incident-analyst.md": Pin(
-        "9d2bc1bb38d6c249969cb268ce6e9b778457059d691a87cecda172f83f475eac", "0.1.0"
+        "891fa0bce811aade6fe58494d99db2f048987871cf5487fda77d9ff180ef7beb", "0.2.4"
     ),
     "check_side_effect_guard.py": Pin(
         "ba9007941dcc44887e31d70dc74be8efe409f51a249d2b79398e66c276e9810c", "0.2.2"
@@ -91,7 +101,7 @@ MANIFEST: dict[str, Pin] = {
         "f6d3430a6d0ee44b4843f7d297a3454ce40d34cd83dc182a2ef840952c5c9c0a", "0.1.0"
     ),
     "snap.sh": Pin(
-        "0da13e4da525c1c470dc4429ef6c557a3b74600ad817c534344e999180786383", "0.1.0"
+        "7c9573aabe398576dd00c2a8a5acf0312fa289ff497ae56681225954d843f4cd", "0.2.4"
     ),
     "check_plan_kit.py": Pin(
         "d7b7126a83ad96196c5a063d3b6d6c771747af84e590a9c97a3d702b057b9e52", "0.2.2"
