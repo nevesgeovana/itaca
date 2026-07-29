@@ -12,7 +12,7 @@ was approved at the M0 Phase 4 checkpoint (2026-07-21), the same
 checkpoint at which REQ-98 and REQ-99 were promoted to stable in SRS
 document 0.1.1. REQ-98 enumerates its provisional rows and is the one
 place that list is given; each raises when uncertainty is present
-rather than propagating, pending OQ-18, OQ-24 and OQ-42.
+rather than propagating, pending the open question its own row names.
 """
 
 from __future__ import annotations

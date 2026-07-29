@@ -199,8 +199,17 @@ Validation properties (tested):
 
 If validated: freeze the REQ-98 `smooth`/`diff` and `fitmodel`/`fitvalue`
 rows to the linear-map rule above (revision history + Chapter 11
-together), un-raise `smooth`/`diff`/`fitmodel`/`fitvalue`/`fill(polyfit)`
+together), un-raise `smooth`/`diff`/`fitmodel`/`fitvalue`
 on uncertainty, wire `reduce_systematic`/`reduce_random` (and the fit
 projection `P`) into them, and promote the validation properties here to
 live regression tests. REQ-101's angle-independence note stands with
 OQ-26 marked resolved (accepted or amended).
+
+`fill(method="polyfit")` is NOT lifted here, and used to be listed above
+as though it were. Its support is chosen per gap from the cells that are
+not NaN, so whether the polynomial weight matrix applies to it is a
+separate question, OQ-42, decided on its own; one of that question's
+recorded options keeps the moving-window path refusing whatever OQ-18
+answers. REQ-98 assigns one open question per provisional row for this
+reason, and this section covers OQ-18 and OQ-24 only
+(`ITC-20260729-1450`).

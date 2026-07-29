@@ -462,7 +462,7 @@ family classes; family classes inherit from \code{ITACAError}.}
 \code{AxesError}        & \code{AxisNotFoundError}          & A referenced coordinate frame (\code{rotate} target, or a \code{declare\_vector} source) is not registered\\
                         & \code{VectorGroupError}           & A vector group cannot be resolved, is not a triplet, names an absent variable, or is re-declared\\
                         & \code{RotationMatrixError}        & An \code{Axis} definition is ambiguous or empty, its matrix is not a proper rotation (non-3$\times$3, non-orthogonal, or a reflection), the convention is unknown, or a frame name is duplicated\\
-                        & (the family class itself)          & \code{itc.concat} inputs express a vector group in different axis systems, or declare one group over different components (REQ-24, REQ-107). Raised as \code{AxesError} directly, since the condition is about disagreement ACROSS inputs rather than about one malformed axis, and no leaf describes it\\
+                        & \code{AxesError} (family, direct)  & \code{itc.concat} inputs express a vector group in different axis systems, or declare one group over different components (REQ-24, REQ-107). The family class is raised directly, since the condition is about disagreement ACROSS inputs rather than about one malformed axis, and no leaf describes it\\
 \addlinespace
 \code{DependencyError}  & \code{MissingDependencyError}     & Optional dependency (matplotlib, plotly, SMT, reportlab) absent\\
 \addlinespace

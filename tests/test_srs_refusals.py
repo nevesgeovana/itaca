@@ -80,6 +80,8 @@ _PROVISIONAL = re.compile(
     re.DOTALL,
 )
 _COUNT_WORDS = {"THREE": 3, "FOUR": 4, "FIVE": 5, "SIX": 6, "SEVEN": 7}
+#: A release-note bullet DECLARING a break, as opposed to discussing one.
+_DECLARES_A_BREAK = re.compile(r"\b(?:is|are|was|were)\s+a\s+breaking\s+change\b", re.I)
 _NUMBER_WORDS = (
     "one",
     "two",
@@ -431,8 +433,19 @@ def test_req98_states_the_count_it_enumerates() -> None:
     four in one sentence, three in the next, two in `CLAUDE.md`, and its
     normative table described a fifth behavior again.
     """
+    # Scoped to the enumeration sentence, which is what the message below
+    # claims to be talking about. Matching the whole reqbox discriminated
+    # only by letter case: the body legitimately contains the lowercase
+    # "four places at three different values" and "returns to four", in a
+    # document that uses ALL CAPS for emphasis on nearly every page, so
+    # one emphatic FOUR anywhere in the box would have failed the guard
+    # for a reason unrelated to the drift it exists to catch.
     body = reqbox("REQ-98")
-    words = [word for word in _COUNT_WORDS if word in body]
+    found = _PROVISIONAL.search(body)
+    assert found, "REQ-98 no longer carries its enumeration sentence"
+    cut = body[: found.start()].rfind(".")
+    sentence = body[cut + 1 : found.end()]
+    words = [word for word in _COUNT_WORDS if re.search(rf"\b{word}\b", sentence)]
     assert len(words) == 1, (
         f"REQ-98 states {words or 'no'} count word(s) for its provisional "
         "family; exactly one is expected, in the sentence that enumerates it"
@@ -483,6 +496,84 @@ def test_the_normative_table_agrees_with_the_provisional_list_row_by_row() -> No
     )
 
 
+_OQ = re.compile(r"OQ-\d+")
+
+
+def srs_row_questions() -> dict[str, str]:
+    """Which open question REQ-98's prose assigns to each provisional row.
+
+    Parsed from the "OQ-nn for <operations>" mapping that follows the
+    enumeration, so the assignment is read from the requirement rather
+    than restated here.
+    """
+    body = reqbox("REQ-98")
+    found = _PROVISIONAL.search(body)
+    assert found, "REQ-98 no longer carries its enumeration sentence"
+    mapping: dict[str, str] = {}
+    for question, operands in re.findall(
+        # \s+ around "for", not a literal space: the mapping wraps mid
+        # phrase ("OQ-42 for\n\code{fill(...)}"), and a space-only pattern
+        # silently dropped the last assignment. The unassigned check below
+        # is what caught that, which is the point of asserting coverage
+        # rather than only agreement.
+        r"(OQ-\d+)\s+for\s+((?:(?!OQ-)[^.])*)",
+        body[found.end() :],
+    ):
+        for token in _tokens(operands):
+            mapping[token] = question
+    assert mapping, (
+        "REQ-98 states no 'OQ-nn for <operations>' mapping after its "
+        "enumeration, so which question lifts which row is unstated and the "
+        "check below would be vacuous"
+    )
+    return mapping
+
+
+def test_each_provisional_row_names_the_open_question_that_lifts_it() -> None:
+    """One question per row, and the same assignment in prose and table.
+
+    `fill(method="polyfit")` was routed to OQ-18 in four places. OQ-18
+    asks about the sign of `smooth` and `diff` KERNEL weights and cannot
+    lift the fill refusal at all: answering it in full would leave the
+    operation refusing, because the fill ground is that no weights exist
+    to have a sign. `docs/derivations/uncertainty_kernels.md` promised the
+    opposite in its "what changes on approval" section, so the numerical
+    analyst would have worked that derivation believing it released an
+    operation it does not reach.
+
+    A subset check is not enough and was measured insufficient: OQ-18 is
+    legitimately cited by the `smooth`/`diff` row, so re-routing `fill`
+    to OQ-18 passes any test that only asks whether the cited question
+    appears somewhere in the requirement. The assignment is what must
+    agree, per row.
+    """
+    provisional = srs_provisional_operations()
+    assigned = srs_row_questions()
+    unassigned = sorted(provisional - set(assigned))
+    assert not unassigned, (
+        f"REQ-98 names {unassigned} provisional without saying which open "
+        "question lifts them, so the refusal has no stated way out (DD-18)."
+    )
+    for head, effect in _table_rows():
+        labels = _row_labels(head) & provisional
+        if not labels:
+            continue
+        cited = set(_OQ.findall(effect))
+        assert cited, (
+            f"the provisional table row for {sorted(labels)} cites no open "
+            "question, so it states no condition under which the refusal is "
+            "lifted (REQ-98, DD-18)."
+        )
+        for label in sorted(labels):
+            assert assigned[label] in cited, (
+                f"REQ-98's prose assigns {label} to {assigned[label]} while "
+                f"its normative table row cites {sorted(cited)}. Routing a "
+                "row to a question that cannot lift it is how "
+                "fill(method='polyfit') came to point at OQ-18 in four "
+                "places (ITC-20260729-1450, OQ-42)."
+            )
+
+
 #: The CHK-1 refusals, and the phrase each governing requirement must
 #: carry. Every phrase was chosen by measuring it ABSENT from the
 #: pre-amendment text: a phrase that already existed pins nothing, and
@@ -523,6 +614,34 @@ def test_each_chk1_refusal_is_described_by_its_requirement(
     assert not missing, (
         f"{identifier} does not mention {missing}, so the SRS does not "
         f"describe that {what} (ITC-20260729-1450)."
+    )
+
+
+def test_the_release_notes_name_the_same_provisional_family_as_req98() -> None:
+    """The one restatement kept on purpose, and now the only guarded one.
+
+    REQ-98 says it is the single place the list is given, and the release
+    notes give it again, deliberately: a user hitting the refusal reads
+    `CHANGELOG.md`, not the SRS. A duplicate aimed at a reader is worth
+    keeping; a duplicate nothing compares is what this whole lane is
+    about. So it is compared.
+    """
+    text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    start = text.index("Read this first")
+    section = text[start : text.index("### Changed", start)]
+    declared = srs_provisional_operations()
+    listed = {
+        name.split("(")[0]
+        for name in re.findall(r"`db\.(\w+)[^`]*`", section)
+        if name not in {"d", "load"}
+    }
+    expected = {name.split("(")[0] for name in declared}
+    missing = sorted(expected - listed)
+    assert not missing, (
+        f"the release notes' provisional list omits {missing}, which REQ-98 "
+        "names. A user who hits the refusal reads this section, so an "
+        "omission here is the drift with the highest cost "
+        "(ITC-20260729-1450)."
     )
 
 
@@ -616,9 +735,36 @@ def test_every_breaking_change_in_the_release_notes_carries_the_marker() -> None
         for index, line in enumerate(section)
         if "**Breaking" in line and "**BREAKING" not in line
     ]
-    assert not unmarked, (
-        f"release-note entr(ies) {unmarked} declare a breaking change "
-        "without the literal BREAKING marker REQ-92 requires. REQ-92 no "
-        "longer enumerates the breaks, so this file is the only inventory "
+    # The mixed-case marker was three of the four original instances. The
+    # fourth carried no bold marker at all: the Python-floor entry bolded
+    # its headline and put "This is a breaking change for anyone on 3.10"
+    # in plain prose on the next line. A guard that only sees the
+    # mixed-case shape does not block the original failure when re-run,
+    # which this repository's incident rule requires, so bullets are
+    # walked too. Scoped to bullet starts so it cannot fire on the
+    # requirement-quoting prose elsewhere in the section.
+    bullets: list[tuple[int, list[str]]] = []
+    for index, line in enumerate(section):
+        if line.startswith("* "):
+            bullets.append((index, [line]))
+        elif bullets and line.startswith("  ") and line.strip():
+            bullets[-1][1].append(line)
+    # Matched on DECLARATIVE phrasing only, and the narrowness is the
+    # point rather than a shortcut. A bare "break" fires on bullets that
+    # merely discuss breakage: the keyword-only deprecation entry says
+    # "Breaking it outright would have been worse than the finding", and
+    # the REQ-92 entry quotes the requirement's own obligation. Both are
+    # correct as unmarked. What the original defect looked like is a
+    # declaration: "This is a breaking change for anyone on 3.10".
+    prose_only = [
+        f"{index + 1}: {body[0].strip()[:70]}"
+        for index, body in bullets
+        if _DECLARES_A_BREAK.search(" ".join(body))
+        and not any("**BREAKING" in line for line in body)
+    ]
+    assert not unmarked and not prose_only, (
+        f"release-note entr(ies) {unmarked + prose_only} declare a breaking "
+        "change without the literal BREAKING marker REQ-92 requires. REQ-92 "
+        "no longer enumerates the breaks, so this file is the only inventory "
         "and grepping the marker has to find all of them."
     )

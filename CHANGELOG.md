@@ -470,9 +470,10 @@ own data was affected.
   marked BREAKING here with its migration, which is the obligation that
   replaces the version bump while the major version is zero.
 
-  REQ-92 used to enumerate the breaks itself, and named three, because
-  the CHK-1 checkpoint added more refusals after the requirement was
-  written and the version-resolution break was never counted. The
+  REQ-92 used to enumerate the breaks itself, and named three. That
+  count was false by the time the release closed, and it was never quite
+  right: the version-resolution break was omitted when the list was
+  written, and the CHK-1 checkpoint then added more refusals on top. The
   enumeration has been REMOVED from REQ-92 rather than corrected, and
   no replacement count was put in its place: a bare count is the same
   stale artifact with its evidence removed. This file is where the

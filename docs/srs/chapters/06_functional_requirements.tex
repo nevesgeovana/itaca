@@ -853,8 +853,12 @@ FIVE operations are provisional, and this is the one place the list is
 given rather than restated: \code{smooth}, \code{diff},
 \code{fitmodel}, \code{fitvalue}, \code{fill(method="polyfit")}. Each
 RAISES when uncertainty is present rather
-than guessing, and each stays provisional until OQ-18, OQ-24 and OQ-42
-are resolved. The count is stated because it was previously carried in
+than guessing, and each stays provisional until the open question ITS
+OWN row names is resolved: OQ-18 for \code{smooth} and \code{diff},
+OQ-24 for \code{fitmodel} and \code{fitvalue}, and OQ-42 for
+\code{fill(method="polyfit")}. The questions are per row rather than
+conjunctive, so answering one releases its own row and leaves the others
+standing. The count is stated because it was previously carried in
 four places at three different values while five operations refused,
 which is the enumeration defect \code{ITC-20260729-1450} closes.
 
@@ -862,8 +866,10 @@ which is the enumeration defect \code{ITC-20260729-1450} closes.
 reason than the other four, and the difference is recorded rather than
 smoothed over, because a wider claim was written down first and does
 not survive contact with this library's own code. It is NOT that the
-moving polynomial fit has data-dependent weights: measured, its
-superposition departs by $1.3 \times 10^{-13}$, and applied consistently
+moving polynomial fit has data-dependent weights: it is linear in the
+variable values to within floating-point round-off, measured at the
+$10^{-14}$ level and pinned by \code{tests/ops/test\_fill.py}, and
+applied consistently
 that argument would draw \code{interpolate} into the family as well. Nor
 is it that no polynomial weight rule exists anywhere: a least-squares
 polynomial weight matrix ships in this package and

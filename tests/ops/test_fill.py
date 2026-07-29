@@ -111,6 +111,72 @@ class TestFillBookkeeping:
         assert np.isnan(db.vars["CT"].values[1])
 
 
+class TestPolyfitLinearity:
+    """The measurement REQ-98 argues from, made reproducible.
+
+    REQ-98 states that ``fill(method="polyfit")`` is provisional because
+    its path emits no weights, and explicitly NOT because the moving
+    polynomial fit has data-dependent weights. That second claim was
+    measured false, and the requirement cites this module for the
+    measurement. Asserting it here is what stops the requirement arguing
+    from a number nothing reproduces (``ITC-20260729-1450``, OQ-42).
+
+    Linearity matters to OQ-42 rather than being trivia: if the fit is
+    linear in the variable values then an exact weight rule EXISTS to be
+    adopted, and the open question is whether the interpolation matrix is
+    the right one over a support chosen from the non-NaN cells. A
+    nonlinear fit would settle OQ-42 the other way outright.
+    """
+
+    @staticmethod
+    def _filled(values: list[float], **kwargs: object) -> np.ndarray:
+        alpha = np.arange(float(len(values)))
+        arr = np.column_stack([alpha, np.asarray(values, dtype=float)])
+        db = itc.load(arr, names=["alpha", "CT"]).pivot(dims=["alpha"])
+        out = db.fill(along="alpha", method="polyfit", deg=2, **kwargs)  # type: ignore[arg-type]
+        return np.asarray(out.vars["CT"].values, dtype=float)
+
+    @pytest.mark.parametrize(
+        ("label", "kwargs"),
+        [("moving window", {"window": 5}), ("global fit", {"global_fit": True})],
+    )
+    def test_superposition_holds_to_round_off(
+        self, label: str, kwargs: dict[str, object]
+    ) -> None:
+        """fill(a) + fill(b) == fill(a + b) over one NaN pattern.
+
+        Both paths are checked. The moving-window path is the one REQ-98
+        names; ``global_fit`` is included because OQ-42's second option
+        turns on it specifically, and its support is the whole valid set
+        rather than the whole grid, which is the property that
+        distinguishes it from interpolation.
+        """
+        gaps = [2, 5]
+        rng = np.random.default_rng(20260729)
+        worst = 0.0
+        for _ in range(50):
+            a = rng.normal(size=11) * 10.0
+            b = rng.normal(size=11) * 10.0
+            for index in gaps:
+                a[index] = np.nan
+                b[index] = np.nan
+            left = self._filled(list(a), **kwargs) + self._filled(list(b), **kwargs)
+            right = self._filled(list(a + b), **kwargs)
+            scale = max(1.0, float(np.max(np.abs(right[gaps]))))
+            worst = max(worst, float(np.max(np.abs(left[gaps] - right[gaps]))) / scale)
+        assert worst < 1e-12, (
+            f"the {label} polyfit fill departs from superposition by {worst:.3e}, "
+            "so it is not linear in the variable values. REQ-98 argues from "
+            "that linearity and OQ-42 depends on it; if this fails, the "
+            "requirement's stated ground has to change with it."
+        )
+        # The bound is loose on purpose: what REQ-98 needs is the ORDER,
+        # and pinning the digits of one platform's round-off would make
+        # this a fragile assertion about numpy rather than about fill. A
+        # bit-exact result is also linear, so there is no lower bound to
+        # assert here.
+
+
 class TestFillUncertainty:
     def _with_unc(self, db: VarFrame) -> VarFrame:
         unc = UncFrame(

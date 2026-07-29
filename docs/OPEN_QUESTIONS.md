@@ -916,7 +916,9 @@ edited, per the append-only rule.
 designer passes, independently)
 **Status:** open
 **Question:** `fill(method="polyfit")` refuses when uncertainty is
-present and is carried as a provisional row of REQ-98 pending OQ-18. Two
+present and WAS carried as a provisional row of REQ-98 pending OQ-18,
+which is the state at the moment of raising; REQ-98 now points that row
+here instead, and this file is append-only so the tense records it. Two
 reviewer passes established that OQ-18 as written cannot lift it: OQ-18
 asks whether the systematic component should track sign changes of
 `smooth` and `diff` KERNEL weights, and the fill polyfit refusal is not
@@ -929,8 +931,11 @@ the exact least-squares polynomial weight matrix, and
 `db.interpolate(method="polyfit", deg=...)` reaches it and propagates
 both components through it with no uncertainty guard. So a polynomial
 weight rule is not hypothetical in this library; it ships, and REQ-98's
-table declares it exact. On the `global_fit=True` path the two are the
-same rule over the same support.
+table declares it exact. On the `global_fit=True` path it is the same
+rule, over the whole VALID set rather than the whole grid: `_fill_line`
+sets its support to the non-NaN indices, so even the global path selects
+by the missingness pattern. That is a smaller difference from
+interpolation than the moving window's, and it is not zero.
 
 **Why it is not simply an implementation gap.** The moving-window path
 differs from interpolation in a way that is not cosmetic: fill chooses
@@ -951,9 +956,22 @@ both refusing until OQ-18 settles the sign question, on the ground that
 the two share the mixed-sign systematic behavior already carried as a
 validation item.
 
-**Measured, so the question starts from numbers rather than from
-recollection:** the moving polynomial fit is linear in the variable
-values to within superposition departure of 1.3e-13, so linearity is
-not the obstacle.
+**Measured, and reproducible rather than recollected:** the polyfit fill
+is linear in the variable values to within floating-point round-off, so
+linearity is not the obstacle and an exact weight rule does exist to be
+adopted. Pinned by `tests/ops/test_fill.py::TestPolyfitLinearity`, which
+checks `fill(a) + fill(b) == fill(a + b)` over 50 random cases on each
+path: worst relative departure 5.8e-14 for the moving window and 5.8e-15
+for `global_fit`, measured 2026-07-29. An earlier figure of 1.3e-13 was
+carried in prose with no case attached; it is the same order, and the
+test is what should be re-run rather than either number trusted.
+
+**Why option 3 names OQ-18 after this entry argues OQ-18 cannot reach
+here:** answering and gating are different. OQ-18 as written cannot
+ANSWER the fill question, which is why this entry exists. Option 3 is a
+choice to GATE the fill decision behind OQ-18 anyway, on the ground that
+both share the mixed-sign systematic behavior and deciding them apart
+risks two incompatible rules. That is a sequencing preference, not a
+claim that OQ-18 covers this case.
 
 **SRS:** REQ-26, REQ-98.
