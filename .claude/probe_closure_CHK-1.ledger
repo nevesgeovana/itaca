@@ -1,0 +1,48 @@
+# CHK-1 probe closure, kit 0.2.7 guard 3 of INC-20260729-0854-shared.
+#
+# Generated from the two executions' own JSON output, not typed by
+# hand. Execution A ran all 33 probes against the reviewed base and
+# execution B ran the same 33 against the tree being certified.
+#
+# The rule this file exists for: a probe counts as closed only if it
+# REPRODUCED against the pre-fix tree. A probe that was green at both
+# ends proves nothing, and its finding stays open.
+
+checkpoint: CHK-1
+base: 6af2aeb
+head: 730649f
+
+probe: ITACA-001 | base=reproduced | head=absent     | closed
+probe: ITACA-002 | base=reproduced | head=absent     | closed
+probe: ITACA-003 | base=reproduced | head=absent     | closed
+probe: ITACA-004 | base=reproduced | head=absent     | closed
+probe: ITACA-005 | base=reproduced | head=absent     | closed
+probe: ITACA-006 | base=reproduced | head=absent     | closed
+probe: ITACA-007 | base=reproduced | head=reproduced | open
+probe: ITACA-008 | base=reproduced | head=reproduced | open
+probe: ITACA-009 | base=reproduced | head=reproduced | open
+probe: ITACA-010 | base=reproduced | head=reproduced | open
+probe: ITACA-011 | base=reproduced | head=reproduced | open
+probe: ITACA-012 | base=reproduced | head=reproduced | open
+probe: ITACA-013 | base=reproduced | head=absent     | closed
+probe: ITACA-014 | base=reproduced | head=absent     | closed
+probe: ITACA-015 | base=reproduced | head=absent     | closed
+probe: ITACA-016 | base=reproduced | head=absent     | closed
+probe: ITACA-017 | base=reproduced | head=reproduced | open
+probe: ITACA-018 | base=reproduced | head=reproduced | open
+probe: ITACA-019 | base=reproduced | head=absent     | closed
+probe: ITACA-020 | base=reproduced | head=absent     | closed
+probe: ITACA-021 | base=reproduced | head=absent     | closed
+probe: ITACA-022 | base=reproduced | head=absent     | closed
+probe: ITACA-023 | base=reproduced | head=absent     | closed
+probe: ITACA-024 | base=reproduced | head=absent     | closed
+probe: ITACA-025 | base=reproduced | head=absent     | closed
+probe: ITACA-026 | base=reproduced | head=absent     | closed
+probe: ITACA-027 | base=reproduced | head=absent     | closed
+probe: ITACA-028 | base=reproduced | head=absent     | closed
+probe: ITACA-029 | base=reproduced | head=absent     | closed
+probe: ITACA-030 | base=reproduced | head=reproduced | open
+probe: ITACA-031 | base=reproduced | head=reproduced | open
+probe: ITACA-032 | base=reproduced | head=absent     | closed
+probe: ITACA-033 | base=reproduced | head=absent     | closed
+

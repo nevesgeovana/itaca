@@ -55,6 +55,12 @@ _RELEASE_GATE_CHECK = _KIT / "check_release_gate.py"
 _RELEASE_GATE_MUTATIONS = _KIT / "check_release_gate_mutations.py"
 _VERSION_IDENTITY_CHECK = _KIT / "check_version_identity.py"
 _VERSION_IDENTITY_MUTATIONS = _KIT / "check_version_identity_mutations.py"
+_SHIPPED_SURFACE_CHECK = _KIT / "check_shipped_surface.py"
+_SHIPPED_SURFACE_MUTATIONS = _KIT / "check_shipped_surface_mutations.py"
+_PROBE_CLOSURE_CHECK = _KIT / "check_probe_closure.py"
+_PROBE_CLOSURE_MUTATIONS = _KIT / "check_probe_closure_mutations.py"
+_SHIPPED_SURFACE_CONFIG = _ROOT / ".claude" / "shipped_surface.conf"
+_PROBE_CLOSURE_LEDGER = _ROOT / ".claude" / "probe_closure_CHK-1.ledger"
 
 
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
@@ -251,6 +257,84 @@ def test_r3_ita_001_every_caller_grants_what_the_called_gate_needs() -> None:
     )
 
 
+class TestIncident0854Guards:
+    """The two kit 0.2.7 guards for `INC-20260729-0854-shared`, RUN here.
+
+    The incident's own guard field says it stays open because two of its
+    three mechanisms "are not yet promoted to where they run without
+    someone choosing to run them". Vendoring them is not that promotion;
+    invoking them from tier 1 is. A checker sitting in `.claude/kit`
+    that nothing calls is the same shape as the defect it exists to
+    catch, one level up, which is the shape this repository already
+    names for `ITACA-006`.
+
+    The third mechanism is this repository's own and was already done:
+    `tests/test_requirement_trace.py` stopped walking its own file.
+    """
+
+    def test_the_vendored_incident_guards_are_present(self) -> None:
+        """A checker loaded by path fails loudly if it is missing."""
+        for checker in (
+            _SHIPPED_SURFACE_CHECK,
+            _SHIPPED_SURFACE_MUTATIONS,
+            _PROBE_CLOSURE_CHECK,
+            _PROBE_CLOSURE_MUTATIONS,
+        ):
+            assert checker.is_file(), f"vendored kit checker missing at {checker}"
+        assert _SHIPPED_SURFACE_CONFIG.is_file(), (
+            f"the shipped-surface config is missing at {_SHIPPED_SURFACE_CONFIG}; "
+            "the checker refuses an absent config rather than scanning with no "
+            "exemptions and no floor, but the absence must fail here too."
+        )
+        assert _PROBE_CLOSURE_LEDGER.is_file(), (
+            f"the CHK-1 probe ledger is missing at {_PROBE_CLOSURE_LEDGER}"
+        )
+
+    def test_guard_1_the_versioned_tree_carries_no_forbidden_identifier(self) -> None:
+        """The tree boundary, run every round because it needs no build."""
+        done = _run(
+            str(_SHIPPED_SURFACE_CHECK),
+            "--config",
+            str(_SHIPPED_SURFACE_CONFIG),
+            "--tree",
+            str(_ROOT),
+        )
+        assert done.returncode == 0, done.stdout + done.stderr
+        # Read the accounting, not only the exit code: a scan that opened
+        # almost nothing exits 0 too, and that is the incident.
+        assert "scanned" in done.stdout, done.stdout
+        assert "unreadable 0" in done.stdout, done.stdout
+
+    def test_guard_1_can_still_fail(self) -> None:
+        """The mutation companion proves the shipped-surface rule still bites.
+
+        28 mutants, each a narrowing that turned a leaking artifact
+        green, plus control pairs proving each narrowing is caught by its
+        own detector rather than by a neighbour.
+        """
+        done = _run(str(_SHIPPED_SURFACE_MUTATIONS))
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert "all 28 mutants denied" in done.stdout, done.stdout
+
+    def test_guard_3_every_closed_probe_reproduced_against_the_base(self) -> None:
+        """The probe-closure rule over CHK-1's own ledger.
+
+        A probe reporting a finding closed looks identical whether the
+        code changed or the probe was always inert. The one measurement
+        that separates them is running it against the tree where the
+        defect existed, and this refuses a checkpoint that skipped it.
+        """
+        done = _run(str(_PROBE_CLOSURE_CHECK), "--ledger", str(_PROBE_CLOSURE_LEDGER))
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert "probe(s)" in done.stdout, done.stdout
+
+    def test_guard_3_can_still_fail(self) -> None:
+        """The mutation companion proves the probe-closure rule still bites."""
+        done = _run(str(_PROBE_CLOSURE_MUTATIONS))
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert "all 8 mutants denied" in done.stdout, done.stdout
+
+
 class TestBuiltArtifactIdentity:
     """`ITACA-004`, `ITACA-014` and `BRF-048` live in the BUILT artifact,
     so that is what these assert. All three were invisible to a suite that
@@ -402,6 +486,33 @@ class TestBuiltArtifactIdentity:
             f"identifiers travel inside the release artifacts: {found}; "
             f"{identifiers.REMEDY}"
         )
+
+    def test_guard_1_the_built_artifacts_carry_no_forbidden_identifier(
+        self, artifacts: tuple[Path, Path]
+    ) -> None:
+        """The ARTIFACT boundary of the kit guard, over this class's build.
+
+        Runs beside `test_brf048_...` rather than replacing it, and the
+        duplication is deliberate for exactly one release: the kit body
+        was PROMOTED from `tests/identifiers.py`, so running both proves
+        the promotion did not change the verdict on a real artifact.
+        Retiring the local implementation is registered
+        (`ITC-20260729-1700`) and is the follow-up, because two
+        implementations of one rule that could disagree is the drift the
+        kit exists to stop.
+        """
+        wheel, _ = artifacts
+        done = _run(
+            str(_SHIPPED_SURFACE_CHECK),
+            "--config",
+            str(_SHIPPED_SURFACE_CONFIG),
+            "--dist",
+            str(wheel.parent),
+        )
+        assert done.returncode == 0, done.stdout + done.stderr
+        # Both archives must have been opened, not just listed.
+        assert "wheel" in done.stdout and "sdist" in done.stdout, done.stdout
+        assert "member(s), scanned" in done.stdout, done.stdout
 
     def test_itaca_014_the_typed_classifier_is_actually_declared(self) -> None:
         """The other half of the promise, so the pair cannot drift apart.

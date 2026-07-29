@@ -147,7 +147,30 @@ MANIFEST: dict[str, Pin] = {
         "f3a257570cbb0c560b8ff343a55aa72be66a0d38793647180e23a59f7c23b0dc", "0.2.6"
     ),
     "release_gate.yml": Pin(
-        "7a8b036c6b198078d145432a7ac4a07f49b0926f7ae39a1c34519a7628c0de0f", "0.2.6"
+        "f8e0262a1f9ada6220afd9bee1bf488e030e827fd2b3dc4d90bea684a4607a10", "0.2.7"
+    ),
+    # 0.2.7, the HUB-6 promotion. Two of the three guards
+    # INC-20260729-0854-shared needs, plus the review policy they are
+    # stated in. Every hash below was RECOMPUTED from the master with
+    # `_kit_body`/`_normalize` from this file, not copied from the kit
+    # README: the lane brief refuses the manifest as a source because the
+    # two shipped-surface bodies changed three times during the
+    # promotion. The recomputation agreed with all nineteen declared
+    # entries, which is the check having been run, not skipped.
+    "check_shipped_surface.py": Pin(
+        "6fbbdbce007e8acff486f8fc28cd23d3e0f81023d808d70cd7fe13ce91a6d4ba", "0.2.7"
+    ),
+    "check_shipped_surface_mutations.py": Pin(
+        "517fa0746254857ab5ce7319e3010aa87cd0a15ebfaa3ee5b32a6570391bf3b8", "0.2.7"
+    ),
+    "check_probe_closure.py": Pin(
+        "5b4a76ea8e94d6185cd200d0f0324e6501967d1d959c94e5a0e0f31019c142a2", "0.2.7"
+    ),
+    "check_probe_closure_mutations.py": Pin(
+        "59f3f3c120d7b834bae78b047b2e76d638952a4fb749783b78caba9214767b9c", "0.2.7"
+    ),
+    "review-policy.md": Pin(
+        "d3845ed17ef14d013ee2ffc8350f61bf0c0f585f63fc93c19e172d0a8afbd561", "0.2.7"
     ),
     "check_release_gate.py": Pin(
         "a0ef06b1aa031245e0354eadfbe120e69e38515ce3184eb2ea0b1d68adf34eb3", "0.2.6"
@@ -208,6 +231,17 @@ COMMITTED: list[tuple[str, str]] = [
         ".claude/kit/check_version_identity_mutations.py",
     ),
     ("release_gate.yml", ".github/workflows/release_gate.yml"),
+    ("check_shipped_surface.py", ".claude/kit/check_shipped_surface.py"),
+    (
+        "check_shipped_surface_mutations.py",
+        ".claude/kit/check_shipped_surface_mutations.py",
+    ),
+    ("check_probe_closure.py", ".claude/kit/check_probe_closure.py"),
+    (
+        "check_probe_closure_mutations.py",
+        ".claude/kit/check_probe_closure_mutations.py",
+    ),
+    ("review-policy.md", ".claude/kit/review-policy.md"),
 ]
 
 

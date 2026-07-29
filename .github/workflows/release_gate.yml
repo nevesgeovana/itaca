@@ -1,9 +1,10 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.6
+# kit-version: 0.2.7
 # artifact: release_gate.yml
-# body-sha256: 7a8b036c6b198078d145432a7ac4a07f49b0926f7ae39a1c34519a7628c0de0f
+# body-sha256: f8e0262a1f9ada6220afd9bee1bf488e030e827fd2b3dc4d90bea684a4607a10
 # canonical-source: BUILT for the kit (0.2.6). One reusable workflow for the shared class ITACA-006 and PYFS-018 report identically: publish runs with no pytest, coverage, lint or types, and does not depend on the CI workflow at all. Both reviews independently recommend a single reusable quality job called by CI and by release; the two libraries' release.yml files were already near-verbatim copies of each other, which is what makes this kit material rather than a library's own.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
+# 
 # END KIT PROVENANCE (body verbatim below)
 # The shared release gate, called by BOTH ci.yml and release.yml.
 #
@@ -184,6 +185,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          # 0.2.7. This job runs `install`, and for a repository whose version
+          # is DERIVED from the newest reachable tag a shallow tagless checkout
+          # does not fail: setuptools-scm silently produces 0.1.0.dev1, so the
+          # gates run against a package whose version is meaningless. It
+          # DEGRADES rather than breaking, which is exactly why it survived two
+          # kit promotions unnoticed. `identity` and `build` already carried
+          # this for the same reason; `gates` did not, and it is the job that
+          # installs. Found by itaca, ITC-20260728-2235.
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python-version }}
@@ -314,10 +324,51 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-    permissions:
-      # OIDC trusted publishing: a short-lived identity token, not a stored
-      # secret.
-      id-token: write
+    # 0.2.7: this job declares NO permissions and inherits the caller's.
+    #
+    # It used to declare `id-token: write` here, for OIDC trusted publishing,
+    # which is a short-lived identity token rather than a stored secret and is
+    # the right mechanism. The defect was where the declaration sat. A called
+    # workflow's jobs may not request more than the caller grants, and that is
+    # validated when the run STARTS, before any `if:` is evaluated. So a caller
+    # passing `publish: false` had to grant OIDC anyway or the whole workflow
+    # died at startup with `publish` never running. Measured, not reasoned:
+    # itaca's first push of its new caller died in one second for exactly this.
+    # ITC-20260729-0250.
+    #
+    # Inheriting moves the grant to the caller that actually publishes. A CI
+    # caller now grants `contents: read` and nothing else; the tag-triggered
+    # release caller grants `id-token: write`.
+    #
+    # THE COST, and it is a real trade rather than a free win: a publishing
+    # caller that forgets the grant now fails at the upload step instead of at
+    # startup, which is later and less obvious. It still FAILS, and it cannot
+    # publish something wrong, but the diagnosis moved. Each library's own
+    # tier-1 suite is where that is caught, by asserting its release workflow
+    # grants `id-token: write`; the kit cannot see its callers.
+    #
+    # THE SECOND COST, added after CHK-1 measured the neighbouring defect and
+    # made it visible. Declaring `permissions` on a job sets every UNDECLARED
+    # permission to `none`, so the old form gave this job `id-token: write` and
+    # `contents: none`, which is exactly what it needs: it downloads an
+    # artifact and uploads it, and never checks out. Inheriting gives it
+    # whatever the caller holds, which on the release path includes
+    # `contents: read`. That is a small widening of one job on one path, taken
+    # deliberately in exchange for every CI run of every caller no longer
+    # holding an OIDC credential it has no use for. Both halves of that trade
+    # are stated because the first version of this comment stated only the
+    # half that favours the change.
+    #
+    # RELATED AND NOT FIXED HERE, because it belongs to the caller: a caller
+    # that declares ONLY `id-token: write` thereby sets `contents` to `none`,
+    # and this workflow checks out three times. itaca's release.yml is in that
+    # state and CHK-1 recorded it as R3-ITA-001, the finding that the
+    # publishing path has never once been executed.
+    #
+    # NOT VERIFIED BY EXECUTION HERE. This is GitHub startup-validation
+    # semantics and this machine cannot run Actions. The measurement that
+    # settles it is a CI run in a library that vendors this, which is exactly
+    # what caught the original defect.
     steps:
       - uses: actions/download-artifact@v4
         with:

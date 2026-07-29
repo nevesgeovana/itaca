@@ -1470,3 +1470,50 @@ one: if the author chooses a different remedy, this entry is superseded
 rather than edited.
 
 **SRS:** REQ-44, REQ-45 amended in the same change.
+
+## DD-43: The release-gate workarounds came out with kit 0.2.7
+
+**Date:** 2026-07-29
+**Status:** confirmed
+**Context:** ITA-7 re-vendor. Supersedes the "Known limitation, registered
+upward rather than worked around here" paragraph of DD-38, and closes
+`ITC-20260728-2235` and `ITC-20260729-0250`.
+
+DD-38 recorded that the vendored gate checked out with `fetch-depth: 0`
+for `identity` and `build` but not for `gates`, so both callers fetched
+tags in their `install` command instead. That paragraph is now false in
+its second half and is superseded here rather than edited, because a
+frozen entry rewritten in place is the DD-30 defect.
+
+Kit 0.2.7 fixed both startup defects at the artifact rather than in the
+callers:
+
+- `gates` now checks out with `fetch-depth: 0`, verified in the vendored
+  body at `release_gate.yml:196`, beside `identity` at `:236` and
+  `build` at `:275`. The `git fetch --tags --unshallow ... || true`
+  prefix came out of all three `ci.yml` install lines and out of
+  `release.yml`.
+- The `publish` job no longer declares `permissions` and inherits the
+  caller's, verified at `release_gate.yml:337`. Declaring any permission
+  zeroes every undeclared one, and that is validated at run START before
+  any `if:` is evaluated, so a caller passing `publish: false` was
+  forced to grant OIDC or die in one second. `ci.yml` therefore no
+  longer grants `id-token: write`; it grants `contents: read` alone,
+  which is what the gate's three checkouts need.
+
+`release.yml` keeps `id-token: write`, and that is not a workaround: it
+is the caller that actually publishes, and OIDC trusted publishing is
+the mechanism. It also keeps `contents: read`, which is the R3-ITA-001
+fix.
+
+**Stated residual, because it is the load-bearing line.** Neither kit fix
+is verified by execution. Both concern GitHub's workflow startup
+semantics and no machine here runs Actions; the kit's own 0.2.7
+changelog says so in those words. The ITA-7 canary is what verifies
+them, and if it contradicts what the gate body claims, that is a finding
+AGAINST the kit and it goes back there rather than being patched in a
+caller again. Removing four workarounds on the strength of a comment
+would be the same class as the incident this promotion exists to close,
+so the removal is recorded here as provisional until the canary runs.
+
+**SRS:** REQ-95, REQ-96.
