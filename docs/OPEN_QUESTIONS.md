@@ -645,3 +645,103 @@ the unit of the variable they name and constants are pure numbers whose
 unit is the author's responsibility, and leaving it as is.
 
 **SRS:** Section 4.6; REQ-46, REQ-48, REQ-99.
+
+---
+
+## OQ-34: Joint covariance across vector groups in rotation propagation
+
+**Raised:** 2026-07-28 (ITACA-025 fix, REV-001)
+**Status:** open
+**Question:** `rotate` now transforms the covariance WITHIN a vector
+group and writes the recomputed coefficients back to the pair store. It
+does not transform a pair that joins a rotated component to anything
+outside its group: a force-to-moment pair when only the force group is
+rotated, a group-to-scalar pair such as `rho(FX, q_inf)`, or a pair
+between two groups rotated by different composite matrices. Such a pair
+would be left holding its pre-rotation coefficient, which is exactly the
+ITACA-025 defect in a different place, so it is refused rather than
+silently kept or silently dropped.
+
+The correct treatment is known and is not hard; what is missing is the
+decision to widen the propagation scope and the storage that would carry
+it. For a linear transform `R` applied to group `F` while `X` is
+untouched, `cov(F'_k, X) = sum_j R_kj cov(F_j, X)`; for two groups
+transformed by `R` and `R2`, `cov(F'_k, M'_l) = sum_jm R_kj R2_lm
+cov(F_j, M_m)`. A shared uncertain frame angle additionally induces
+`sum_a (dR/dtheta_a v_F)_k (dR2/dtheta_a v_M)_l u_a^2`, which the
+within-group angle term already computes for the diagonal block.
+
+**Proposed handling:** the author decides between widening rotation
+propagation to the full joint covariance over every declared pair, and
+keeping the interim fail-loud stance. The interim stance is what ships:
+the refusal names the pair and says to drop and redeclare it in the
+target axis.
+
+**SRS:** REQ-38, REQ-40, REQ-101; OQ-23, OQ-26.
+
+---
+
+## OQ-35: The degeneracy and drop constants in the rotation write-back
+
+**Raised:** 2026-07-28 (ITACA-025 fix, REV-001)
+**Status:** open (numerical-analyst seat)
+**Question:** Recomputing a correlation coefficient from the transformed
+covariance divides by the transformed standard deviations, so a
+component whose transformed variance is zero has no defined coefficient.
+The PRIMARY mask is exact and needs no constant: measured through the
+real code path, a rank-deficient rotation gives a transformed variance
+of EXACTLY 0.0 and a 0/0 quotient, so `sd == 0` or a non-finite quotient
+is what fires. Two engineering constants sit beside it and neither is
+frozen:
+
+- `_VAR_FLOOR`, a relative floor below which a transformed variance is
+  treated as degenerate rather than as a real quantity. Round-off dust
+  in genuinely rank-deficient rotations was measured up to 1.3e-16
+  relative, so the floor must sit above that and far below any real
+  variance ratio.
+- `_RHO_FLOOR`, below which a recomputed coefficient is dropped rather
+  than stored as numerical noise.
+
+The clip to `[-1, 1]` is NOT one of these: it is mandatory, not
+cosmetic. An unclipped write-back was measured at -1.0000000000001619
+for a declared coefficient of +1 at 34 degrees, and at 1.0000005175008824
+over random rank-one draws, which `CorrelationMatrix` rejects.
+
+**Proposed handling:** the numerical-analyst seat sets both constants
+with measured evidence, or replaces the relative floor with a condition
+number test on the transformed covariance.
+
+**SRS:** REQ-40, REQ-41, REQ-101.
+
+---
+
+## OQ-36: A declared correlation on a frame carrying no uncertainty
+
+**Raised:** 2026-07-28 (ITACA-025 fix, REV-001)
+**Status:** open
+**Question:** `set_correlation` is accepted on a frame that carries no
+uncertainty at all, and that state is how several ITACA-025 instances
+were reachable through the public API: `diff`, `fitmodel` and `fitvalue`
+all refuse uncertainty (REQ-98, OQ-18, OQ-24) while a correlation may
+still be declared beside them.
+
+It also leaves `rotate` with a case it cannot resolve. When a group
+carries no uncertainty, the rotation computes no covariance, so there is
+nothing to recompute a coefficient from. The declared pair is therefore
+left EXACTLY as declared, even though it describes the pre-rotation
+components. Deleting it would be worse (an operation that computed
+nothing would silently discard a user declaration), and inventing one is
+not possible, so the stale-but-untouched state ships.
+
+The cleaner question underneath: should a correlation without any
+uncertainty be a legal frame state at all? A correlation coefficient
+between two exact quantities has no operational meaning, and refusing it
+at declaration time would close this case and simplify three others.
+
+**Proposed handling:** the author decides between refusing
+`set_correlation` on a frame with no `UncFrame`, keeping it legal and
+documenting the rotate carve-out, and keeping it legal while making
+`rotate` refuse rather than carry.
+
+**SRS:** REQ-39, REQ-40, REQ-98, REQ-101.
+

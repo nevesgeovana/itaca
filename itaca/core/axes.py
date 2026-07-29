@@ -431,6 +431,54 @@ class AxisRegistry:
             group_axes={**self.group_axes, name: axis},
         )
 
+    def with_group_axis(self, name: str, axis: str) -> AxisRegistry:
+        """Return a new registry rebinding a declared group to an axis.
+
+        The axis of a vector group is the system its components are
+        currently expressed in (REQ-107), so it moves when the
+        components move. ``rotate`` is the only caller today.
+
+        Parameters
+        ----------
+        name : str
+            An already declared vector group.
+        axis : str
+            The axis system its components are now expressed in. Must be
+            registered or built in.
+
+        Returns
+        -------
+        AxisRegistry
+            A new registry; the original is unchanged (DD-03).
+
+        Raises
+        ------
+        VectorGroupError
+            ``name`` is not a declared vector group.
+        AxisNotFoundError
+            ``axis`` is neither registered nor built in.
+
+        Examples
+        --------
+        >>> reg = AxisRegistry().with_vector_group("force", ["FX", "FY", "FZ"])
+        >>> reg.with_group_axis("force", "stability").group_axis("force")
+        'stability'
+        """
+        if name not in self.vector_groups:
+            raise VectorGroupError(
+                f"vector group '{name}'",
+                "with_group_axis was asked to rebind a group that is not declared",
+                "declare it with with_vector_group first, or pass a declared "
+                "group name (REQ-107)",
+            )
+        if axis != "body":
+            self.resolve(axis)
+        return AxisRegistry(
+            axes=self.axes,
+            vector_groups=self.vector_groups,
+            group_axes={**self.group_axes, name: axis},
+        )
+
     def group_axis(self, name: str) -> str:
         """Return the source axis system declared for a vector group (REQ-107)."""
         return self.group_axes.get(name, "body")

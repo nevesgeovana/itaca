@@ -580,17 +580,19 @@ class TestRotateCorrelationLifecycle:
     degree frame gives cov(FX, FY) = -0.01, so the true coefficient is
     -0.5 and the stored one had the wrong SIGN."""
 
-    def test_itaca_025e_rotate_drops_intra_group_pairs_and_keeps_others(self) -> None:
-        """Pairs among rotated components go; unrelated pairs survive.
+    def test_itaca_025e_rotate_recomputes_intra_group_pairs_and_keeps_others(
+        self,
+    ) -> None:
+        """The coefficient follows the covariance; outsiders are untouched.
 
-        The coefficient after a rotation is the off-diagonal of R C R^T,
-        which varies per grid cell, and the store holds one scalar per
-        pair. It is not representable, so it is dropped rather than
-        approximated or carried (OQ-23).
+        rotate already built the full transformed covariance and threw
+        away its off-diagonals. It is recomputed from cov_t here rather
+        than dropped, which is what BRF-043's assertion asks for: for a
+        linear transform the stored correlation equals the one implied
+        by R C R^T.
 
-        The propagated uncertainty is unaffected by the drop, because
-        _corr_matrix consults the INPUT matrix during propagation and
-        the drop is applied at rebuild.
+        A pair naming no rotated component is not the rotation's
+        business and survives untouched.
         """
         alpha = np.arange(2.0)
         arr = np.column_stack(
@@ -614,6 +616,225 @@ class TestRotateCorrelationLifecycle:
         )
 
         assert out.correlation is not None
-        assert ("FX", "FY") not in out.correlation.pairs
+        # Hand-checked against R C R^T for u = (0.1, 0.2, 0.3) and the
+        # declared rho(FX, FY) = 0.5 under a 45 degree rotation about z.
+        assert out.correlation.get("FX", "FY") == pytest.approx(-0.6546536707079771)
         assert out.correlation.get("p", "q") == 0.3
-        assert "correlation=dropped" in out.history[-1].operation
+
+    def test_itaca_025e_rotate_flips_the_sign_the_review_measured(self) -> None:
+        """The published case: +0.5 stored where the truth is -0.5.
+
+        With u = (0.1, 0.2, 0.3) and rho(FX, FY) = 0.5, a 90 degree
+        frame gives cov(FX, FY) = -0.01 and sd = (0.2, 0.1), so the true
+        coefficient is -0.5. Before the fix the store still read +0.5:
+        not merely stale, but wrong in SIGN.
+
+        FZ is untouched by a rotation about z, so its pairs have an
+        exactly zero transformed covariance and are absent rather than
+        stored as a numerical zero.
+        """
+        db = _force_frame([1.0, 0.0], [0.0, 2.0], [0.0, 0.0])
+        db = db.set_uncertainty({"FX": 0.1, "FY": 0.2, "FZ": 0.3})
+        db = db.set_correlation({("FX", "FY"): 0.5})
+        rig = Axis(name="rig", rotation_matrix=_M90)
+        out = (
+            db.register_axis(rig)
+            .declare_vector("force", ["FX", "FY", "FZ"])
+            .rotate("rig")
+        )
+
+        assert out.uncertainty is not None
+        assert out.uncertainty.systematic["FX"][0] == pytest.approx(0.2)
+        assert out.uncertainty.systematic["FY"][0] == pytest.approx(0.1)
+        assert out.uncertainty.systematic["FZ"][0] == pytest.approx(0.3)
+        assert out.correlation is not None
+        assert out.correlation.get("FX", "FY") == pytest.approx(-0.5)
+        assert ("FX", "FZ") not in out.correlation.pairs
+        assert ("FY", "FZ") not in out.correlation.pairs
+
+
+class TestGroupAxisFollowsTheRotation:
+    """REV-001 ITACA-020: the value moved and the metadata did not.
+
+    rebuild() had no axes parameter, so the registry was carried through
+    unchanged and group_axis kept naming the SOURCE. _resolve_groups
+    reads that on the next call and re-applies the same transform, which
+    is why a second rotate to the same target was a second rotation.
+    REQ-107 already promised the recorded axis is the one the components
+    are currently expressed in.
+    """
+
+    def test_itaca_020_group_axis_follows_the_rotation(self, db: VarFrame) -> None:
+        """After rotate(target), the group's recorded axis IS target."""
+        rig = Axis(name="rig", rotation_matrix=_M90)
+        out = (
+            db.register_axis(rig)
+            .declare_vector("force", ["FX", "FY", "FZ"])
+            .rotate("rig")
+        )
+        assert out.axes.group_axis("force") == "rig"
+        assert out.vars["FX"].values[0] == pytest.approx(0.0)
+        assert out.vars["FY"].values[0] == pytest.approx(1.0)
+
+    def test_itaca_020_second_rotate_is_not_a_double_transform(
+        self, db: VarFrame
+    ) -> None:
+        """Rotating to the axis a group already occupies is the identity.
+
+        Measured before the fix: the second call gave FX = -1.0, having
+        applied the same 90 degree rotation twice.
+        """
+        rig = Axis(name="rig", rotation_matrix=_M90)
+        out = (
+            db.register_axis(rig)
+            .declare_vector("force", ["FX", "FY", "FZ"])
+            .rotate("rig")
+        )
+        again = out.rotate("rig")
+        assert again.vars["FX"].values[0] == pytest.approx(0.0)
+        assert again.vars["FY"].values[0] == pytest.approx(1.0)
+        assert again.axes.group_axis("force") == "rig"
+
+        back = out.rotate("body")
+        assert back.vars["FX"].values[0] == pytest.approx(1.0)
+        assert back.vars["FY"].values[0] == pytest.approx(0.0)
+        assert back.axes.group_axis("force") == "body"
+
+    def test_itaca_020_auto_detected_group_is_registered(self, db: VarFrame) -> None:
+        """A convention-detected group is promoted on first rotation.
+
+        The recorded axis has to be durable, and both canonical_tokens
+        (the REQ-103 state hash) and the .itc writer iterate
+        vector_groups, so a group_axes entry with no vector_groups entry
+        would be invisible to the hash and lost on save.
+        """
+        rig = Axis(name="rig", rotation_matrix=_M90)
+        out = db.register_axis(rig).rotate("rig")
+        assert out.axes.vector_groups["force"] == ("FX", "FY", "FZ")
+        assert out.axes.group_axis("force") == "rig"
+        again = out.rotate("rig")
+        assert again.vars["FX"].values[0] == pytest.approx(0.0)
+        assert again.vars["FY"].values[0] == pytest.approx(1.0)
+
+    def test_itaca_020b_declared_alias_group_is_rotated_once(
+        self, db: VarFrame
+    ) -> None:
+        """A declared group over the default triplet is not detected twice.
+
+        Measured before the fix: declaring 'aero' over (FX, FY, FZ) and
+        rotating gave FX = -1.0 and recorded groups=['aero', 'force'],
+        because the convention detector de-duplicated by NAME only and
+        rotated the same three variables twice in one call.
+        """
+        rig = Axis(name="rig", rotation_matrix=_M90)
+        out = (
+            db.register_axis(rig)
+            .declare_vector("aero", ["FX", "FY", "FZ"])
+            .rotate("rig")
+        )
+        assert out.vars["FX"].values[0] == pytest.approx(0.0)
+        assert out.vars["FY"].values[0] == pytest.approx(1.0)
+        assert "aero" in out.history[-1].operation
+        assert "force" not in out.history[-1].operation
+        assert "force" not in out.axes.vector_groups
+
+    def test_itaca_020_identity_rotation_invents_no_uncertainty(self) -> None:
+        """A no-op rotate creates no UncFrame keys (DD-18).
+
+        Measured before the fix: rotating a body group to 'body' with
+        only FX carrying uncertainty materialized FY and FZ entries out
+        of nothing, because the propagation ran anyway.
+        """
+        db = _force_frame([1.0], [0.0], [0.0]).set_uncertainty({"FX": 0.1})
+        out = db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("body")
+        assert out.uncertainty is not None
+        assert sorted(out.uncertainty.systematic) == ["FX"]
+
+
+class TestAngleOnlyUncertainty:
+    """REV-001 ITACA-021: the angle term was reachable only from inside
+    the branch that ran when a vector component carried uncertainty, so a
+    rotation driven by a measured angle was presented as exact."""
+
+    @staticmethod
+    def _alpha_frame(component: str) -> VarFrame:
+        rows = [[0.0, 30.0, 1.0, 0.0, 0.0]]
+        db = itc.load(np.array(rows), names=["i", "alpha", "FX", "FY", "FZ"]).pivot(
+            dims=["i"]
+        )
+        db = dataclasses.replace(
+            db,
+            vars={
+                **db.vars,
+                "alpha": dataclasses.replace(db.vars["alpha"], unit="deg"),
+            },
+        )
+        return db.set_uncertainty({"alpha": 1.0}, component=component)
+
+    def test_itaca_021_angle_only_uncertainty_reaches_the_components(self) -> None:
+        """u(alpha) = 1 deg on an exact vector propagates by chain rule.
+
+        The oracle is restated as chain rule rather than as the two
+        numbers the review published, so the test says WHY those are the
+        values: the derivative of Ry(alpha) @ (1,0,0) has magnitude
+        sin(alpha) in x and cos(alpha) in z.
+        """
+        db = self._alpha_frame("systematic")
+        out = db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("stability")
+
+        u_alpha = np.deg2rad(1.0)
+        expected_fx = u_alpha * np.sin(np.deg2rad(30.0))
+        expected_fz = u_alpha * np.cos(np.deg2rad(30.0))
+        assert out.uncertainty is not None
+        systematic = out.uncertainty.systematic
+        assert systematic["FX"][0] == pytest.approx(expected_fx)
+        assert systematic["FZ"][0] == pytest.approx(expected_fz)
+        assert systematic["FY"][0] == pytest.approx(0.0)
+        # The published oracle, to the digit.
+        assert systematic["FX"][0] == pytest.approx(0.008726646259971646)
+        assert systematic["FZ"][0] == pytest.approx(0.015114994701951816)
+        # And the central values are still the plausible-looking ones
+        # that made the omission hard to notice.
+        assert out.vars["FX"].values[0] == pytest.approx(0.8660254037844387)
+        assert out.vars["FZ"].values[0] == pytest.approx(-0.5)
+
+    def test_itaca_021_angle_only_random_component_stays_in_its_component(self) -> None:
+        """The component index convention is pinned, not assumed."""
+        db = self._alpha_frame("random")
+        out = db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("stability")
+        assert out.uncertainty is not None
+        assert out.uncertainty.random["FX"][0] == pytest.approx(0.008726646259971646)
+        for name in ("FX", "FY", "FZ"):
+            assert name not in out.uncertainty.systematic
+
+    def test_itaca_021_no_uncertainty_anywhere_creates_no_entries(self) -> None:
+        """The widened gate must not invent zeros for an exact frame."""
+        rows = [[0.0, 30.0, 1.0, 0.0, 0.0]]
+        db = itc.load(np.array(rows), names=["i", "alpha", "FX", "FY", "FZ"]).pivot(
+            dims=["i"]
+        )
+        db = dataclasses.replace(
+            db,
+            vars={
+                **db.vars,
+                "alpha": dataclasses.replace(db.vars["alpha"], unit="deg"),
+            },
+        )
+        out = db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("stability")
+        assert out.uncertainty is None
+
+    def test_itaca_025_angle_term_creates_perfect_component_correlation(self) -> None:
+        """One uncertain angle driving two components correlates them fully.
+
+        The angle covariance is rank one per angle, so its off-diagonal
+        is exactly the product of the two sensitivities. Squaring it
+        away, as the old diagonal-only form did, discarded precisely the
+        term the write-back needs. FY has an exactly zero sensitivity,
+        so its pairs are degenerate and absent rather than stored.
+        """
+        db = self._alpha_frame("systematic")
+        out = db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("stability")
+        assert out.correlation is not None
+        assert out.correlation.get("FX", "FZ") == pytest.approx(1.0)
+        assert ("FX", "FY") not in out.correlation.pairs
+        assert ("FY", "FZ") not in out.correlation.pairs

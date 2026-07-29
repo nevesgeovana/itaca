@@ -106,6 +106,7 @@ def rebuild(
     call: str | None = None,
     replay_kwargs: Mapping[str, Any] | None = None,
     correlation: object = _UNSET,
+    axes: object = _UNSET,
 ) -> VarFrame:
     """Wrap content back into frames and derive the new VarFrame.
 
@@ -124,6 +125,11 @@ def rebuild(
     :class:`~itaca.core.varframe.VarFrame` constructor refuses a pair
     naming an absent variable, so a missing policy fails loud at the
     first operation that drops a name.
+
+    ``axes`` has the same shape: omitted keeps the frame's registry, and
+    an operation that moves a vector group between axis systems passes
+    its own (REQ-107). Neither may default to ``None``, because ``None``
+    is a meaningful correlation value.
     """
     variables = {
         name: replace(content.meta[name], values=values)
@@ -157,5 +163,6 @@ def rebuild(
         uncertainty=uncertainty,
         tags=tags,
         correlation=correlation,
+        axes=axes,
         step=step,
     )
