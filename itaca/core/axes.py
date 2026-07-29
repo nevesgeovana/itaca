@@ -11,10 +11,10 @@ the chain rule.
 The built-in ``"wind"`` and ``"stability"`` frames follow AIAA
 R-004A-1992 in the standard Etkin body-to-wind form
 (``v_target = L @ v_body``; stability = active ``Ry(alpha)``, wind =
-active ``Rz(-beta) @ Ry(alpha)``), SME-accepted by Geovana at the M1
-Phase B2 checkpoint (2026-07-23) and cross-validated against scipy
-(DD-26). The elementary factors below are the coordinate (transposed)
-form, so this module writes wind as ``Rz(beta) @ Ry(alpha)``.
+active ``Rz(-beta) @ Ry(alpha)``), SME-accepted at the M1 Phase B2
+checkpoint (2026-07-23) and cross-validated against scipy (DD-26).
+The elementary factors below are the coordinate (transposed) form, so
+this module writes wind as ``Rz(beta) @ Ry(alpha)``.
 
 This module is NumPy-only (DD-02).
 """

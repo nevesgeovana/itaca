@@ -6,9 +6,11 @@ declare no correlations pay no accuracy cost. The systematic and
 random components propagate separately and recombine as RSS only at
 reporting time (REQ-99).
 
-Note (REQ-98/REQ-99 draft gate): the declared correlation r(a, b)
-applies identically to both components. This choice is on the Phase 4
-checkpoint list for Geovana's validation before freezing.
+Note (REQ-98/REQ-99): the declared correlation r(a, b) applies
+identically to both components. This choice was validated at the M0
+Phase 4 checkpoint (2026-07-21) and both requirements are stable as of
+SRS document 0.1.1; the smooth and diff row of REQ-98 remains
+provisional pending OQ-18.
 """
 
 from __future__ import annotations

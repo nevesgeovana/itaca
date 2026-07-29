@@ -19,7 +19,7 @@ is recorded (REQ-18, REQ-40).
 ``fitvalue`` is the forward evaluation ``sum_k c_k t^k``, exact and
 linear in the coefficients. Because a fitmodel output never carries
 coefficient uncertainty until OQ-24 is resolved, ``fitvalue`` defers
-with ``fitmodel`` and raises when uncertainty is present (Geovana's
+with ``fitmodel`` and raises when uncertainty is present (an author
 call at the M1 Phase B1 checkpoint: keep the coefficient-space story
 coherent, forward and inverse frozen together), rather than applying
 a forward rule to coefficients whose covariance is not yet defined.

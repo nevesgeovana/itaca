@@ -70,7 +70,7 @@ def set_user(name: str | None) -> None:
     Examples
     --------
     >>> import itaca as itc
-    >>> itc.set_user("geovana@tudelft")
+    >>> itc.set_user("analyst@lab01")
     >>> itc.set_user(None)  # restore the default
     """
     global _session_user
