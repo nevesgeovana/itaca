@@ -26,7 +26,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.dimension import Dimension
-from itaca.core.errors import DataError, LoadCoordinateError
+from itaca.core.errors import DataError, DuplicateNameError, LoadCoordinateError
 from itaca.core.history import History, compute_state_hash
 from itaca.core.provenance import (
     Provenance,
@@ -37,7 +37,12 @@ from itaca.core.provenance import (
 from itaca.core.varframe import VarFrame
 from itaca.core.variable import Variable
 from itaca.core.version import __version__
-from itaca.io.pivot import DATAPOINT_DIM, assemble_grid, place_on_grid
+from itaca.io.pivot import (
+    DATAPOINT_DIM,
+    assemble_grid,
+    place_on_grid,
+    reject_repeated_names,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +251,17 @@ def _from_array(
             f"itc.load(arr) with {array.shape[1]} column(s)",
             "pass names=[...] with one name per column (REQ-04)",
         )
+    reject_repeated_names(
+        [str(name) for name in names],
+        origin="the names= list",
+        role="column name",
+        consequence=(
+            "itc.load keys the columns by name, so all but the last repeat "
+            "are silently discarded and the frame carries fewer variables "
+            "than the array had columns"
+        ),
+        req="REQ-04",
+    )
     columns = {
         str(name): np.asarray(array[:, index], dtype=float)
         for index, name in enumerate(names)
@@ -271,6 +287,16 @@ def _from_dataframe(source: Any, dims: Sequence[str] | None) -> _LoadContent:
                 "itc.load(df) requires string column names",
                 "rename the columns, e.g. df.columns = [str(c) for c in df.columns]",
             )
+    reject_repeated_names(
+        [str(column) for column in source.columns],
+        origin="the DataFrame columns",
+        role="column name",
+        consequence=(
+            "df[name] returns a 2-D block for a repeated label, which fails "
+            "far downstream as a shape mismatch that names no column"
+        ),
+        req="REQ-05",
+    )
     columns = {
         str(column): _numeric_column(
             str(column), source[column].to_numpy(), "the DataFrame"
@@ -301,6 +327,17 @@ def _read_csv(path: Path) -> dict[str, list[object]]:
             "provide a CSV with a header line naming the columns",
         )
     header = [name.strip() for name in rows[0]]
+    reject_repeated_names(
+        header,
+        origin=f"the header of '{path.name}'",
+        role="column name",
+        consequence=(
+            "the header collapses to one list per name while every row "
+            "appends once per header position, so that column ends up with "
+            "more entries than the file has rows"
+        ),
+        req="REQ-01",
+    )
     columns: dict[str, list[object]] = {name: [] for name in header}
     for row in rows[1:]:
         for index, name in enumerate(header):
@@ -413,6 +450,11 @@ def _from_dict(source: Mapping[Any, Any], dims: Sequence[str] | None) -> _LoadCo
             )
         path = Path(file_path)
         table = _read_csv(path)
+        # Captured BEFORE the loop below writes declared coordinates into
+        # the table: testing against the live table would also match a
+        # coordinate an earlier iteration just wrote, so dims=['m','m']
+        # would raise blaming a file column that does not exist.
+        file_columns = set(table)
         n_rows = len(next(iter(table.values()))) if table else 0
         for dim, value in zip(dim_names, coord_tuple, strict=True):
             if value == SWEPT:
@@ -423,6 +465,15 @@ def _from_dict(source: Mapping[Any, Any], dims: Sequence[str] | None) -> _LoadCo
                         "add the column or give an explicit coordinate",
                     )
             else:
+                if dim in file_columns:
+                    raise DuplicateNameError(
+                        f"dimension '{dim}' declared as coordinate {value!r} "
+                        f"for '{path.name}'",
+                        "itc.load would overwrite the file's own column of "
+                        "that name with the declared coordinate",
+                        f"use '*' in that tuple position to read '{dim}' "
+                        f"from the file, or rename the column (REQ-03)",
+                    )
                 table[dim] = [value] * n_rows
         tables.append(table)
         files.append(path)

@@ -118,7 +118,16 @@ class Unary:
         return self.op.evaluate(self.a.evaluate(env))
 
     def derivative(self, env: Mapping[str, _Array], name: str) -> _Array:
-        """Chain rule through the operator's analytical partial."""
+        """Chain rule through the operator's analytical partial.
+
+        A subtree that does not reference ``name`` has an exactly zero
+        derivative and is not evaluated at all. Multiplying a
+        domain-invalid partial by that exact zero does not recover zero:
+        ``0 * nan`` is ``nan`` and ``0 * -inf`` is ``nan``, so a dead
+        branch used to poison the whole sum (ITACA-022).
+        """
+        if name not in self.a.variables():
+            return np.asarray(0.0)
         return np.asarray(
             self.op.d_da(self.a.evaluate(env)) * self.a.derivative(env, name)
         )
@@ -145,13 +154,68 @@ class Binary:
         return self.op.evaluate(self.a.evaluate(env), self.b.evaluate(env))
 
     def derivative(self, env: Mapping[str, _Array], name: str) -> _Array:
-        """Chain rule through both analytical partials."""
+        """Chain rule through both analytical partials.
+
+        Only a branch that actually references ``name`` is evaluated.
+        The predicate is variable-set membership rather than "is the
+        operand a constant", because a variable exponent that merely is
+        not the differentiation variable poisons the sum identically:
+        measured, ``y = x ** n`` with ``n = 2`` stored as a variable and
+        ``x = [-2, -3]`` produced ``nan`` exactly as ``x ** 2`` did
+        (ITACA-022).
+
+        Both operands are still evaluated whenever EITHER branch is
+        live, deliberately: the partials of ``mul``, ``div`` and ``pow``
+        with respect to one operand all read the other.
+
+        Raises
+        ------
+        UncertaintyCompatibilityError
+            The exponent is live and the base is non-positive anywhere
+            on the grid, where ``d(a**b)/db = a**b * log(a)`` is
+            genuinely undefined. That is a real domain violation rather
+            than the spurious NaN this short-circuit removes, so it is
+            raised rather than written as a NaN into a plausible-looking
+            result.
+        """
+        a_live = name in self.a.variables()
+        b_live = name in self.b.variables()
+        if not a_live and not b_live:
+            return np.asarray(0.0)
         value_a = self.a.evaluate(env)
         value_b = self.b.evaluate(env)
-        return np.asarray(
-            self.op.d_da(value_a, value_b) * self.a.derivative(env, name)
-            + self.op.d_db(value_a, value_b) * self.b.derivative(env, name)
-        )
+        if b_live and self.op.name == "pow":
+            base = np.asarray(value_a, dtype=float)
+            bad = np.less_equal(
+                base,
+                0.0,
+                where=np.isfinite(base),
+                out=np.zeros(base.shape, dtype=bool),
+            )
+            if bool(np.any(bad)):
+                expression = (
+                    f"{' '.join(self.a.tokens())} ** {' '.join(self.b.tokens())}"
+                )
+                raise UncertaintyCompatibilityError(
+                    f"base <= 0 at {int(np.count_nonzero(bad))} of "
+                    f"{bad.size} point(s) in '{expression}'",
+                    f"differentiation with respect to the exponent "
+                    f"'{name}': d(a**b)/db = a**b * log(a) is undefined "
+                    f"for a <= 0",
+                    "keep the exponent constant, restrict the expression to "
+                    "a positive base with where=, or switch to "
+                    "method='mcm' (available from v0.3.0)",
+                )
+        total: _Array = np.asarray(0.0)
+        if a_live:
+            total = total + self.op.d_da(value_a, value_b) * self.a.derivative(
+                env, name
+            )
+        if b_live:
+            total = total + self.op.d_db(value_a, value_b) * self.b.derivative(
+                env, name
+            )
+        return np.asarray(total)
 
     def variables(self) -> set[str]:
         """Variables referenced below this node."""
@@ -316,6 +380,24 @@ def _native(name: str, args: list[Node], text: str) -> Node:
 
 
 def _convert_call(node: ast.Call, known: Set[str], text: str) -> Node:
+    # REQ-44: refuse keywords at the single call funnel, before any
+    # argument is converted, so native functions, normalized np
+    # functions and the generic NumpyCall path are all covered by one
+    # check. Before this, node.keywords was neither represented nor
+    # refused: np.round(x, decimals=2) parsed, ran WITHOUT the keyword,
+    # and History recorded the expression with it, so the record showed
+    # an intent the execution did not honor (ITACA-023).
+    if node.keywords:
+        first = node.keywords[0]
+        keyword = f"{first.arg}=" if first.arg is not None else "**"
+        raise DataError(
+            f"keyword argument '{keyword}' to '{ast.unparse(node.func)}' in '{text}'",
+            "the ITACA expression language takes positional arguments "
+            "only, so a keyword would be recorded in History but never "
+            "passed to the function",
+            "pass the argument positionally, or compute the value outside "
+            "the equation (REQ-44)",
+        )
     args = [_convert(arg, known, text) for arg in node.args]
     if isinstance(node.func, ast.Name):
         name = node.func.id
@@ -335,10 +417,10 @@ def _convert_call(node: ast.Call, known: Set[str], text: str) -> Node:
         if attribute in _NUMPY_NORMALIZATION:
             # REQ-36: silently normalized to the native operator.
             return _native(_NUMPY_NORMALIZATION[attribute], args, text)
-        if not hasattr(np, attribute):
+        if not callable(getattr(np, attribute, None)):
             raise DataError(
                 f"function 'np.{attribute}' in '{text}'",
-                "NumPy has no such function",
+                "NumPy has no callable of that name",
                 "check the spelling against the NumPy API",
             )
         return NumpyCall(attribute, tuple(args))

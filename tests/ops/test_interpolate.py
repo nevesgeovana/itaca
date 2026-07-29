@@ -23,6 +23,7 @@ from itaca.core.errors import (
     AxisTranslationError,
     DataError,
     DimensionNotFoundError,
+    FitDegreeError,
     NonNumericDimensionError,
 )
 from itaca.core.uncframe import UncFrame
@@ -273,3 +274,63 @@ def test_itaca_025d_axis_translation_drops_pairs_naming_the_target() -> None:
     assert not any("y" in pair for pair in out.correlation.pairs)
     assert out.correlation.get("z", "z2") == 0.1
     assert "axis_correlation=dropped" in out.history[-1].operation
+
+
+class TestNegativePolynomialDegree:
+    """REV-001 ITACA-033: silent zeros where the data is a straight line.
+
+    `interpolate({"alpha": [...]}, "polyfit", -1)` returned `[0., 0., 0.]`
+    over data whose true values are `[1.0, 3.0, 5.0]`. `_validate_method`
+    checked `deg >= n` and never `deg >= 0`, and `polyfit_matrix` builds
+    an all-zero weight matrix for a negative degree.
+
+    Only `interpolate` was silent. `fill` reached NumPy and raised a bare
+    `ValueError` from outside the ITACA hierarchy, which is an ITACA-031
+    instance rather than this one, and `fitmodel` was already correct.
+    The validation is shared so the three cannot drift apart again.
+    """
+
+    def test_itaca_033_interpolate_refuses_a_negative_degree(self) -> None:
+        """The reported case, with the true values named in the test."""
+        x = np.arange(4.0)
+        db = itc.load(np.column_stack([x, 1.0 + 2.0 * x]), names=["alpha", "y"]).pivot(
+            dims=["alpha"]
+        )
+        with pytest.raises(DataError) as excinfo:
+            db.interpolate({"alpha": [0.5, 1.5, 2.5]}, "polyfit", -1)
+        assert "nonnegative polynomial degree" in str(excinfo.value)
+
+        # And the degree the caller should have passed still works, so
+        # the guard is not simply refusing polyfit.
+        out = db.interpolate({"alpha": [0.5, 1.5, 2.5]}, "polyfit", 1)
+        assert out.vars["y"].values == pytest.approx([2.0, 4.0, 6.0])
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            lambda db: db.diff(along="alpha", deg=-1),
+            lambda db: db.fitmodel(along="alpha", deg=-1),
+            lambda db: db.fill("alpha", method="polyfit", deg=-1, window=4),
+            lambda db: db.fill("alpha", method="polyfit", deg=-1, global_fit=True),
+            lambda db: db.smooth(
+                along="alpha", method="savgol", window=3, polyorder=-1
+            ),
+        ],
+    )
+    def test_itaca_033_every_degree_parameter_is_validated(self, call: object) -> None:
+        """One rule at every public degree boundary, not just the reported one.
+
+        `fill` raised a bare `ValueError` from NumPy and only when the
+        frame had a gap to fill; on a gap-free frame it was a silent
+        no-op that recorded `deg=-1` in History. Both are closed here.
+        """
+        x = np.arange(6.0)
+        db = itc.load(np.column_stack([x, 1.0 + 2.0 * x]), names=["alpha", "y"]).pivot(
+            dims=["alpha"]
+        )
+        with pytest.raises(DataError) as excinfo:
+            call(db)  # type: ignore[operator]
+        assert "nonnegative polynomial degree" in str(excinfo.value)
+        # DataError, not FitDegreeError: that leaf means "too few points
+        # for this degree", which depends on the data. This does not.
+        assert not isinstance(excinfo.value, FitDegreeError)

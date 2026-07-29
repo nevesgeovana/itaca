@@ -30,6 +30,7 @@ from itaca.core.errors import (
 )
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import content_of, rebuild
+from itaca.ops._degree import require_nonnegative_degree
 from itaca.ops._movingfit import moving_fit_line, window_tags_line
 
 _Array = NDArray[Any]
@@ -87,6 +88,7 @@ def diff(
             "diff along a string-valued dimension",
             "numerical operations need numeric coordinates (SRS 4.1.3)",
         )
+    require_nonnegative_degree(deg, operation="diff", parameter="deg", req="REQ-30")
     if window <= deg:
         raise FitDegreeError(
             f"window {window} against deg {deg}",

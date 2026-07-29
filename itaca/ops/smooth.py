@@ -27,6 +27,7 @@ from itaca.core.errors import (
 from itaca.core.sentinels import NoDefault, no_default, reject_no_default
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import content_of, rebuild
+from itaca.ops._degree import require_nonnegative_degree
 from itaca.ops._movingfit import moving_fit_line, window_bounds
 
 _Array = NDArray[Any]
@@ -147,6 +148,12 @@ def smooth(
     _validate(db, along, method, given)
     if method == "savgol":
         assert isinstance(window, int) and isinstance(polyorder, int)
+        require_nonnegative_degree(
+            polyorder,
+            operation="smooth(method='savgol')",
+            parameter="polyorder",
+            req="REQ-29",
+        )
         if window <= polyorder:
             raise FitDegreeError(
                 f"smooth window {window}",

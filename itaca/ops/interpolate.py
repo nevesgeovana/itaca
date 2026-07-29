@@ -29,6 +29,7 @@ from itaca.core.errors import (
 )
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import Content, content_of, rebuild, recoord
+from itaca.ops._degree import require_nonnegative_degree
 from itaca.ops._interp_kernels import (
     cubic_matrix,
     linear_matrix,
@@ -66,6 +67,12 @@ def _validate_method(db: VarFrame, method: str, deg: int | None, n: int) -> None
                 "called without deg",
                 "pass deg=<polynomial degree> (REQ-25)",
             )
+        require_nonnegative_degree(
+            deg,
+            operation="interpolate(method='polyfit')",
+            parameter="deg",
+            req="REQ-25",
+        )
         if deg >= n:
             raise FitDegreeError(
                 f"deg {deg} against {n} points",

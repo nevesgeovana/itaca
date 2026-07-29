@@ -19,6 +19,7 @@ import pytest
 import itaca as itc
 from itaca.core.errors import (
     DataError,
+    DuplicateNameError,
     LoadCoordinateError,
     PivotDuplicateError,
 )
@@ -161,3 +162,57 @@ class TestDictMode:
         path = write_csv(tmp_path / "a.csv", ["CT"], [[0.1]])
         with pytest.raises(DataError):
             itc.load({("*",): path}, dims=["alpha"])
+
+
+class TestRepeatedNamesInFiles:
+    """REV-001 ITACA-026, the two file boundaries."""
+
+    def test_itaca_026_duplicate_csv_header_names_the_file_and_the_column(
+        self, tmp_path: Path
+    ) -> None:
+        """The CSV path did not drop silently, but it lied about why.
+
+        Measured before the fix: a header of `a,b,a` over 2 data rows
+        surfaced as `DataError: Variable 'a': construction with shape
+        (4,) against dimension shape (2,)`, a shape complaint from the
+        VarFrame constructor that names neither the file nor the
+        repeated header. Checking at the header makes both part of the
+        message.
+        """
+        path = write_csv(tmp_path / "run.csv", ["a", "b", "a"], [[1, 2, 3], [4, 5, 6]])
+        with pytest.raises(DuplicateNameError) as excinfo:
+            itc.load(path)
+        message = str(excinfo.value)
+        assert "run.csv" in message
+        assert "'a'" in message
+
+    def test_itaca_026_declared_coordinate_may_not_shadow_a_file_column(
+        self, tmp_path: Path
+    ) -> None:
+        """Dict mode overwrote the file's own column without a word.
+
+        Measured before the fix on a file whose own `mach` column reads
+        0.9, loaded as `{(0.3,): path}` with `dims=["mach"]`: the frame
+        carried mach coords [0.3] and the file's value was simply gone.
+
+        The author confirmed that the redundant-but-consistent case is
+        refused too, rather than comparing values: a data-dependent
+        error would pass or fail on the same call depending on the
+        numbers, and it would need a float tolerance nobody has chosen.
+        The suggested fix works for that case anyway.
+        """
+        path = write_csv(tmp_path / "m.csv", ["mach", "CT"], [[0.9, 1.0], [0.9, 2.0]])
+        with pytest.raises(DuplicateNameError) as excinfo:
+            itc.load({(0.3,): path}, dims=["mach"])
+        message = str(excinfo.value)
+        assert "mach" in message
+        assert "'*'" in message
+
+    def test_itaca_026_the_swept_star_form_still_reads_from_the_file(
+        self, tmp_path: Path
+    ) -> None:
+        """The legitimate case the refusal must not narrow."""
+        path = write_csv(tmp_path / "m.csv", ["mach", "CT"], [[0.7, 1.0], [0.9, 2.0]])
+        db = itc.load({("*",): path}, dims=["mach"])
+        assert list(db.dims) == ["mach"]
+        assert np.allclose(db.dims["mach"].coords, [0.7, 0.9])

@@ -24,6 +24,7 @@ from itaca.core.errors import (
 )
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import content_of, rebuild
+from itaca.ops._degree import require_nonnegative_degree
 
 # (position, [(neighbor index, weight), ...]) or (position, None) when
 # no exact weight rule applies (polyfit).
@@ -119,6 +120,16 @@ def fill(
                 "called without deg",
                 "pass deg=<polynomial degree> (REQ-26)",
             )
+        # Before the global_fit branch, so BOTH paths are covered. The
+        # moving-window path reached NumPy and raised a bare ValueError;
+        # the global_fit path was a silent no-op that recorded deg=-1 in
+        # History (ITACA-033).
+        require_nonnegative_degree(
+            deg,
+            operation="fill(method='polyfit')",
+            parameter="deg",
+            req="REQ-26",
+        )
         if not global_fit:
             if window is None:
                 raise DataError(

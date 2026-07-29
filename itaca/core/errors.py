@@ -19,6 +19,7 @@ __all__ = [
     "DependencyError",
     "DimensionNotFoundError",
     "DraftModeExportError",
+    "DuplicateNameError",
     "FitDegreeError",
     "HashMismatchError",
     "ITACAError",
@@ -151,6 +152,22 @@ class DimensionNotFoundError(DataError):
 
 class VariableNotFoundError(DataError):
     """A variable referenced in an equation or operation is absent."""
+
+
+class DuplicateNameError(DataError):
+    """An ingestion source repeats a column, name, or dimension (REQ-01, REQ-04).
+
+    The shared leaf for the name-uniqueness invariant across every
+    ``itc.load`` boundary and ``assemble_grid``. A repeated name makes
+    one column silently overwrite another, while REQ-01 says every
+    column becomes a variable, so the frame carries fewer variables than
+    the source had columns and Provenance then documents a dataset that
+    no longer matches the input.
+
+    Distinct from :class:`PivotDuplicateError`, which is a collision
+    between DATA ROWS sharing coordinates, not a repeat within a list of
+    names.
+    """
 
 
 class NonNumericDimensionError(DataError):

@@ -42,6 +42,7 @@ from itaca.core.errors import (
 )
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import content_of, rebuild
+from itaca.ops._degree import require_nonnegative_degree
 
 _Array = NDArray[Any]
 
@@ -73,12 +74,7 @@ def fitmodel(
             "numerical operations need numeric coordinates (SRS 4.1.3)",
         )
     n = db.dims[along].cardinality
-    if deg < 0:
-        raise DataError(
-            f"deg {deg}",
-            "fitmodel needs a nonnegative polynomial degree",
-            "pass deg >= 0 (REQ-31)",
-        )
+    require_nonnegative_degree(deg, operation="fitmodel", parameter="deg", req="REQ-31")
     if deg >= n:
         raise FitDegreeError(
             f"deg {deg} against {n} points",

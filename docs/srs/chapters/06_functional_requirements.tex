@@ -497,6 +497,19 @@ When at least one variable in the expression has assigned uncertainty:
 The guard is per-variable: if a \code{compute} expression references only
 variables without assigned uncertainty, no guard is applied even when
 other variables in the same VarFrame carry uncertainty.
+
+The guard is also per-\emph{subtree}, not per-expression. A
+non-differentiable NumPy call raises only when it lies on a path from
+the derived variable to a variable that carries uncertainty; a call
+whose branch has an exactly zero partial derivative is evaluated and
+does not raise. So \code{y = x + np.sum(z)} with uncertainty on
+\code{x} alone succeeds, because \code{d/dx} of the \code{np.sum}
+branch is exactly zero and the branch cannot affect \code{u(y)} by any
+amount. This is exact rather than an approximation, and it follows from
+the structural rule that a dead branch is never evaluated, which is what
+stops a domain-invalid partial from poisoning a sum it contributes
+nothing to (see REQ-41; \code{u(x**2)} for a negative base returned
+\code{NaN} while that rule was missing).
 \end{reqbox}
 
 \begin{reqbox}{REQ-37}{\stable}

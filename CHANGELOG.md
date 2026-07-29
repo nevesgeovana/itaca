@@ -246,6 +246,55 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Fixed
 
+* **NumPy keyword arguments are refused instead of silently dropped**
+  (`ITACA-023`, REQ-44, OQ-37). `np.round(x, decimals=2)` on
+  `[1.234, 2.345]` returned `[1., 2.]` rather than `[1.23, 2.35]`: the
+  parser read only `node.args`, and `node.keywords` was neither
+  represented nor refused. History recorded the expression WITH the
+  keyword, so the provenance showed an intent the execution did not
+  honor. Any keyword now raises `DataError` naming the function and the
+  keyword. `np.clip(x, a_min=..., a_max=...)`, which escaped as a bare
+  `TypeError`, is covered by the same check, and `np.pi(x)` now raises
+  `DataError` rather than a bare `TypeError`, because the admission gate
+  tests `callable` where it used to test `hasattr`.
+
+* **A dead expression branch no longer poisons a derivative**
+  (`ITACA-022`). `u(x**2)` was `NaN` for a negative base and for zero,
+  because `d(a**b)/db = a**b * log(a)` is `NaN` or `-inf` there and was
+  multiplied by the exactly zero derivative of the exponent; `0 * NaN`
+  is `NaN`, not `0`. Both derivative walks now skip a branch that does
+  not reference the differentiation variable. The predicate is
+  variable-set membership rather than is-a-constant, because an exponent
+  stored as a VARIABLE poisoned the sum identically.
+
+  Two consequences. When the exponent IS live and the base is
+  non-positive anywhere, that is a genuine domain violation and now
+  raises `UncertaintyCompatibilityError` naming how many grid points
+  offend, rather than writing `NaN` into a plausible-looking result. And
+  REQ-36's guard becomes per-subtree rather than per-expression, so
+  `y = x + np.sum(z)` with uncertainty on `x` alone now succeeds where
+  it used to raise. That widening is exact rather than an approximation:
+  the branch cannot affect the result by any amount.
+
+* **Repeated names are refused at every ingestion boundary**
+  (`ITACA-026`, new `DuplicateNameError`). `itc.load(array,
+  names=["a","b","a"])` was accepted and produced two variables, the
+  third column having overwritten the first, so data was lost at step
+  one of the chain and Provenance then documented a dataset that no
+  longer matched the input. Five boundaries now share one rule: the
+  `names=` list, DataFrame columns, a CSV header, a `dims=` list, and a
+  dict-mode coordinate that would shadow the file's own column. The CSV
+  and `dims=` cases did not lose data but reported a shape mismatch that
+  named neither the file nor the repeated name.
+
+* **A negative polynomial degree is refused** (`ITACA-033`).
+  `interpolate({"x": [...]}, "polyfit", -1)` returned zeros over data
+  that was a straight line, because the validation checked `deg >= n`
+  and never `deg >= 0`. Every public degree parameter now shares one
+  check: `interpolate`, `fill` (both the moving-window path and the
+  `global_fit` path, the second of which was a silent no-op that
+  recorded `deg=-1` in History), `diff`, `smooth` and `fitmodel`.
+
 * **The version is derived from the repository instead of written in a
   file** (`ITACA-004`, DD-38, REQ-92). `itaca/core/version.py` held
   `__version__ = "0.1.0"` and every M1 commit inherited it, so an sdist

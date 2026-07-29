@@ -19,6 +19,7 @@ from itaca.core.dimension import Dimension
 from itaca.core.errors import (
     DataError,
     DimensionNotFoundError,
+    DuplicateNameError,
     PivotDuplicateError,
     PivotError,
 )
@@ -38,6 +39,70 @@ def is_datapoint(db: VarFrame) -> bool:
 
 def _is_numeric(array: NDArray[Any]) -> bool:
     return bool(np.issubdtype(np.asarray(array).dtype, np.number))
+
+
+def reject_repeated_names(
+    names: Sequence[str],
+    *,
+    origin: str,
+    role: str,
+    consequence: str,
+    req: str,
+) -> None:
+    """Refuse a repeated name at an ingestion boundary (REQ-01, REQ-04).
+
+    The single enforcement point for the name-uniqueness invariant. Every
+    boundary that turns a list of names into keys of a mapping needs it,
+    because a repeat collapses two sources into one key and the loss is
+    silent: the frame simply carries fewer variables than the input had
+    columns.
+
+    The consequence differs by boundary, so it is a parameter rather than
+    a fixed sentence. A repeated COLUMN discards data; a repeated
+    DIMENSION produces a rank mismatch instead, and citing REQ-01 for
+    that would be wrong.
+
+    Parameters
+    ----------
+    names : sequence of str
+        The names to check, in source order.
+    origin : str
+        Where they came from, for the message, e.g. ``"the names= list"``.
+    role : str
+        What a name IS here, e.g. ``"column name"``.
+    consequence : str
+        What accepting the repeat would do, in the caller's own terms.
+    req : str
+        The requirement id to cite in the suggested fix.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    DuplicateNameError
+        A name appears more than once.
+
+    Examples
+    --------
+    >>> reject_repeated_names(
+    ...     ["a", "b"],
+    ...     origin="the names= list",
+    ...     role="column name",
+    ...     consequence="one column would be discarded",
+    ...     req="REQ-04",
+    ... )
+    """
+    seen: dict[str, int] = {}
+    for index, name in enumerate(names):
+        if name in seen:
+            raise DuplicateNameError(
+                f"{role} '{name}' at positions {seen[name]} and {index} of {origin}",
+                consequence,
+                f"rename or drop the repeat so every {role} is unique ({req})",
+            )
+        seen[name] = index
 
 
 def assemble_grid(
@@ -78,10 +143,23 @@ def assemble_grid(
     PivotDuplicateError
         If two rows share identical coordinates on every requested
         dimension (REQ-14).
+    DuplicateNameError
+        If a dimension name is requested more than once.
     """
     units = units or {}
     dims: dict[str, Dimension] = {}
     positions: list[NDArray[np.intp]] = []
+    reject_repeated_names(
+        list(dim_names),
+        origin=f"the dims= list passed to {context}",
+        role="dimension name",
+        consequence=(
+            "the repeat collapses into a single dimension while one grid "
+            "position per requested name is still produced, so the grid "
+            "rank and the index rank disagree"
+        ),
+        req="REQ-14",
+    )
     for name in dim_names:
         if name not in columns:
             available = ", ".join(sorted(columns))

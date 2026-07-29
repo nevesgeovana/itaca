@@ -745,3 +745,37 @@ documenting the rotate carve-out, and keeping it legal while making
 
 **SRS:** REQ-39, REQ-40, REQ-98, REQ-101.
 
+---
+
+## OQ-37: Which NumPy keyword arguments should the expression language accept?
+
+**Raised:** 2026-07-28 (ITACA-023 fix, REV-001)
+**Status:** open (deferred; the refusal ships)
+**Question:** `np.round(x, decimals=2)` parsed, ran WITHOUT the keyword,
+and History recorded the expression WITH it, so the record showed an
+intent the execution did not honor. Keywords are now refused at the
+single call funnel, which closes the provenance hole and cannot produce
+a wrong number, but it permanently narrows the language until someone
+builds the supported subset.
+
+The author chose refusal over implementation because the admission gate
+is the whole NumPy namespace rather than an allowlist: 479 public
+callables, only 293 with introspectable signatures, and `out=`, `axis=`,
+`keepdims=`, `where=`, `dtype=`, `casting=` and `order=` each break an
+ITACA invariant (in-place writes, rank changes, dtype changes, or a
+second masking mechanism beside `where=` on `compute` itself).
+
+A defensible subset is value-only, shape-preserving keywords on a
+curated function list: `decimals=` on `np.round`, `a_min=` and `a_max=`
+on `np.clip`. That subset needs an integer-preserving literal node,
+because `Const` coerces every numeric literal to float and
+`np.round(x, decimals=2.0)` is not the same call. Changing the literal
+node changes History operation strings and therefore state hashes
+(REQ-103), so this is a milestone item with a migration note, not a
+follow-up patch.
+
+**Proposed handling:** the author decides the curated list when a real
+`.itceq` file or example needs one, with the state-hash migration
+planned in the same window.
+
+**SRS:** REQ-33, REQ-36, REQ-44, REQ-103.
