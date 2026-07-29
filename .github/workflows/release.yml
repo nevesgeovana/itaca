@@ -36,7 +36,10 @@ jobs:
     with:
       publish: true
       python-version: "3.12"
-      install: pip install -e ".[dev,pandas]"
+      # Tags first: since DD-38 the version is derived from the newest
+      # reachable tag, and the gate's `gates` job checks out shallow.
+      # See the note in ci.yml; the same limitation applies here.
+      install: git fetch --tags --unshallow 2>/dev/null || git fetch --tags 2>/dev/null || true; pip install -e ".[dev,pandas]"
       version-command: python -c "import itaca.core.version as v; print(v.__version__)"
       identity-checker: .claude/kit/check_version_identity.py
       # The gates are NAMED for what the command actually enforces. The

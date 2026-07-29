@@ -30,6 +30,14 @@ on:
   pull_request:
 
 jobs:
+  # Every `install` fetches tags first. The gate's own `identity` and
+  # `build` jobs check out with fetch-depth: 0, but its `gates` job does
+  # not, and since DD-38 the version is DERIVED from the newest reachable
+  # tag: in a shallow tagless checkout setuptools-scm silently derives
+  # 0.1.0.dev1, so the gates job would test a package whose version is
+  # meaningless. It degrades rather than failing, which is exactly why it
+  # would go unnoticed. The right fix is fetch-depth: 0 on that job,
+  # which lives in a hash-pinned kit body and is registered upward.
   gate:
     name: gate (py${{ matrix.python-version }}, ${{ matrix.deps }} deps)
     strategy:
@@ -38,15 +46,15 @@ jobs:
         include:
           - python-version: "3.11"
             deps: latest
-            install: pip install -e ".[dev,pandas]"
+            install: git fetch --tags --unshallow 2>/dev/null || git fetch --tags 2>/dev/null || true; pip install -e ".[dev,pandas]"
           # NumPy 1.26 has no Python 3.13 wheels, so the minimum floor is
           # exercised on the oldest supported interpreter only.
           - python-version: "3.11"
             deps: minimum
-            install: pip install -e ".[dev,pandas]" && pip install "numpy==1.26.*" "pandas==2.1.*"
+            install: git fetch --tags --unshallow 2>/dev/null || git fetch --tags 2>/dev/null || true; pip install -e ".[dev,pandas]" && pip install "numpy==1.26.*" "pandas==2.1.*"
           - python-version: "3.13"
             deps: latest
-            install: pip install -e ".[dev,pandas]"
+            install: git fetch --tags --unshallow 2>/dev/null || git fetch --tags 2>/dev/null || true; pip install -e ".[dev,pandas]"
     uses: ./.github/workflows/release_gate.yml
     with:
       publish: false

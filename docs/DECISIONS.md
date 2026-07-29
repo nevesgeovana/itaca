@@ -1066,3 +1066,86 @@ read before the file is written.
 
 **Rejected alternative:** let the equation win. Rejected as inverting
 the current behavior while staying just as silent.
+
+## DD-38: The version is derived from the repository, not written in a file
+
+**Date:** 2026-07-28
+**Status:** confirmed
+
+`itaca/core/version.py` no longer assigns `__version__`. The version is
+computed at build time by `setuptools-scm` from the newest reachable
+release tag, and read back at run time from the installed distribution
+metadata.
+
+**Why.** A hand-maintained literal is a fact that goes stale silently.
+Measured as `ITACA-004`: the file held `0.1.0` while the tree carried
+the entire M1 seam, so an sdist built from it was named
+`itaca-0.1.0.tar.gz` while containing `Pipeline`, `core/sentinels.py`,
+`ops/rotate.py` and the whole `pproc` package. Provenance and the `.itc`
+writer both stamped that value, so a result carried a false statement
+about which implementation produced it, which is the one thing
+provenance exists to prevent.
+
+The second reason is the one nobody had measured, and it decided the
+choice between fixing the instance and fixing the cause. The vendored
+version-identity rule refuses a FINAL version on an untagged commit.
+With a literal, releasing means committing the bump and pushing the
+branch BEFORE the tag, because the push gate refuses `--follow-tags` and
+`--tags`. That leaves the branch red between the two pushes, at exactly
+the moment a release is being cut, which is the moment people are most
+likely to reach for a bypass. Deriving from the repository removes the
+window rather than detecting it afterwards, which is what the incidents
+rule asks for: the structural cause, on first occurrence.
+
+**The scheme is `release-branch-semver`, deliberately.** The default
+`guess-next-dev` names the next PATCH after the last tag, so this tree
+would build as `0.1.1.devN`. That satisfies the checker, since `0.1.1`
+is strictly greater than `0.1.0`, but it is semantically wrong: this
+project ships milestones as MINOR releases (M0 to M3 as v0.1.0 to
+v0.4.0), and a development version should name the release actually
+being worked toward. `release-branch-semver` bumps the minor on `main`
+and yields `0.2.0.devN`. On a tagged commit every scheme yields exactly
+`X.Y.Z`, so the release path is unaffected by the choice.
+
+`local_scheme = "no-local-version"` is required rather than cosmetic:
+the default appends `+g<sha>`, which PyPI rejects on upload and which
+the version-identity checker treats as its own separate failure.
+
+**Accepted costs, stated because they are real.**
+
+`setuptools-scm` becomes a build dependency. It is never imported by
+`itaca`, so REQ-82 and DD-33 are untouched: the NumPy-only rule governs
+what the packages import, and this runs inside the build backend's
+isolated environment exactly as `setuptools` already does.
+
+A source tree that was never installed can no longer report a version.
+`version.py` raises `VersionResolutionError` instead of guessing,
+because a guess would be written into Provenance and into `.itc`
+archives as though it were a fact. The remedy is `pip install -e .`,
+which is what the contributing guide already instructs.
+
+An editable install freezes the version at install time, so
+`itaca.__version__` goes stale in a working tree until the next
+reinstall. This is a real daily-workflow wart and it is accepted: the
+value is only load-bearing in a built artifact, and every artifact is
+built from a fresh checkout.
+
+**Rejected alternative:** keep the literal and adopt the checker's
+`--devn-policy nonzero`, which the kit deliberately makes non-default so
+that choosing the weaker promise is visible. Rejected because it is
+detection rather than prevention: the version would answer "toward which
+release" but never "which tree", the red window at tag time would
+remain, and after each release someone must remember to bump the literal
+or the identity gate reddens the next CI run. The incidents rule asks
+for a guard that makes recurrence impossible.
+
+**Known limitation, registered upward rather than worked around here.**
+The vendored release gate checks out with `fetch-depth: 0` for its
+`identity` and `build` jobs but not for `gates`. In a shallow tagless
+checkout `setuptools-scm` derives `0.1.0.dev1` without failing, so that
+job would test a package whose version is meaningless, and it would
+degrade quietly rather than break. Both callers therefore fetch tags in
+their `install` command. The correct fix is `fetch-depth: 0` on that
+job, which lives in a hash-pinned kit body and is not this repository's
+to edit.
+

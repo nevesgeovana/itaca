@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=68", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -66,8 +66,27 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["itaca*"]
 
-[tool.setuptools.dynamic]
-version = { attr = "itaca.core.version.__version__" }
+# PEP 561: the marker must be INSIDE the distribution, or the
+# `Typing :: Typed` classifier above promises a consumer something the
+# installed package does not deliver (ITACA-014). mypy passing over
+# this source tree says nothing about that.
+[tool.setuptools.package-data]
+itaca = ["py.typed"]
+
+# The version is derived from the repository, never written in a file
+# (ITACA-004, DD-38). `release-branch-semver` is deliberate and not the
+# default: `guess-next-dev` would name 0.1.1.devN, the next PATCH after
+# the last tag, while this project ships milestones as minor releases
+# (M0 to M3 as v0.1.0 to v0.4.0). On a tagged commit every scheme
+# yields exactly X.Y.Z, which is what the release gate requires.
+#
+# `no-local-version` is required, not cosmetic: the default appends
+# `+g<sha>`, which PyPI rejects for upload and which the vendored
+# version-identity checker treats as its own separate failure.
+[tool.setuptools_scm]
+version_scheme = "release-branch-semver"
+local_scheme = "no-local-version"
+version_file = "itaca/core/_version.py"
 
 # -----------------------------------------------------------------------------
 # ruff: linting and formatting (REQ-80), import policy (REQ-82, DD-02)

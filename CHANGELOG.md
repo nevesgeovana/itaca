@@ -246,6 +246,47 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Fixed
 
+* **The version is derived from the repository instead of written in a
+  file** (`ITACA-004`, DD-38, REQ-92). `itaca/core/version.py` held
+  `__version__ = "0.1.0"` and every M1 commit inherited it, so an sdist
+  built from the seam was named `itaca-0.1.0.tar.gz` while containing
+  `Pipeline`, `core/sentinels.py`, `ops/rotate.py` and the whole `pproc`
+  package, and Provenance and `.itc` recorded a false statement about
+  which implementation produced a result. `setuptools-scm` now computes
+  it at build time: a tagged commit builds as exactly `X.Y.Z`, and every
+  other commit as `X.Y.Z.devN` naming the release being worked toward,
+  with `N` the commits since the last release tag.
+
+  Two consequences for anyone building from source. A tree that was
+  never installed can no longer report a version and raises
+  `VersionResolutionError` rather than guessing one, because a guess
+  would be stamped into Provenance as though it were a fact; install
+  with `pip install -e .` first. And `itaca/core/_version.py` is
+  generated at build time and gitignored.
+
+  A hand-maintained literal was also unbumpable without a window in
+  which the tree is wrong: the version-bump commit must be pushed before
+  its tag, and a final version on an untagged commit is refused, so the
+  branch would go red between the two pushes. Derivation removes that
+  window structurally rather than detecting it afterwards.
+
+* **`py.typed` is shipped, so the PEP 561 promise survives installation**
+  (`ITACA-014`). `pyproject.toml` declared the `Typing :: Typed`
+  classifier while `itaca/py.typed` did not exist, so it was in neither
+  the published wheel nor an sdist. A consumer type-checking against the
+  installed package got nothing from a promise this repository's own
+  `mypy --strict` gate satisfied against the source tree.
+
+* **Publication cannot happen without the gates** (`ITACA-006`,
+  REQ-95). `release.yml` triggered on a `v*` tag and ran build,
+  `twine check` and a tag-versus-version comparison, then published,
+  with no pytest, no coverage, no ruff, no mypy, and no dependency on
+  CI's verdict for that SHA; CI's triggers are disjoint from the tag, so
+  the two ran in parallel and publish could finish first. Both `ci.yml`
+  and `release.yml` now call one vendored reusable release gate, and the
+  old publishing body was deleted rather than kept beside it, because a
+  second publishing path makes the gate advisory.
+
 * The processor factory is `itc.processor`, not `itc.pproc`. Binding it
   under the package's own name shadowed the `itaca.pproc` attribute the
   import machinery sets, so `itc.pproc.parse_itceq` did not resolve and

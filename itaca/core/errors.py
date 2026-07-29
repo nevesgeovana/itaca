@@ -43,6 +43,7 @@ __all__ = [
     "UncertaintyKeyError",
     "VariableNotFoundError",
     "VectorGroupError",
+    "VersionResolutionError",
     "format_error_message",
 ]
 
@@ -200,6 +201,18 @@ class OperatingModeMixError(ProvenanceError):
 
 class HashMismatchError(ProvenanceError):
     """itc.open detects source-hash drift (REQ-103)."""
+
+
+class VersionResolutionError(ProvenanceError):
+    """The ITACA version cannot be derived, so nothing may stamp one.
+
+    A provenance failure rather than a dependency one: the version is a
+    provenance field, and a frame that cannot record which
+    implementation produced it has lost the chain of custody. Never
+    substituted with a guess, because the guess would be written into
+    Provenance and into ``.itc`` archives as though it were a fact
+    (REQ-92, DD-38).
+    """
 
 
 class PipelineCompatibilityError(ProvenanceError):
