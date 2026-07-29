@@ -7,3 +7,8 @@
 .claude/hooks/write_attestation.py   text eol=lf
 .claude/agents/incident-analyst.md   text eol=lf
 .claude/kit/**                       text eol=lf
+# release_gate.yml is a vendored kit body too, but it must live where
+# GitHub can call it as a reusable workflow, so it falls outside the
+# .claude/kit/** rule above and needs its own line. Without it a checkout
+# on another machine rewrites the line endings and breaks the pinned hash.
+.github/workflows/release_gate.yml   text eol=lf

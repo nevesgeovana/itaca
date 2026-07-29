@@ -1,7 +1,7 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.4
+# kit-version: 0.2.6
 # artifact: role_review_gate.py
-# body-sha256: 0a927d38feaed7b78b86e0d4dc860e80141ca46f55423bd0914adc88eb4b65b9
+# body-sha256: 889b8647b704394b28b48a87b473cacdc02d0222ee458e754c47726c8f7e5585
 # canonical-source: itaca hardened basis. The coordination flavor (ClaudeProjects/.claude/hooks/role_review_gate.py) is a DOCUMENTED SUPERSET, not drift: it swaps the single LEDGER_ENV constant for a per-target LEDGER_ENV_BY_REPO map so one gate can resolve the right ledger var when it targets either repo via git -C <repo>. A repo vendoring this canonical body uses its own single ledger var.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # END KIT PROVENANCE (body verbatim below)
@@ -824,13 +824,24 @@ def main() -> None:
             # all of it. git accepts several tips in one rev-list.
             span = " ".join(targets) + " --not --remotes"
             refs = " ".join(_push_refs(args_after_push)) or "HEAD"
+            # The lens list is the operator's actual instruction, so it is
+            # half of the vocabulary and has to move with it. Through kit
+            # 0.2.5 this message named five lenses and write_attestation.py
+            # accepted five tokens, and the two agreed on a set that had no
+            # numerical seat in it: nothing could record a numerical pass, so
+            # nothing asked for one, so none ever ran. Extending the writer's
+            # tuple alone would have left the sentence a human reads still
+            # silent about the lens that was missing.
             _decide(
                 "deny",
                 f"{GATE_PREFIX} [review] {len(missing)} of the {len(in_scope)} "
                 f"commit(s) in scope for this push are not covered by any "
                 f"role-review attestation: "
-                f"{listed}{more}. Run the role-review skill (the specialist agents: "
-                "architect, QA, V&V, tech writer, API designer as applicable) over the "
+                f"{listed}{more}. Run the role-review skill (this repository's own "
+                "specialist agents as applicable: architect, QA, V&V, tech writer, "
+                "API designer; plus the numerical-analyst and integration-reviewer "
+                "lenses at the coordination level, where a change is numerical or "
+                "crosses repositories) over the "
                 f"WHOLE pushed range, which is `{span}`, not only the tip; read "
                 f"it with `git log --oneline {span}`. Fix or register every "
                 "finding, then attest with `python .claude/hooks/"

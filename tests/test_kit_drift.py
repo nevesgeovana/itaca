@@ -31,30 +31,38 @@ needs no cross-repo filesystem access and cannot deadlock a push. A MIXED
 manifest (per-file body hashes and versions, not one kit-wide hash) is
 expected and correct, and the pins below are per file:
 
-- 0.2.4, the privacy promotion: ``role_review_gate.py``,
-  ``incident-analyst.md`` and ``snap.sh``. Incidental personal
-  identifiers left all three bodies. For ``role_review_gate.py`` that is
-  the whole change: three deny-message strings, no control flow, and no
-  allow or deny decision moved. ``snap.sh`` is NOT behavior-neutral and
-  must not be described as though it were. It changed twice: git identity
-  now comes from the ambient configuration with a neutral fallback, and
-  the shared incident-ledger tree stopped being a literal path and became
-  ``${COORD_SHARED_LEDGER_TREE:-}``. The second is a new dependency on
-  machine configuration whose unset branch does NOT behave as the body's
-  own comment claims; see ``_snap_if_present`` below and the registered
-  entry it cites.
+- 0.2.6, the release-integrity promotion: ``role_review_gate.py`` and
+  ``write_attestation.py`` re-vendored, plus five NEW artifacts. The
+  vocabulary change is the whole of it for the two existing bodies:
+  ``write_attestation.py`` gains ``numerical-analyst`` and
+  ``integration-reviewer`` in ``KNOWN_PASSES``, and the gate's deny
+  message names the two new lenses. No control flow moved and no allow
+  or deny decision changed. Read that for what it is: a recordable pass
+  is still not a REQUIRED pass, and the gate still never reads the
+  ``passes`` field. What changed is that the honest answer became
+  expressible.
+- 0.2.5: ``snap.sh`` alone, the false-success defect this repository
+  found and routed up. 0.2.5 was closed rather than extended, so it
+  keeps its own label while everything promoted beside it is 0.2.6;
+  the label is already cited by name in plan entry
+  ``ITC-20260728-2010`` and a label whose contents change after it is
+  cited makes the citation say something it no longer means.
+- 0.2.4: ``incident-analyst.md``, from the privacy promotion.
 - 0.2.2: both side-effect-guard artifacts, and both kit plan-checker
   artifacts. The plan-checker pair is a KNOWN LAG: the kit is at 0.2.3
   for those two (adoption-review hardening), and itaca still pins and
   runs 0.2.2. Re-vendoring them is separate work, out of scope for the
-  privacy promotion.
-- 0.1.0: ``write_attestation.py`` and ``check_incidents.py``, unchanged.
+  release-integrity promotion.
+- 0.1.0: ``check_incidents.py``, unchanged.
 
 The rule that decides both of those, stated once so the asymmetry is not
 mistaken for an oversight: a pin for an artifact deployed OUTSIDE this
 repository moves only together with the deployed copy it names. The
-``snap.sh`` pin moved because the deployed copy was moved to the same
-body in the same operation. The plan-checker pins did not move because
+``snap.sh`` pin moved to 0.2.5 because the deployed copy already
+carries that body: it was written when the defect was fixed, and this
+repository's pin was the half left behind, which is why the suite at
+``0d0dadd`` was red on exactly this one test before the pin moved. The
+plan-checker pins did not move because
 their deployed copies were not, and moving them alone would redden this
 suite for a change made elsewhere. A reader who repoints
 ``ITACA_PLAN_VALIDATOR`` at a directory holding a different kit version
@@ -81,12 +89,24 @@ Two vendoring shapes are covered:
 ``snap.sh``, the snapshot script for the ``_private`` trees, has no
 locator variable of its own, so it is drift-checked best-effort where it
 happens to sit beside a configured plan validator (``_snap_if_present``)
-rather than through the env-located path above. Two consequences worth
+rather than through the env-located path above. One consequence worth
 naming rather than discovering: CI sets neither locator, so this pin is
-NOT exercised there, and the 0.2.4 body carries a kit-owned defect in
-which an unset ``COORD_SHARED_LEDGER_TREE`` reports a snapshot it did not
-take instead of skipping. Both are registered, the second also by the
-sister repository as ``PLN-20260728-1615-snap-shared-tree-false-success``.
+NOT exercised there. The 0.2.4 body's false-success defect, in which an
+unset ``COORD_SHARED_LEDGER_TREE`` reported a snapshot it did not take
+instead of skipping, is fixed in the 0.2.5 body pinned below and was
+registered by the sister repository as
+``PLN-20260728-1615-snap-shared-tree-false-success``.
+
+One vendored artifact lives OUTSIDE the two ``.claude`` directories:
+``release_gate.yml`` is a reusable GitHub workflow and must sit under
+``.github/workflows/`` to be callable at all. It is pinned like any
+other copy, and ``test_no_unpinned_artifact_hides_in_the_vendored_dirs``
+was widened for it on two counts, because it would otherwise have
+escaped on both: the directory is not swept, and ``.yml`` was not in the
+suffix list. The widening for that directory is deliberately
+marker-based rather than suffix-based, since ``ci.yml`` and
+``release.yml`` are this repository's own files and pinning them would
+be false.
 
 The ``.md`` charter closes its provenance with an HTML ``-->`` after the
 marker line; that delimiter is part of the header, not the body, so it is
@@ -121,10 +141,25 @@ class Pin:
 # it wholesale.
 MANIFEST: dict[str, Pin] = {
     "role_review_gate.py": Pin(
-        "0a927d38feaed7b78b86e0d4dc860e80141ca46f55423bd0914adc88eb4b65b9", "0.2.4"
+        "889b8647b704394b28b48a87b473cacdc02d0222ee458e754c47726c8f7e5585", "0.2.6"
     ),
     "write_attestation.py": Pin(
-        "0c6aa3f9bc7e68aadb921463371b0f4a30a3f4bd9da9f1e3915bc48e8f243a91", "0.1.0"
+        "f3a257570cbb0c560b8ff343a55aa72be66a0d38793647180e23a59f7c23b0dc", "0.2.6"
+    ),
+    "release_gate.yml": Pin(
+        "7a8b036c6b198078d145432a7ac4a07f49b0926f7ae39a1c34519a7628c0de0f", "0.2.6"
+    ),
+    "check_release_gate.py": Pin(
+        "a0ef06b1aa031245e0354eadfbe120e69e38515ce3184eb2ea0b1d68adf34eb3", "0.2.6"
+    ),
+    "check_release_gate_mutations.py": Pin(
+        "897ace78c3d664b3de16f6a3947df746e9ab79d3916e448a61f499eef830d134", "0.2.6"
+    ),
+    "check_version_identity.py": Pin(
+        "d9fd719a92bc82cd8c81ab60888bcae4eeed320af89bced74b2602350afe68bd", "0.2.6"
+    ),
+    "check_version_identity_mutations.py": Pin(
+        "49f0dd3c2dd3ef257761ecbac32c5c0d3f56937f5d735080040843f6aeebf58a", "0.2.6"
     ),
     "incident-analyst.md": Pin(
         "891fa0bce811aade6fe58494d99db2f048987871cf5487fda77d9ff180ef7beb", "0.2.4"
@@ -139,7 +174,7 @@ MANIFEST: dict[str, Pin] = {
         "f6d3430a6d0ee44b4843f7d297a3454ce40d34cd83dc182a2ef840952c5c9c0a", "0.1.0"
     ),
     "snap.sh": Pin(
-        "7c9573aabe398576dd00c2a8a5acf0312fa289ff497ae56681225954d843f4cd", "0.2.4"
+        "0835e6ae1bd43d05e213a88552bcd94a1b91ebec946f9dabb5411d7595b265d1", "0.2.5"
     ),
     # KNOWN LAG, deliberate: the kit is at 0.2.3 for these two. Do NOT sync
     # them from the manifest of record without also moving the deployed
@@ -162,6 +197,17 @@ COMMITTED: list[tuple[str, str]] = [
         "check_side_effect_guard_mutations.py",
         ".claude/kit/check_side_effect_guard_mutations.py",
     ),
+    ("check_release_gate.py", ".claude/kit/check_release_gate.py"),
+    (
+        "check_release_gate_mutations.py",
+        ".claude/kit/check_release_gate_mutations.py",
+    ),
+    ("check_version_identity.py", ".claude/kit/check_version_identity.py"),
+    (
+        "check_version_identity_mutations.py",
+        ".claude/kit/check_version_identity_mutations.py",
+    ),
+    ("release_gate.yml", ".github/workflows/release_gate.yml"),
 ]
 
 
@@ -412,15 +458,27 @@ def test_no_unpinned_artifact_hides_in_the_vendored_dirs() -> None:
     linted nor drift-checked. Pin that every artifact under them is a
     committed manifest entry, closing that gap before it opens.
 
-    The sweep covers ``.md`` and ``.sh`` as well as ``.py``. Checking only
-    ``.py`` reproduced the gap one suffix over: ``.claude/kit`` already
-    holds a pinned ``.md`` (the of-record incident-analyst charter), so a
-    second ``.md`` dropped beside it would have escaped both layers, which
-    is the exact shape this test exists to prevent.
+    The sweep covers ``.md``, ``.sh``, ``.yml`` and ``.yaml`` as well as
+    ``.py``. Checking only ``.py`` reproduced the gap one suffix over:
+    ``.claude/kit`` already holds a pinned ``.md`` (the of-record
+    incident-analyst charter), so a second ``.md`` dropped beside it would
+    have escaped both layers, which is the exact shape this test exists to
+    prevent. ``.yml`` was added when kit 0.2.6 introduced a vendored
+    workflow; it does not live under these directories today, but the
+    suffix gap is closed here rather than left for the copy that does.
+
+    ``.github/workflows`` is swept too, and by a DIFFERENT rule: not every
+    file there is a vendored copy (``ci.yml`` and ``release.yml`` are this
+    repository's own), so the sweep keys on the kit provenance marker
+    instead of the suffix. Any file carrying that marker must be a pinned
+    COMMITTED entry. This is the gap that let ``release_gate.yml`` escape
+    on two counts at once, wrong directory and wrong suffix, and nothing
+    would have reminded anyone: the vendored-directory sweep passes
+    whether or not that file is pinned.
     """
     committed = {(_ROOT / rel).resolve() for _, rel in COMMITTED}
     for vendored_dir in (".claude/hooks", ".claude/kit"):
-        for suffix in ("*.py", "*.md", "*.sh"):
+        for suffix in ("*.py", "*.md", "*.sh", "*.yml", "*.yaml"):
             for artifact in (_ROOT / vendored_dir).glob(suffix):
                 assert artifact.resolve() in committed, (
                     f"{artifact} is under a ruff-excluded vendored directory "
@@ -428,3 +486,16 @@ def test_no_unpinned_artifact_hides_in_the_vendored_dirs() -> None:
                     f"manifest and the drift test, or it is neither linted nor "
                     f"drift-checked."
                 )
+    workflows = _ROOT / ".github" / "workflows"
+    for artifact in sorted(workflows.glob("*")):
+        if not artifact.is_file():
+            continue
+        if _MARKER not in _normalize(artifact.read_text(encoding="utf-8")):
+            continue
+        assert artifact.resolve() in committed, (
+            f"{artifact} carries the kit provenance marker but is not a "
+            f"pinned COMMITTED kit copy. A vendored body outside "
+            f"'.claude' escapes the directory sweep above, so it is pinned "
+            f"by this marker rule instead; add it to the manifest and to "
+            f"COMMITTED."
+        )

@@ -1,10 +1,25 @@
-# Release workflow (DD-21 incremental releases; M1 plan Phase B0).
-# Publishes to PyPI through trusted publishing (OIDC): no API token is
-# stored in the repository. Requires the matching publisher configured
-# on PyPI (project itaca, owner nevesgeovana, repository itaca,
-# workflow release.yml, environment pypi) and a GitHub environment
-# named pypi. Triggered by version tags only; the tag is cut after the
-# release gates of the execution plan are green.
+# Release (DD-21 incremental releases; M1 plan Phase B0).
+#
+# This file is a CALLER of the vendored shared release gate and holds no
+# build, check or publish logic of its own. That is the whole point of
+# ITACA-006: the previous body triggered on a `v*` tag, built, ran
+# `twine check`, compared the tag against `__version__`, and uploaded to
+# PyPI, with no pytest, no coverage, no ruff, no mypy, and no dependency
+# on CI's verdict for that SHA. CI's triggers are disjoint from this
+# one, so on a tag push the two ran in parallel and publish could finish
+# first. The only thing between a tag and a live upload was a human
+# process that a tag cut from the web UI bypasses entirely.
+#
+# The old body was DELETED rather than kept beside the gate. A second
+# publishing path makes the gate advisory, because the tag push starts
+# it too, and every hash and every drift test stays green while it does.
+# `.claude/kit/check_release_gate.py` refuses that arrangement by rule,
+# and `tests/test_release_integrity.py` runs it against this directory.
+#
+# Publishing still goes through PyPI trusted publishing (OIDC): no API
+# token is stored here. The publisher configured on PyPI must name the
+# workflow that actually uploads, which is now `release_gate.yml` and no
+# longer this file; the GitHub environment is `pypi`.
 name: Release
 
 on:
@@ -12,45 +27,41 @@ on:
     tags: ["v*"]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Build sdist and wheel
-        run: |
-          python -m pip install --upgrade pip build twine
-          python -m build
-          twine check dist/*
-      - name: Verify tag matches the package version
-        run: |
-          VERSION=$(python -c "import pathlib, re; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('itaca/core/version.py').read_text()).group(1))")
-          TAG="${GITHUB_REF_NAME#v}"
-          if [ "$VERSION" != "$TAG" ]; then
-            echo "Tag v$TAG does not match itaca.core.version __version__ $VERSION" >&2
-            exit 1
-          fi
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/project/itaca/
+  gate:
+    uses: ./.github/workflows/release_gate.yml
     permissions:
-      # OIDC trusted publishing: the workflow exchanges a short-lived
+      # OIDC trusted publishing: the gate exchanges a short-lived
       # identity token with PyPI instead of a stored secret.
       id-token: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - name: Publish to PyPI (trusted publishing)
-        uses: pypa/gh-action-pypi-publish@release/v1
+    with:
+      publish: true
+      python-version: "3.12"
+      install: pip install -e ".[dev,pandas]"
+      version-command: python -c "import itaca.core.version as v; print(v.__version__)"
+      identity-checker: .claude/kit/check_version_identity.py
+      # The gates are NAMED for what the command actually enforces. The
+      # 90 percent coverage floor rides inside `pytest` through this
+      # repository's `addopts`, so it is not split into a second gate
+      # whose command would be a duplicate invocation claiming to be an
+      # independent check.
+      gates: |
+        [
+          {"name": "lint", "run": "ruff check . && ruff format --check ."},
+          {"name": "types", "run": "mypy"},
+          {"name": "tests+coverage(90)", "run": "pytest"}
+        ]
+      # Runs against the built wheel in a clean virtualenv with the
+      # source tree absent, so an import cannot resolve to the checkout.
+      # It exercises ingestion, pivot, uncertainty assignment and
+      # analytic propagation rather than printing a version string: the
+      # promise this library makes is that numbers carry their
+      # uncertainty, so that is what the installed artifact is asked to
+      # do before anything is published.
+      smoke: >-
+        $PYTHON -c "import numpy as np, itaca as itc; db =
+        itc.load(np.array([[0.0, 1.0], [1.0, 2.0], [2.0, 3.0]]),
+        names=['alpha', 'FZ']).pivot(dims=['alpha']).set_uncertainty({'FZ':
+        0.1}).compute('CZ = FZ * 2.0'); assert list(db.vars['CZ'].values) ==
+        [2.0, 4.0, 6.0], db.vars['CZ'].values; assert
+        list(db.uncertainty.systematic['CZ']) == [0.2, 0.2, 0.2],
+        db.uncertainty.systematic['CZ']; print('smoke ok', itc.__version__)"

@@ -1,0 +1,327 @@
+# ITACA / pyflightstream shared process kit
+# kit-version: 0.2.6
+# artifact: release_gate.yml
+# body-sha256: 7a8b036c6b198078d145432a7ac4a07f49b0926f7ae39a1c34519a7628c0de0f
+# canonical-source: BUILT for the kit (0.2.6). One reusable workflow for the shared class ITACA-006 and PYFS-018 report identically: publish runs with no pytest, coverage, lint or types, and does not depend on the CI workflow at all. Both reviews independently recommend a single reusable quality job called by CI and by release; the two libraries' release.yml files were already near-verbatim copies of each other, which is what makes this kit material rather than a library's own.
+# note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
+# END KIT PROVENANCE (body verbatim below)
+# The shared release gate, called by BOTH ci.yml and release.yml.
+#
+# What it fixes. In both libraries a `v*` tag push started release.yml, which
+# built, ran `twine check`, compared the tag against the declared version, and
+# uploaded to PyPI. It ran no tests, no lint, no type check and no coverage,
+# and it declared no dependency on the CI workflow, whose triggers are
+# disjoint. On a tag push CI and release therefore ran in PARALLEL and publish
+# could finish first. The only thing standing between a tag and a live upload
+# was a human process that a tag created from the web UI bypasses entirely.
+#
+# The two structural properties, and every job below exists for one of them:
+#
+#   1. publish depends on the full gate set for the SAME commit. Every job that
+#      checks out source pins `ref: github.sha` explicitly rather than relying
+#      on the default, so the dependency is a property a reader can verify
+#      instead of a convention. Three of the six jobs check out NOTHING, and
+#      each for its own reason: `inventory` reads only the gates input,
+#      `smoke` must not have the source tree present at all (see property 2),
+#      and `publish` only downloads the artifact `build` produced. An earlier
+#      draft of this comment said "every job", which a review lens caught as
+#      false against the file it sits in.
+#   2. what is published is what was tested. `build` uploads one artifact;
+#      `smoke` installs that artifact's wheel into a clean virtualenv with the
+#      source tree ABSENT from the machine, so an import cannot silently
+#      resolve to the checkout; `publish` uploads the same artifact and never
+#      rebuilds.
+#
+# A gate that a repository does not have yet must be DECLARED, not omitted.
+# `inventory` refuses a gate entry carrying neither a command nor a reason, so
+# the honest intermediate state ("this library has no type checker until the
+# lane that adopts one") is written down in the caller's own file and rendered
+# into the run summary, instead of being a silence indistinguishable from an
+# oversight. That is the residual this workflow makes visible rather than
+# closes.
+#
+# STATED RESIDUAL, deliberately not fixed here. Both reviews also ask for the
+# actions to be pinned by commit SHA rather than by tag. They are not, because
+# a SHA cannot be verified from where this file is written and a fabricated
+# one is worse than an honest tag: it would look like the stronger form while
+# pinning nothing anyone checked. Pinning is registered as kit work, to be
+# done where the SHAs can be read from the actions' own repositories.
+name: Release gate
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: >-
+          The interpreter the gates, build and identity check run on. ONE
+          interpreter, deliberately: a caller that needs a matrix puts
+          strategy.matrix on the job that calls this workflow and passes
+          python-version through. Taking a matrix as an input here would put
+          the caller's CI shape inside a hash-pinned kit body.
+        required: true
+        type: string
+      install:
+        description: >-
+          Command that installs the package and its development dependencies,
+          for example `pip install -e ".[dev]"`. Run before every gate.
+        required: true
+        type: string
+      gates:
+        description: >-
+          JSON array of gate objects. Each carries `name` plus EITHER `run`
+          (the command) OR `absent` (why this repository has no such gate yet).
+          An entry with neither fails `inventory`, and an empty array fails it
+          too: a release gated by zero gates is not gated.
+        required: true
+        type: string
+      version-command:
+        description: >-
+          Command printing the version string the artifact will carry, on
+          stdout and nothing else. Where a version lives differs per
+          repository, so the caller supplies the reader rather than this file
+          hardcoding one repository's layout.
+        required: true
+        type: string
+      identity-checker:
+        description: >-
+          Repo-relative path of the vendored `check_version_identity.py`.
+          Differs per repository because the vendored kit directory does.
+        required: true
+        type: string
+      devn-policy:
+        description: exact (the devN counter tracks the VCS) or nonzero.
+        required: false
+        type: string
+        default: exact
+      smoke:
+        description: >-
+          Command run against the INSTALLED wheel, with $PYTHON pointing at the
+          clean virtualenv's interpreter and the source tree absent. It must
+          exercise an import and something real, not merely `--version`.
+        required: true
+        type: string
+      publish:
+        description: >-
+          Upload to PyPI. False from CI, true from the tag-triggered release
+          workflow. The caller decides; the gate chain is identical either way.
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  inventory:
+    name: gate inventory
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every gate either runs or is declared absent with a reason
+        env:
+          GATES: ${{ inputs.gates }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+
+          raw = os.environ["GATES"]
+          try:
+              gates = json.loads(raw)
+          except json.JSONDecodeError as exc:
+              sys.exit(f"the gates input is not valid JSON: {exc}")
+          if not isinstance(gates, list) or not gates:
+              sys.exit(
+                  "the gates input is empty. A release gated by zero gates is "
+                  "not gated, and a workflow that accepted it would report a "
+                  "protection it does not provide."
+              )
+
+          rows, bad, absent = [], [], []
+          for i, gate in enumerate(gates):
+              if not isinstance(gate, dict) or not gate.get("name"):
+                  bad.append(f"entry {i} has no name")
+                  continue
+              name = gate["name"]
+              if gate.get("run"):
+                  rows.append(f"| `{name}` | runs | `{gate['run']}` |")
+              elif gate.get("absent"):
+                  rows.append(f"| `{name}` | DECLARED ABSENT | {gate['absent']} |")
+                  absent.append(name)
+              else:
+                  bad.append(
+                      f"gate {name!r} carries neither `run` nor `absent`. A gate "
+                      f"that is silently missing is indistinguishable from one "
+                      f"nobody thought about; say why it is absent."
+                  )
+
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as fh:
+                  fh.write("## Release gate inventory\n\n")
+                  fh.write("| gate | state | detail |\n|---|---|---|\n")
+                  fh.write("\n".join(rows) + "\n")
+                  if absent:
+                      fh.write(
+                          f"\n**{len(absent)} gate(s) declared absent: "
+                          f"{', '.join(absent)}.** This release is not covered "
+                          f"by them.\n"
+                      )
+          for row in rows:
+              print(row)
+          if bad:
+              print("", file=sys.stderr)
+              for b in bad:
+                  print(f"REFUSED: {b}", file=sys.stderr)
+              sys.exit(1)
+          print(f"\n{len(rows)} gate(s) declared, {len(absent)} absent")
+          PY
+
+  gates:
+    name: gate/${{ matrix.gate.name }}
+    needs: inventory
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: ${{ fromJSON(inputs.gates) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install
+        if: ${{ matrix.gate.run != '' }}
+        env:
+          INSTALL: ${{ inputs.install }}
+        run: bash -c "$INSTALL"
+      - name: Run the gate
+        # The command goes through the environment rather than into the script
+        # text. Interpolating `${{ }}` directly into `run:` splices the value
+        # into the shell source, so a value containing shell metacharacters
+        # changes the script rather than being an argument to it. The value is
+        # repo-owned and therefore trusted, but the shape of the trust should
+        # not depend on that.
+        if: ${{ matrix.gate.run != '' }}
+        env:
+          GATE: ${{ matrix.gate.run }}
+        run: bash -c "$GATE"
+      - name: Declared absent
+        if: ${{ matrix.gate.run == '' }}
+        env:
+          REASON: ${{ matrix.gate.absent }}
+        run: |
+          echo "GATE DECLARED ABSENT: ${{ matrix.gate.name }}"
+          echo "reason: $REASON"
+          echo "This release is NOT covered by this gate."
+
+  identity:
+    name: version identity
+    needs: inventory
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          # The rule compares against the newest reachable release tag, so a
+          # shallow clone with no tags would make it a configuration error
+          # rather than a check.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install
+        env:
+          INSTALL: ${{ inputs.install }}
+        run: bash -c "$INSTALL"
+      - name: Read the version the artifact will carry
+        id: read
+        env:
+          VERSION_COMMAND: ${{ inputs.version-command }}
+        run: |
+          VERSION="$(bash -c "$VERSION_COMMAND")"
+          if [ -z "$VERSION" ]; then
+            echo "the version command printed nothing" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "declared version: $VERSION"
+      - name: The version must identify this commit
+        # Through the environment, not spliced into the script text, for the
+        # same reason the gate step three jobs above says so. An earlier draft
+        # interpolated all three values directly here and a review lens caught
+        # the file contradicting its own stated rule.
+        env:
+          CHECKER: ${{ inputs.identity-checker }}
+          VERSION: ${{ steps.read.outputs.version }}
+          POLICY: ${{ inputs.devn-policy }}
+        run: python "$CHECKER" --version "$VERSION" --repo . --devn-policy "$POLICY"
+
+  build:
+    name: build
+    needs: [inventory, gates, identity]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  smoke:
+    name: smoke the built wheel
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # Deliberately NO checkout. With the source tree absent from the runner,
+      # an import cannot resolve to it, so what this job exercises is the
+      # distribution and only the distribution. A smoke test run from the
+      # repository root passes for a wheel that ships nothing.
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install the built wheel into a clean environment
+        run: |
+          python -m venv "$RUNNER_TEMP/smoke"
+          "$RUNNER_TEMP/smoke/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/smoke/bin/python" -m pip install "$GITHUB_WORKSPACE"/dist/*.whl
+      - name: Smoke the INSTALLED distribution
+        working-directory: ${{ runner.temp }}
+        env:
+          SMOKE: ${{ inputs.smoke }}
+          PYTHON: ${{ runner.temp }}/smoke/bin/python
+        run: bash -c "$SMOKE"
+
+  publish:
+    name: publish to PyPI
+    # Every gate, the identity rule, the build and the smoke of that build.
+    # This list is the finding: through kit 0.2.5 it read `needs: build` and
+    # build itself needed nothing.
+    needs: [inventory, gates, identity, build, smoke]
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    permissions:
+      # OIDC trusted publishing: a short-lived identity token, not a stored
+      # secret.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1

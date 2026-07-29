@@ -57,6 +57,10 @@ dev = [
     # scipy is never a runtime dependency and is barred from library
     # code by the NumPy-only import policy.
     "scipy>=1.11,<2.0",
+    # The vendored kit release-gate checker parses workflow YAML. Without
+    # PyYAML it exits 2 having verified NOTHING, rather than degrading to
+    # a text scan, so a missing parser would read as an unarmed guard.
+    "pyyaml>=6.0,<7.0",
 ]
 
 [tool.setuptools.packages.find]

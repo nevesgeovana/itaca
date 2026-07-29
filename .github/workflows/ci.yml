@@ -2,6 +2,26 @@
 # mypy --strict on the public API, pytest with the 90 percent coverage
 # gate (REQ-75). Tests run against the minimum and the latest compatible
 # dependency versions (REQ-83).
+#
+# CI and Release now call the SAME reusable gate, which is what REV-001
+# asked for in ITACA-006: one description of what must pass, rather than
+# two files that can drift apart while both stay green. The only
+# difference between the two callers is `publish`.
+#
+# The matrix sits on the CALLING job, deliberately. The gate takes one
+# `python-version` by design, because a matrix input would put this
+# repository's CI shape inside a hash-pinned kit body. A job that `uses:`
+# a reusable workflow may carry its own `strategy.matrix`, so the
+# 3.11/3.13 by latest/minimum breadth is preserved rather than collapsed.
+# The alternative, calling the gate once beside an unchanged matrix job,
+# was rejected: it would leave two places describing what runs, which is
+# the thing this promotion exists to reduce.
+#
+# What each leg now does that it did not before: it builds the wheel and
+# smoke-tests it in a clean virtualenv with the source tree absent. That
+# is more work per leg and it is the point. Lint and types also move from
+# a single 3.12 job to every leg; ruff is pinned exactly (REQ-96) so its
+# verdict cannot differ between them.
 name: CI
 
 on:
@@ -10,47 +30,41 @@ on:
   pull_request:
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-      - name: ruff check
-        run: ruff check .
-      - name: ruff format check
-        run: ruff format --check .
-      - name: mypy strict
-        run: mypy
-
-  test:
-    runs-on: ubuntu-latest
+  gate:
+    name: gate (py${{ matrix.python-version }}, ${{ matrix.deps }} deps)
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.13"]
-        deps: [latest, minimum]
-        exclude:
-          # NumPy 1.26 has no Python 3.13 wheels; the minimum floor is
-          # exercised on the oldest supported interpreter.
-          - python-version: "3.13"
+        include:
+          - python-version: "3.11"
+            deps: latest
+            install: pip install -e ".[dev,pandas]"
+          # NumPy 1.26 has no Python 3.13 wheels, so the minimum floor is
+          # exercised on the oldest supported interpreter only.
+          - python-version: "3.11"
             deps: minimum
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev,pandas]"
-      - name: Pin minimum dependency versions
-        if: matrix.deps == 'minimum'
-        run: pip install "numpy==1.26.*" "pandas==2.1.*"
-      - name: pytest with coverage gate
-        run: pytest
+            install: pip install -e ".[dev,pandas]" && pip install "numpy==1.26.*" "pandas==2.1.*"
+          - python-version: "3.13"
+            deps: latest
+            install: pip install -e ".[dev,pandas]"
+    uses: ./.github/workflows/release_gate.yml
+    with:
+      publish: false
+      python-version: ${{ matrix.python-version }}
+      install: ${{ matrix.install }}
+      version-command: python -c "import itaca.core.version as v; print(v.__version__)"
+      identity-checker: .claude/kit/check_version_identity.py
+      gates: |
+        [
+          {"name": "lint", "run": "ruff check . && ruff format --check ."},
+          {"name": "types", "run": "mypy"},
+          {"name": "tests+coverage(90)", "run": "pytest"}
+        ]
+      smoke: >-
+        $PYTHON -c "import numpy as np, itaca as itc; db =
+        itc.load(np.array([[0.0, 1.0], [1.0, 2.0], [2.0, 3.0]]),
+        names=['alpha', 'FZ']).pivot(dims=['alpha']).set_uncertainty({'FZ':
+        0.1}).compute('CZ = FZ * 2.0'); assert list(db.vars['CZ'].values) ==
+        [2.0, 4.0, 6.0], db.vars['CZ'].values; assert
+        list(db.uncertainty.systematic['CZ']) == [0.2, 0.2, 0.2],
+        db.uncertainty.systematic['CZ']; print('smoke ok', itc.__version__)"

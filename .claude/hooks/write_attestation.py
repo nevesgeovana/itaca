@@ -1,7 +1,7 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.1.0
+# kit-version: 0.2.6
 # artifact: write_attestation.py
-# body-sha256: 0c6aa3f9bc7e68aadb921463371b0f4a30a3f4bd9da9f1e3915bc48e8f243a91
+# body-sha256: f3a257570cbb0c560b8ff343a55aa72be66a0d38793647180e23a59f7c23b0dc
 # canonical-source: itaca. No divergence between the copies.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # END KIT PROVENANCE (body verbatim below)
@@ -20,9 +20,9 @@ two-ref push could not be attested at all because the second run
 overwrote the first.
 
 <passes> is a comma-separated list of the reviewer passes that actually
-ran (architect,qa,vv,tech-writer,api-designer). It is required and
-validated: an unknown token is refused rather than recorded, because
-this file is an audit record and a silently mistyped one is worse than
+ran, drawn from KNOWN_PASSES below. It is required and validated: an
+unknown token is refused rather than recorded, because this file is an
+audit record and a silently mistyped one is worse than
 none. The attestation stamps every resolved ref together with every
 commit not yet on a remote, which is the range the next push would make
 new; the git-push gate (role_review_gate.py) allows the push only while
@@ -34,6 +34,17 @@ defeats the protocol this file exists to enforce. The ``passes`` field
 is an audit annotation, not an enforced gate input: the gate checks
 only that an attestation covers the pushed range, so the honesty of
 the passes list rests on the operator, not the mechanism.
+
+What the kit 0.2.6 vocabulary bump does, stated exactly, because the
+temptation is to read it as more. Until 0.2.6 the tuple below held five
+tokens and no numerical pass could be RECORDED, so none was required,
+so none ran; two independent reviews then found blockers whose
+numerical share had never been re-derived by anyone. Adding
+``numerical-analyst`` and ``integration-reviewer`` removes a MECHANICAL
+bar and nothing else. A recordable pass is still not a required pass:
+this file records what the operator says ran, the gate still never
+reads the field, and neither token makes a lens fire. What changed is
+only that the honest answer became expressible.
 
 The record's timestamp is the committer date of the first commit the
 attestation covers, normally the first resolved ref
@@ -52,7 +63,30 @@ from pathlib import Path
 
 ATTESTATION = ".claude/.role_review_attestation.json"
 KINDS = ("review", "release")
-KNOWN_PASSES = ("architect", "qa", "vv", "tech-writer", "api-designer")
+# The audit vocabulary. CLOSED, exact-match, and permanent: validation is
+# `p not in KNOWN_PASSES`, so whatever is spelled here is the spelling every
+# attestation ever written is read back with. Lowercase and hyphenated
+# throughout, and each token names the ROLE that ran the pass rather than the
+# agent file carrying it (`architect`, not `architecture-reviewer`).
+#
+# The two 0.2.6 additions, and why each is spelled this way:
+# - `numerical-analyst` names the author's non-delegable seat exactly as the
+#   coordination charter names it. Bare `numerical` was rejected: it is an
+#   adjective, and in an audit record for libraries whose test tiers are
+#   numbered it reads as "numerical tests ran", which is a different claim.
+# - `integration-reviewer` deliberately KEEPS the `-reviewer` suffix and so
+#   breaks the role-not-agent pattern above, for one reason: the role has no
+#   one-word name, and bare `integration` would read as integration TESTING.
+#   Ambiguity is cheapest to remove here and permanent everywhere else.
+KNOWN_PASSES = (
+    "architect",
+    "qa",
+    "vv",
+    "tech-writer",
+    "api-designer",
+    "numerical-analyst",
+    "integration-reviewer",
+)
 
 
 def _git(root: Path, *args: str) -> str:

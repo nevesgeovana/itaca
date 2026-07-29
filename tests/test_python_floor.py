@@ -28,6 +28,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 import itaca
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,14 +80,46 @@ def _supported_minors() -> list[tuple[int, int]]:
 
 
 def _ci_matrix_versions() -> list[tuple[int, int]]:
-    workflow = CI_WORKFLOW.read_text(encoding="utf-8")
-    found = re.search(r"^\s*python-version:\s*\[([^\]]*)\]", workflow, flags=re.M)
+    """Every interpreter the CI matrix actually runs a gate on.
+
+    Read from the parsed YAML rather than by regex over the text. CI
+    calls the vendored reusable release gate, which takes ONE
+    ``python-version``, so the breadth lives in a ``strategy.matrix``
+    on the CALLING job and reaches the gate through ``with:``. A regex
+    for an inline ``python-version: [...]`` list read the previous
+    shape and saw nothing in this one, which would have removed the
+    floor guard silently: exactly the accidental-guard failure this
+    module's docstring exists to prevent.
+
+    The walk is deliberately shape-agnostic. It collects every
+    ``python-version`` under any ``matrix`` mapping at any depth, so a
+    future move back to an inline list, or to a differently named job,
+    keeps the floor guarded without another silent gap.
+    """
+    workflow: Any = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    found: list[str] = []
+
+    def walk(node: Any, *, in_matrix: bool) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "python-version" and in_matrix:
+                    if isinstance(value, str):
+                        found.append(value)
+                    elif isinstance(value, list):
+                        found.extend(str(entry) for entry in value)
+                walk(value, in_matrix=in_matrix or key == "matrix")
+        elif isinstance(node, list):
+            for entry in node:
+                walk(entry, in_matrix=in_matrix)
+
+    walk(workflow, in_matrix=False)
     assert found, (
-        "the CI test job declares no inline python-version matrix; this guard "
-        "reads it to confirm the floor is actually exercised, so keep it as "
-        '`python-version: ["X.Y", ...]` (REQ-83, REQ-95).'
+        "the CI workflow declares no python-version anywhere under a "
+        "strategy.matrix; this guard reads it to confirm the floor is "
+        "actually exercised. Keep the interpreter breadth in a matrix on "
+        "the job that calls the release gate (REQ-83, REQ-95)."
     )
-    versions = re.findall(r"(\d+)\.(\d+)", found.group(1))
+    versions = re.findall(r"(\d+)\.(\d+)", " ".join(found))
     return [(int(major), int(minor)) for major, minor in versions]
 
 

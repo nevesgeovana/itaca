@@ -26,12 +26,14 @@ rationale lives next to the setting in ``pyproject.toml``.
 
 import importlib.metadata
 import itertools
+import json
 import re
 import tomllib
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
@@ -120,13 +122,40 @@ def _dev_ruff_pin() -> str:
     return exact.group(1)
 
 
+def _ci_gate_commands() -> list[str]:
+    """Every command CI's release-gate call actually runs.
+
+    CI no longer spells its checks as `run:` steps: it calls the
+    vendored reusable release gate and passes the gate set as a JSON
+    array. Reading the parsed gate entries is a STRONGER check than the
+    previous text search, because it confirms the command is a gate the
+    workflow will execute rather than a string that happens to appear
+    somewhere in the file.
+    """
+    workflow: Any = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    commands: list[str] = []
+    for job in workflow.get("jobs", {}).values():
+        gates = job.get("with", {}).get("gates")
+        if not gates:
+            continue
+        for entry in json.loads(gates):
+            if "run" in entry:
+                commands.append(entry["run"])
+    assert commands, (
+        "the CI workflow passes no `gates` to the release gate, so this "
+        "guard has nothing to read and the lint commands below would be "
+        "unchecked (REQ-95, REQ-96)."
+    )
+    return commands
+
+
 def test_ci_lint_job_runs_both_ruff_commands() -> None:
-    workflow = CI_WORKFLOW.read_text(encoding="utf-8")
-    missing = [cmd for cmd in CI_RUFF_COMMANDS if f"run: {cmd}" not in workflow]
+    commands = " && ".join(_ci_gate_commands())
+    missing = [cmd for cmd in CI_RUFF_COMMANDS if cmd not in commands]
     assert not missing, (
-        f"the CI lint job no longer runs {missing}; restore the step, or the "
-        "pre-commit hooks below mirror a job that stopped checking what they "
-        "check (REQ-95, REQ-96)."
+        f"the CI gate set no longer runs {missing}; restore it in the `gates` "
+        "input, or the pre-commit hooks below mirror a job that stopped "
+        "checking what they check (REQ-95, REQ-96)."
     )
 
 
