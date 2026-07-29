@@ -255,7 +255,7 @@ metadata entered the scope.
 
 Metadata is in scope because operations read it and act on it:
 \code{rotate} reads a unit to convert an angle to radians, so a frame
-labelled \code{deg} and a frame labelled \code{rad} produce different
+labeled \code{deg} and a frame labeled \code{rad} produce different
 physics from identical arrays, and the archive persists and
 reconstructs every one of these fields. A guarantee that certified an
 archive while leaving what its variables claim to be outside the digest
@@ -581,6 +581,29 @@ is present. Condition-dependent frames
 (Section~\ref{sec:condition-frames}) are evaluated per grid point.
 Unknown target axes raise \code{AxisNotFoundError};
 unresolvable vector groups raise \code{VectorGroupError}.
+
+The stored correlation among a rotated group's components is
+RECOMPUTED from the transformed covariance rather than carried: after a
+linear transform the stored coefficient is the one implied by $RCR^T$.
+Carrying it unchanged was not merely stale but wrong in sign, measured
+at $+0.5$ where the truth is $-0.5$. A group already expressed in the
+target axis is an explicit identity, decided by axis name and never by
+matrix equality.
+
+Three conditions raise \code{UncertaintyError}, because the store holds
+ONE coefficient per pair and each is a case it cannot represent:
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item a recomputed coefficient that differs from cell to cell;
+  \item one that differs between the systematic and random components
+    (OQ-23);
+  \item a declared pair joining a rotated component to a variable
+    outside its group, since the rotation transforms only the
+    within-group block (OQ-34).
+\end{itemize}
+A pair the rotation CREATED, rather than one the user declared, is
+recorded in the operation string as \code{correlation\_not\_stored}
+instead of raising: refusing to invent a coefficient must not break the
+REQ-101 case.
 \end{reqbox}
 
 \begin{reqbox}{REQ-100}{\stable}
@@ -686,7 +709,17 @@ correlation coefficients between pairs of variables. Default is full
 independence ($r=0$ for all pairs). The correlation matrix is stored
 alongside the UncFrame and is consulted by every uncertainty
 propagation operation. Symmetry and the constraint $|r| \le 1$ are
-validated; violations raise \code{CorrelationMatrixError}. Variables
+validated; violations raise \code{CorrelationMatrixError}. The
+ASSEMBLED matrix over the closure of declared names must also be
+positive semidefinite, with a numerically scaled tolerance: the
+pairwise bound is necessary and not sufficient, since three variables
+each declared at $r = -0.9$ satisfy it while the assembled matrix has
+eigenvalue $-0.8$ and makes the variance of their sum negative.
+Validation happens at declaration, which is both sufficient and
+complete: every consumer forms $\mathrm{Cov} = DCD$ with $D =
+\mathrm{diag}(u) \ge 0$, which is positive semidefinite whenever $C$
+is, and extending $C$ to a larger variable set appends an identity
+block. Variables
 referenced but not present in the VarFrame raise
 \code{CorrelationKeyError}.
 \end{reqbox}
@@ -796,6 +829,15 @@ compiled to the \itc{} operator tree (DD-20). The engine supports:
 Each operator implements \code{evaluate()}, \code{d\_da()}, and (where
 applicable) \code{d\_db()}, and is independently testable. Property-based
 tests are required (Chapter~\ref{ch:nonfunctional}).
+
+Calls take POSITIONAL arguments only. A keyword argument raises
+\code{DataError} naming the function and the keyword. Keywords were
+previously parsed and then discarded at execution, so
+\code{np.round(x, decimals=2)} returned a rounded-to-integer result
+while History recorded the expression WITH the keyword, showing an
+intent the execution did not honor. Which keywords the language should
+eventually accept is OQ-37; until it is answered, refusing is the only
+behavior that cannot produce a wrong number.
 \end{reqbox}
 
 \section{Processors: \code{itc.processor()}}

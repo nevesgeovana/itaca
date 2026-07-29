@@ -46,6 +46,7 @@ def standard_uncertainty(
     terms: int,
     obj: str,
     operation: str,
+    fix: str,
 ) -> NDArray[Any]:
     """Take the square root of a variance, refusing a material negative.
 
@@ -74,6 +75,12 @@ def standard_uncertainty(
         The object involved, for the error message (REQ-81).
     operation : str
         The operation attempted, for the error message (REQ-81).
+    fix : str
+        The suggested fix, for the error message (REQ-81). A parameter
+        rather than a fixed sentence because the remedy differs per
+        caller: only ``combine`` has a ``cross_correlation`` to check,
+        and a fixed text naming it would prescribe a parameter that
+        three of the four call sites do not have.
 
     Returns
     -------
@@ -93,7 +100,12 @@ def standard_uncertainty(
     --------
     >>> import numpy as np
     >>> standard_uncertainty(
-    ...     np.array([4.0]), np.array([4.0]), terms=1, obj="u", operation="op"
+    ...     np.array([4.0]),
+    ...     np.array([4.0]),
+    ...     terms=1,
+    ...     obj="u",
+    ...     operation="op",
+    ...     fix="review the declared correlations",
     ... )
     array([2.])
     """
@@ -108,10 +120,7 @@ def standard_uncertainty(
             f"{operation} produced variance {float(flat[worst]):.6g} against a "
             f"term scale of {float(broadcast_scale[worst]):.6g}, so the "
             f"standard uncertainty is not a real number",
-            "check the declared correlations and any cross_correlation for a "
-            "covariance that is not positive semidefinite; a rounding-scale "
-            "negative residual is clamped, a material one is not "
-            "(REQ-40, REQ-41)",
+            fix,
         )
     return np.asarray(np.sqrt(np.where(variance < 0.0, 0.0, variance)))
 

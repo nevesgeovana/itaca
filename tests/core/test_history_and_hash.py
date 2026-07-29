@@ -184,7 +184,7 @@ class TestSemanticStateHash:
     different physics.
 
     `rotate` reads a unit to convert an angle to radians, so a frame
-    labelled `deg` and a frame labelled `rad` compute different results
+    labeled `deg` and a frame labeled `rad` compute different results
     from identical arrays. They hashed identically, because the digest
     covered arrays and names and nothing a Dimension or Variable calls
     itself. SEAT-lib-wording answered that the hash is a SEMANTIC

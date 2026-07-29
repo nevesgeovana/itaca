@@ -23,6 +23,7 @@ plain set equality would fail on a correct configuration.
 """
 
 import ast
+import sys
 import tomllib
 from pathlib import Path
 
@@ -43,7 +44,7 @@ PANDAS_EXEMPT_PACKAGES = frozenset({"io", "utils"})
 The xarray and dask ban is not narrowed by this set. Exempting these
 packages from the whole banned list was measured to let `import xarray`
 and `import dask` through both enforcement layers (ITACA-013), which is
-broader than the licence REQ-82 actually grants.
+broader than the license REQ-82 actually grants.
 """
 
 # Packages known to exist. Not the list the guards walk: it is a floor
@@ -199,3 +200,83 @@ def test_dev_only_oracles_barred_from_library() -> None:
     # never imported by any library package, including io/ and utils/.
     offenders = _offenders(library_packages(), ORACLE_ONLY)
     assert not offenders, f"dev-only oracle imported by library (DD-25/26): {offenders}"
+
+
+# REQ-82 is an ALLOWLIST ("only NumPy and the standard library") and both
+# enforcement layers were denylists of five names. `import matplotlib` in
+# itaca/core/ passed ruff (not in banned-api) and passed the AST guard
+# (not in ALWAYS_BANNED, PANDAS or ORACLE_ONLY). This is DD-33's own
+# argument on the other axis: DD-33 fixed the enumeration of COVERED
+# PACKAGES because the moment a package is added is the moment it is
+# least reviewed, and the enumeration of BANNED IMPORTS has the identical
+# property. It is about to be exercised: errors.py already names
+# matplotlib, plotly and SMT as REQ-84 optional dependencies, and plot
+# core is M1 stretch scope.
+#
+# The ruff denylist stays as the fast-feedback belt; this is the braces.
+ALLOWED_THIRD_PARTY = frozenset({"numpy", "itaca"})
+
+
+def _disallowed_imports(packages: tuple[str, ...]) -> list[str]:
+    """Imports that are neither stdlib nor on the short allowlist."""
+    root = Path(itaca.__file__).parent
+    offenders: list[str] = []
+    for path in _sources(packages):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for name in sorted(_imported_top_level_names(tree)):
+            if name in sys.stdlib_module_names or name in ALLOWED_THIRD_PARTY:
+                continue
+            relative = path.relative_to(root).as_posix()
+            if name == "pandas" and relative.split("/")[0] in PANDAS_EXEMPT_PACKAGES:
+                continue
+            offenders.append(f"{relative}: {name}")
+    return offenders
+
+
+def test_req82_is_enforced_as_an_allowlist_not_a_denylist() -> None:
+    """Only NumPy and the standard library, which is what REQ-82 says.
+
+    A denylist answers "is this one of the five we thought of", and the
+    five were thought of in 2026. An allowlist answers the question the
+    requirement actually asks, so a dependency nobody has heard of yet is
+    refused by default rather than by amendment.
+
+    The pandas exemption is kept where REQ-82 grants it, and only there.
+    """
+    offenders = _disallowed_imports(library_packages())
+    assert not offenders, (
+        f"import(s) outside NumPy and the standard library (REQ-82, DD-02, "
+        f"DD-33): {offenders}. REQ-82 is an allowlist; add a dependency only "
+        "by amending the requirement, never by leaving it off a denylist."
+    )
+
+
+def test_itaca_013_the_ast_guard_proves_itself_on_every_run() -> None:
+    """The guard must block the original failure WHEN RE-RUN.
+
+    Without this, `test_itaca_013_xarray_and_dask_are_barred_from_every_package`
+    passes against the PRE-FIX code too, because neither tree contains an
+    xarray import: its correctness turns entirely on one identifier,
+    `library_packages()` rather than `restricted_packages()`. Change that
+    back and both ITACA-013 tests still pass, because the sibling reads
+    `pyproject.toml` and not the walk.
+
+    The incident policy asks for evidence that the guard blocks the
+    original failure when re-run, not evidence recorded once in a commit
+    message. So the mutation runs here: a banned import is written into
+    `itaca/io/`, the walk must name it, and the file is removed.
+    """
+    probe = Path(itaca.__file__).parent / "io" / "_probe_banned_import.py"
+    probe.write_text("import xarray\nimport dask\n", encoding="utf-8")
+    try:
+        offenders = _offenders(library_packages(), ALWAYS_BANNED)
+    finally:
+        probe.unlink()
+    named = {entry.split(": ")[1] for entry in offenders}
+    assert named == {"xarray", "dask"}, (
+        f"the AST walk did not name the mutant's banned imports; it found "
+        f"{offenders}. The guard cannot prove it blocks the failure it "
+        "exists for, which is the self-skipping evidence this repository "
+        "refuses elsewhere (ITACA-013)."
+    )
+    assert not (Path(itaca.__file__).parent / "io" / "_probe_banned_import.py").exists()

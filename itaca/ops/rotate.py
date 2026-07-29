@@ -247,7 +247,13 @@ def _reject_angle_correlation(
     angles = set(dl_tb) | set(dl_sb)
     if not angles:
         return
-    for pair in db.correlation.pairs:
+    for pair, value in db.correlation.pairs.items():
+        # The value is honored, as _reject_cross_group_correlation
+        # already does: a declared coefficient of exactly zero IS no
+        # correlation, and refusing it made the two sibling guards
+        # disagree about what a zero means.
+        if not value:
+            continue
         touched = angles.intersection(pair)
         if touched:
             raise UncertaintyError(
@@ -335,6 +341,12 @@ def rotate(
                     terms=9,
                     obj=f"{label} uncertainty of '{comp}'",
                     operation=f"rotate to '{target_axis}'",
+                    fix=(
+                        f"the declared correlation among {list(comps)} makes "
+                        "their joint covariance impossible, so the rotated "
+                        "variance is negative; review those pairs with "
+                        "db.correlation (REQ-40, REQ-101)"
+                    ),
                 )
 
         # Skip entirely when nothing was propagated: a frame declaring a

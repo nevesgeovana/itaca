@@ -305,7 +305,7 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 * **The state hash covers every field that decides behavior**
   (`ITACA-003`, DD-40, REQ-103 rewritten, REQ-107 stabilized). A frame
-  whose angle dimension was labelled `deg` and one labelled `rad`, with
+  whose angle dimension was labeled `deg` and one labeled `rad`, with
   identical arrays, produced the SAME `state_hash` while `rotate` read
   the unit and computed `FZ = -1.0` against `-0.894`. Two states with
   the same identity produced different physics.
@@ -414,12 +414,13 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   other commit as `X.Y.Z.devN` naming the release being worked toward,
   with `N` the commits since the last release tag.
 
-  Two consequences for anyone building from source. A tree that was
-  never installed can no longer report a version and raises
-  `VersionResolutionError` rather than guessing one, because a guess
-  would be stamped into Provenance as though it were a fact; install
-  with `pip install -e .` first. And `itaca/core/_version.py` is
-  generated at build time and gitignored.
+  **Breaking for source checkouts.** `import itaca` itself now raises
+  `VersionResolutionError` on a tree that was never installed. The
+  version is resolved at import time, and a guess would be stamped into
+  Provenance and into `.itc` archives as though it were a fact, so
+  nothing is importable rather than only `__version__` being wrong. Run
+  `pip install -e .` first. Also, `itaca/core/_version.py` is generated
+  at build time and gitignored.
 
   A hand-maintained literal was also unbumpable without a window in
   which the tree is wrong: the version-bump commit must be pushed before

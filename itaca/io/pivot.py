@@ -98,7 +98,8 @@ def reject_repeated_names(
     for index, name in enumerate(names):
         if name in seen:
             raise DuplicateNameError(
-                f"{role} '{name}' at positions {seen[name]} and {index} of {origin}",
+                f"{role} '{name}' at positions {seen[name]} and {index} "
+                f"(0-based) of {origin}",
                 consequence,
                 f"rename or drop the repeat so every {role} is unique ({req})",
             )

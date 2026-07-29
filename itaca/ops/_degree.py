@@ -51,7 +51,7 @@ def require_nonnegative_degree(
     """
     if value < 0:
         raise DataError(
-            f"{parameter} {value}",
+            f"{parameter}={value}",
             f"{operation} needs a nonnegative polynomial degree",
             f"pass {parameter} >= 0 ({req})",
         )

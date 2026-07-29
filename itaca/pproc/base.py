@@ -213,8 +213,10 @@ class EquationProcessor:
                 "remove the entry from [constants] to use the measured "
                 "channel, or rename one of the two; a value that is "
                 "measured belongs in the VarFrame, a value that is "
-                "declared belongs in [constants] (REQ-45, REQ-48, SRS "
-                "Section 4.6)",
+                "declared belongs in [constants]. To OVERRIDE a bad "
+                "channel deliberately, correct it with a [corrections] "
+                "line or db.compute instead, so the substitution is "
+                "recorded in History (REQ-45, REQ-48, SRS Section 4.6)",
             )
         missing = sorted(set(self.spec.required_variables) - available)
         unknown_unc = sorted(

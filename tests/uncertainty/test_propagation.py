@@ -132,11 +132,12 @@ class TestNegativeVarianceMateriality:
                 terms=6,
                 obj="systematic uncertainty of 's'",
                 operation="GUM clause-5 propagation with covariance",
+                fix="review the declared correlations (REQ-40)",
             )
         message = str(excinfo.value)
         assert "-2.4" in message
         assert "systematic uncertainty of 's'" in message
-        assert "positive semidefinite" in message
+        assert "review the declared correlations" in message
 
         # A rounding-scale residual is still clamped, which is what the
         # clamp was legitimately for.
@@ -146,6 +147,7 @@ class TestNegativeVarianceMateriality:
             terms=3,
             obj="u",
             operation="op",
+            fix="review the declared correlations",
         )
         assert residual[0] == 0.0
 
@@ -157,6 +159,7 @@ class TestNegativeVarianceMateriality:
             terms=3,
             obj="u",
             operation="op",
+            fix="review the declared correlations",
         )
         assert np.isnan(blank[0])
 

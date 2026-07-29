@@ -18,8 +18,8 @@ It manages multidimensional experimental and numerical datasets (wind
 tunnel campaigns, CFD post-processing, flight-test data, engineering
 computations) with mandatory provenance, automatic GUM-compliant
 uncertainty propagation including covariance, and origin tags for every
-value. Publication-quality plotting is roadmapped for v0.3.0 and is not
-in the library today.
+value. The plotting layer (`ItcFigure`, the AIAA style, the matplotlib
+backend) is roadmapped for v0.2.1 and is not in the library today.
 
 ## Installation
 
@@ -27,7 +27,7 @@ in the library today.
 pip install itaca
 ```
 
-ITACA needs Python 3.11 or newer and depends only on NumPy. The pandas
+ITACA needs Python 3.11, 3.12 or 3.13, and depends only on NumPy. The pandas
 bridge (`itc.load(df)`, `db.to_pandas()`) is optional:
 
 ```bash
@@ -59,16 +59,22 @@ wind tunnel walkthrough.
 
 ## Status
 
-Pre-release. The milestone M0 foundation (release v0.1.0) is
-implemented and test-covered: loading in all modes, inspection and
-diagnostics, structural operations, two-component GUM uncertainty
-propagation with covariance, string-equation derivation, explicit
-combination, exports, and the `.itc` native format with state-hash
-revalidation. The SRS is versioned in `docs/srs/`; its document version is stated in
-one place, the top row of `docs/srs/frontmatter/revision_history.tex`.
+Pre-release. Milestone M0 (released as v0.1.0) is implemented and
+test-covered: loading in all modes, inspection and diagnostics,
+structural operations, two-component GUM uncertainty propagation with
+covariance, string-equation derivation, explicit combination, exports,
+and the `.itc` native format with state-hash revalidation.
+
+Milestone M1 is complete in the working tree and not yet released: the
+analysis operations (`expand`, `concat`, `interpolate`, `average`,
+`integrate`, `smooth`, `diff`, `fitmodel`, `fitvalue`), the axes and
+vector-group system with rotation and moment transfer, pipelines and
+`.itc_pipe`, and reusable `.itceq` processors.
+
+The SRS is versioned in `docs/srs/`; its document version and revision
+are stated on the SRS title page and in the revision history table.
 Releases follow the incremental roadmap in the SRS Chapter 10: each
-milestone ships on PyPI with a Zenodo DOI. See `examples/` for a
-complete synthetic walkthrough.
+milestone ships on PyPI with a Zenodo DOI.
 
 ## Design record
 

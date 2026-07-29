@@ -134,7 +134,12 @@ class TestSerializationHardening:
         parsed as a different table than the one exported. The invariant
         holds for any content once the writer owns the quoting.
         """
-        db = itc.load(np.array([[1.0], [2.0]]), names=["CT"])
+        # The fixture must CONTAIN the delimiter, or the test passes
+        # against the pre-fix code: with no comma in any name or value,
+        # ",".join produces exactly as many fields as csv.writer does.
+        # Measured on the old code with this fixture: header 3 fields,
+        # data 2 fields.
+        db = itc.load(np.array([[1.0], [2.0]]), names=["odd,name"])
         target = tmp_path / "out.csv"
         db.to_csv(target)
 
@@ -174,7 +179,7 @@ class TestSerializationHardening:
         strict parser refuses, so the format chosen for interoperability
         was not interoperable.
         """
-        db = itc.load(np.array([[1.0], [np.nan]]), names=["CT"])
+        db = itc.load(np.array([[1.0], [np.nan], [np.inf], [-np.inf]]), names=["CT"])
         target = tmp_path / "out.json"
         db.to_json(target)
         text = target.read_text(encoding="utf-8")

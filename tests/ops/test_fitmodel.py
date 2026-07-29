@@ -227,3 +227,56 @@ def test_itaca_025g_fitmodel_and_fitvalue_drop_correlation() -> None:
     values = redeclared.fitvalue(coef_dims=["x_coef"], at={"x": [0.5, 1.5]})
     assert values.correlation is None
     assert "correlation=dropped" in values.history[-1].operation
+
+
+class TestMultiDimensionalTagAccumulation:
+    """REV-001 ITACA-027, on the path the finding is actually about.
+
+    Every other `fitvalue` call in this suite passes ONE coefficient
+    dimension, so the multi-dimension branch was never entered and the
+    accumulation was unexecuted array math. The QA pass caught that: the
+    fix shipped with coverage reporting its own lines missing.
+    """
+
+    @staticmethod
+    def _two_axis_coefficients() -> "VarFrame":
+        """v = 1 + x + y fitted along both x and y."""
+        rows = [[xi, yi, 1.0 + xi + yi] for xi in range(4) for yi in range(3)]
+        db = itc.load(np.array(rows, dtype=float), names=["x", "y", "v"]).pivot(
+            dims=["x", "y"]
+        )
+        return db.fitmodel(along="x", deg=1).fitmodel(along="y", deg=1)
+
+    @pytest.mark.parametrize("coef_dims", [["x_coef", "y_coef"], ["y_coef", "x_coef"]])
+    @pytest.mark.parametrize(
+        "at,expected,why",
+        [
+            ({"x": [1.0], "y": [1.0]}, 1, "both inside the fitted range"),
+            ({"x": [99.0], "y": [1.0]}, -1, "x extrapolates, y does not"),
+            ({"x": [1.0], "y": [99.0]}, -1, "y extrapolates, x does not"),
+            ({"x": [99.0], "y": [99.0]}, -1, "both extrapolate"),
+        ],
+    )
+    def test_itaca_027_the_tag_is_the_worst_case_across_coefficient_dimensions(
+        self, coef_dims: list[str], at: dict[str, list[float]], expected: int, why: str
+    ) -> None:
+        """The tag must not depend on the ORDER of coef_dims.
+
+        Measured before the fix, and this is the whole finding: the tag
+        reflected only the LAST coefficient dimension processed, because
+        `new_tags` was rebuilt per dimension and assigned over the
+        previous one. So `x=99, y=1` reported `+1` under
+        `['x_coef','y_coef']` and `-1` under `['y_coef','x_coef']`, and
+        which extrapolation was hidden depended on argument order.
+
+        REQ-32 requires -1 beyond the fitted domain. A point outside on
+        ANY fitted axis is outside.
+        """
+        out = self._two_axis_coefficients().fitvalue(coef_dims=coef_dims, at=at)
+        tags = out.tags.tags["v"].ravel()
+        assert tags[0] == expected, (
+            f"{why}: expected tag {expected} with coef_dims={coef_dims}, got "
+            f"{tags[0]}. The tag is the semantic worst case over every "
+            "coefficient dimension and must not depend on their order "
+            "(REQ-32, ITACA-027)."
+        )

@@ -154,6 +154,12 @@ def translate_moments(
                 terms=36,
                 obj=f"{label} uncertainty of '{comp}'",
                 operation="translate_moments rigid transfer",
+                fix=(
+                    f"the declared correlation among {list(channels)} makes "
+                    "their joint covariance impossible, so the transferred "
+                    "variance is negative; review those pairs with "
+                    "db.correlation (REQ-40)"
+                ),
             )
 
     # Only the moment components are rewritten; the force components are

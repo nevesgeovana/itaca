@@ -129,7 +129,7 @@ convention = "numpy"
 # The ban is repository-wide and NO package is exempt from it. REQ-82's
 # exception clause licenses pandas, lazily, in io/ and utils/; it does
 # not license xarray or dask anywhere, and exempting those packages
-# wholesale was broader than the licence on both sides (ITACA-013). A
+# wholesale was broader than the license on both sides (ITACA-013). A
 # licensed pandas import takes a targeted `# noqa: TID251` at its own
 # site, so a package added later is restricted by default and each
 # exemption is visible in the file that takes it.
@@ -143,11 +143,11 @@ convention = "numpy"
 # NO library package is exempt from TID251 any more. REQ-82's exception
 # licenses PANDAS, lazily, in io/ and utils/; it does not license xarray
 # or dask anywhere. Exempting those packages wholesale was broader than
-# the licence on both sides, and it was measured: an `import xarray`
+# the license on both sides, and it was measured: an `import xarray`
 # added to itaca/io/ passed ruff AND the AST guard (ITACA-013, proven by
 # mutation). The exemption is now granted per IMPORT SITE with a
 # targeted `# noqa: TID251`, so each one is visible in the file that
-# takes it and a new banned import cannot inherit a package's licence.
+# takes it and a new banned import cannot inherit a package's license.
 # tests/** may use anything; it is not a package the AST guard walks.
 "tests/**" = ["TID251", "D"]
 

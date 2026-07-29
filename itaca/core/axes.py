@@ -449,8 +449,8 @@ class AxisRegistry:
                     f"vector groups '{name}' and '{other}'",
                     f"both claim the component(s) {shared}, so a rotation "
                     "would transform the same variables twice in one call",
-                    "give each group its own components, or rotate one group "
-                    "at a time with vector_groups= (REQ-38)",
+                    f"give each group its own components; '{other}' already "
+                    f"claims {shared} (REQ-38)",
                 )
         if axis != "body":
             self.resolve(axis)
@@ -509,7 +509,23 @@ class AxisRegistry:
         )
 
     def group_axis(self, name: str) -> str:
-        """Return the source axis system declared for a vector group (REQ-107)."""
+        """Return the source axis system declared for a vector group (REQ-107).
+
+        Parameters
+        ----------
+        name : str
+            A vector group name.
+
+        Returns
+        -------
+        str
+            The declared axis, or ``"body"`` when the group has none
+            recorded. The default is load-bearing: a group detected from
+            the naming convention has no declaration until ``rotate``
+            registers one, and it starts in the canonical body axis.
+            Note the asymmetry with :meth:`with_group_axis`, which
+            REFUSES an undeclared group; this reader answers for one.
+        """
         return self.group_axes.get(name, "body")
 
     def is_empty(self) -> bool:

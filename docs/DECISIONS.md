@@ -1243,7 +1243,7 @@ the same semantic state have the same hash. The enumeration in the
 requirement follows from the definition instead of constituting it.
 
 **Why.** Measured as `ITACA-003`: a frame whose angle dimension is
-labelled `deg` and one labelled `rad`, with identical arrays, hashed
+labeled `deg` and one labeled `rad`, with identical arrays, hashed
 identically while `rotate` read the unit and produced `FZ = -1.0`
 against `-0.894`. Two states with the same identity produced different
 physics. The contradiction sat inside the SRS itself, with Section 4

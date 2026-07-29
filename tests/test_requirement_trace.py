@@ -80,6 +80,58 @@ def build_trace() -> dict[str, Requirement]:
     return trace
 
 
+#: The measured state at the ITA-1 lane close (0.2.0). These are
+#: RATCHETS, not documentation: the reached set may only grow and the
+#: unreached set may only shrink, so a requirement cannot quietly stop
+#: being implemented and a new one cannot quietly arrive unimplemented.
+#: Both are computed from the same walk the tests use, so they cannot
+#: drift from what the walk can see.
+_UNREACHED_AT_LANE_CLOSE: frozenset[str] = frozenset(
+    {
+        # Future milestones (M2 plotting, statistics, surrogate).
+        "REQ-43",
+        "REQ-50",
+        "REQ-52",
+        "REQ-56",
+        "REQ-57",
+        "REQ-58",
+        "REQ-59",
+        "REQ-60",
+        "REQ-61",
+        "REQ-62",
+        "REQ-63",
+        "REQ-64",
+        "REQ-65",
+        "REQ-66",
+        "REQ-67",
+        "REQ-68",
+        "REQ-69",
+        "REQ-74",
+        "REQ-104",
+        "REQ-108",
+        # Implemented in CONFIGURATION, which this walk cannot see:
+        # REQ-75 is --cov-fail-under=90, REQ-78 is mypy strict, REQ-93
+        # is the (absent) commitlint job, REQ-94 the changelog rule.
+        "REQ-09",
+        "REQ-75",
+        "REQ-78",
+        "REQ-85",
+        "REQ-87",
+        "REQ-93",
+        "REQ-94",
+        "REQ-97",
+    }
+)
+
+
+def _reached_at_lane_close() -> frozenset[str]:
+    """Every declared requirement except the unreached set above."""
+    return frozenset(build_trace()) - _UNREACHED_AT_LANE_CLOSE
+
+
+_REACHED_AT_LANE_CLOSE = _reached_at_lane_close()
+
+
 def test_the_trace_is_not_empty() -> None:
     """A discovery that returns nothing would pass every check below."""
     trace = build_trace()
@@ -91,7 +143,7 @@ def test_the_trace_is_not_empty() -> None:
 
 
 def test_itaca_007_every_requirement_declares_a_known_status() -> None:
-    """The taxonomy has five states and the catalogue must use them.
+    """The taxonomy has five states and the catalog must use them.
 
     `01_introduction.tex` defines stable, draft, implemented, pending and
     deprecated. Any other token is a typo that silently creates a sixth
@@ -135,36 +187,57 @@ def test_itaca_007_every_implemented_requirement_has_a_test() -> None:
     )
 
 
-def test_itaca_007_the_run_reports_which_requirements_nothing_reaches() -> None:
-    """Name the unreached requirements, so a gap is an inventory.
+def test_itaca_007_no_requirement_silently_stops_being_reached() -> None:
+    """A ratchet, not an inventory. A reached requirement may never leave.
 
-    The census `REV-001` measured was 97 stable, 11 draft, 0 implemented
-    and 0 pending, against a taxonomy defining all four: `spec_status`
-    was carrying two meanings at once and answering neither, so "stable"
-    says nothing about whether anything implements it. Splitting the
-    field is a LaTeX change to every reqbox and is registered.
+    The first version of this check skipped with a list and could
+    therefore never fail: a requirement that IS implemented today but
+    loses its citation to a refactor would silently join the unreached
+    set, the count would move from 28 to 29, and the run would stay
+    green. That is the self-skipping evidence this repository names for
+    the plan and incident checkers, where an empty folder reports "no
+    entries" and exits zero.
 
-    Until then this test refuses to be silent about the gap. It never
-    fails on a legitimately future requirement; it exists so the run
-    STATES which requirements nothing reaches, rather than a matrix
-    quietly describing a system that has moved.
+    The floor below is the measured state at the 0.2.0 lane close. It
+    goes UP when a requirement gains an implementation and never down.
+    Removing a name from it is a deliberate, reviewable act.
+
+    Note the walk's blind spot, stated because the earlier message
+    asserted the opposite: it reads only `*.py`. REQ-75 is implemented
+    in `pyproject.toml` (`--cov-fail-under=90`) and REQ-78 in
+    `[tool.mypy] strict`, so a requirement implemented in CONFIGURATION
+    is invisible here and must not be read as unimplemented.
     """
     trace = build_trace()
-    unreached = sorted(
-        identifier
-        for identifier, req in trace.items()
-        if not req.code and not req.tests
+    reached = {identifier for identifier, req in trace.items() if req.code or req.tests}
+    lost = sorted(_REACHED_AT_LANE_CLOSE - reached)
+    assert not lost, (
+        f"requirement(s) {lost} were reached by the library or the suite at "
+        "the 0.2.0 lane close and are not any more. An implementation or a "
+        "test citation was removed; restore it, or remove the id from "
+        "_REACHED_AT_LANE_CLOSE deliberately (ITACA-007)."
     )
-    assert trace, "the reqbox walk is inert"
-    if unreached:
-        pytest.skip(
-            f"{len(trace) - len(unreached)} of {len(trace)} requirements are "
-            f"reached by the library or the suite. NOT reached by either, so "
-            f"nothing in this repository implements or verifies them: "
-            f"{unreached}. Most are future milestones; the point of naming "
-            f"them is that a requirement which SHOULD be reached cannot hide "
-            f"among them (ITACA-007)."
-        )
+
+
+def test_itaca_007_a_new_unreached_requirement_cannot_appear_unnoticed() -> None:
+    """The other half of the ratchet.
+
+    A requirement added to the SRS with no implementation and no test is
+    a legitimate state for a future milestone, and an illegitimate one
+    for a requirement someone meant to implement. The set below makes
+    the difference a written act rather than a silence.
+    """
+    trace = build_trace()
+    unreached = {
+        identifier for identifier, req in trace.items() if not (req.code or req.tests)
+    }
+    surprises = sorted(unreached - _UNREACHED_AT_LANE_CLOSE)
+    assert not surprises, (
+        f"requirement(s) {surprises} are declared in the SRS and reached by "
+        "nothing. Implement and cite them, or add them to "
+        "_UNREACHED_AT_LANE_CLOSE with the milestone that will "
+        "(ITACA-007)."
+    )
 
 
 def test_itaca_012_no_requirement_claims_an_absent_symbol() -> None:

@@ -12,6 +12,43 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.1, 2026-07-28, Independent-Review Amendment}
+
+\paragraph{Changed.} REQ-103 is
+restated as a semantic guarantee: two VarFrames in the same semantic
+state have the same hash, with same semantic state defined
+representationally at the floating-point boundary (DD-40). Its scope
+gains dimension and variable metadata and names the axis registry. The
+practical consequence is that unit is inside the guarantee even though
+Section~\ref{sec:dimension} calls it metadata, because
+\code{rotate} interprets it. REQ-107 moves from draft to stable and
+records that \code{db.rotate} updates a group's axis. REQ-36's guard is
+stated as per-subtree. REQ-45 records the \code{[constants]} collision
+refusal (DD-39). Requirement scope is otherwise unchanged.
+
+\paragraph{Changed (requirements amended by the same review).} REQ-40
+gains the positive-semidefinite condition on the assembled matrix: the
+pairwise bound is necessary and not sufficient. REQ-38 gains the
+correlation write-back from the transformed covariance and its three
+refusal conditions. REQ-44 states that calls take positional arguments
+only and that a keyword raises. REQ-71 and P-02 declare
+\code{db.to\_pandas()} and \code{db.to\_numpy()} deliberately lossy
+interoperability bridges, not covered by the every-export rule, with
+the draft-mode warning still applying to them as a safety property.
+REQ-36's guard is restated as per-subtree. REQ-45 records the
+\code{[constants]} collision refusal (DD-39). REQ-103 is restated as a
+semantic guarantee (DD-40) and REQ-107 moves from draft to stable.
+
+\paragraph{Corrected (false or overstated claims).} Chapter~8 stated
+that v0.1.0 supported PROV-N and PROV-JSON export; no such symbol
+exists and it is an M2 deliverable. Chapter~8 also stated that linting
+enforced the NumPy docstring sections; ruff enforces presence and
+style, and section completeness on the declared public surface is
+enforced by a test, with the Raises and Examples halves not yet
+enforced by anything. Fifteen occurrences of ``RPN'' across seven
+chapters became ``AST'', the canonical term for the expression engine,
+and the now-unused acronym entry was removed.
+
 \section*{Document 0.2.0, 2026-07-23, M1 Re-Baseline and Library Infrastructure}
 
 Issued at the M1 kickoff (ultraplan Batch A approval), together with
@@ -205,18 +242,6 @@ before a later line overwrote it; and \code{[corrections]} may replace
 a variable the VarFrame supplies, not only one \code{[equations]}
 produced, which is the ordinary case of correcting a measured channel
 in place. Requirement scope is otherwise unchanged.
-
-\paragraph{Changed (independent-review amendment, 0.2.1).} REQ-103 is
-restated as a semantic guarantee: two VarFrames in the same semantic
-state have the same hash, with same semantic state defined
-representationally at the floating-point boundary (DD-40). Its scope
-gains dimension and variable metadata and names the axis registry. The
-practical consequence is that unit is inside the guarantee even though
-Section~\ref{sec:dimension} calls it metadata, because
-\code{rotate} interprets it. REQ-107 moves from draft to stable and
-records that \code{db.rotate} updates a group's axis. REQ-36's guard is
-stated as per-subtree. REQ-45 records the \code{[constants]} collision
-refusal (DD-39). Requirement scope is otherwise unchanged.
 
 \paragraph{Added (docs adoption).} Non-functional requirement REQ-108
 (published documentation site on GitHub Pages, ProperDocs with markdown

@@ -99,8 +99,16 @@ def propagate(
                 np.asarray(variance),
                 np.asarray(diagonal),
                 terms=len(present) + len(present) * (len(present) - 1) // 2,
-                obj=f"{label} uncertainty of the derived quantity",
+                obj=(
+                    f"{label} uncertainty of the quantity derived from "
+                    f"{sorted(present)}"
+                ),
                 operation="GUM clause-5 propagation with covariance",
+                fix=(
+                    "the declared correlation between these variables makes "
+                    "their joint covariance impossible; review the pairs "
+                    "among them with db.correlation (REQ-40, REQ-41)"
+                ),
             )
         )
     return results[0], results[1]

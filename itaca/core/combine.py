@@ -100,6 +100,18 @@ def combine(
             "and within [-1, 1]",
             "correlation coefficients satisfy |r| <= 1 and must be finite (REQ-40)",
         )
+    if weights is not None and op != "weighted_mean":
+        # The symmetric partner of the weighted_mean-without-weights
+        # refusal above. Before this, weights passed to any other op were
+        # accepted, discarded without a word, and absent from the History
+        # string, so a caller who thought they were weighting a sum got
+        # an unweighted sum and no signal (REQ-37).
+        raise DataError(
+            f"weights {weights!r} with op={op!r}",
+            "only op='weighted_mean' reads weights, so these would be "
+            "silently discarded and would not appear in History",
+            "drop the weights, or pass op='weighted_mean' (REQ-37)",
+        )
     if weights is not None:
         if not all(np.isfinite(w) for w in weights):
             raise DataError(

@@ -135,6 +135,11 @@ def combine_components(
         operation=(
             f"combine(op='{operation.name}', cross_correlation={cross_correlation!r})"
         ),
+        fix=(
+            "the cross_correlation makes the combined covariance impossible; "
+            "pass a value in [-1, 1] consistent with the two inputs, or 0.0 "
+            "if they are independent (REQ-37, REQ-40)"
+        ),
     )
 
 
