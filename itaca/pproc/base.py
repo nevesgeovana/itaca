@@ -12,6 +12,11 @@ a constant is a declared number and not a VarFrame variable. History
 therefore records the expression with the number in it, which is what
 actually ran, and a reader can see the value the workflow used without
 opening the .itceq file.
+
+A constant whose name the VarFrame also carries is refused by
+``validate`` rather than substituted, because the declared number would
+beat the measurement and neither the result nor History would say so
+(DD-39, OQ-31).
 """
 
 from __future__ import annotations
@@ -160,13 +165,57 @@ class EquationProcessor:
         ------
         ProcessorValidationError
             If a variable an equation reads, or an ``[uncertainties]``
-            entry names, is absent and is not produced by the file.
+            entry names, is absent and is not produced by the file; or
+            if a name declared in ``[constants]`` is also a variable the
+            frame carries.
+
+        Notes
+        -----
+        The collision case is refused HERE and not at parse time
+        because the parser never sees the frame: ``parse_itceq`` takes a
+        path and ``EquationProcessor.__init__`` takes a spec, so
+        ``validate`` is the first lifecycle step that holds both
+        (DD-39, OQ-31). The same file is perfectly legal against a
+        campaign that does not log that channel, which is why this is
+        not a file defect.
+
+        It is checked before the absence checks and raised alone,
+        because the two fixes are opposites: the absence message says to
+        load the missing channels, and this one says to remove a
+        declaration. Being first also makes the message deterministic
+        when both conditions hold.
 
         Examples
         --------
         >>> processor.validate(db)  # doctest: +SKIP
         """
         available = set(db.vars)
+        # OQ-31, answered REFUSE: a constant is substituted into every
+        # read, so a declared number silently beats a measured channel of
+        # the same name and neither the result nor History says so.
+        # Symmetric with DD-37, which already refuses the harmless
+        # sibling (a constant against an equation target).
+        #
+        # Checked against self.constants and not self.spec.constants,
+        # because _substitute rewrites exactly self.constants: a config=
+        # override changes the value, so checking what actually
+        # substitutes is the honest surface.
+        collisions = sorted(set(self.constants) & available)
+        if collisions:
+            declared = {name: self.constants[name] for name in collisions}
+            raise ProcessorValidationError(
+                f"name(s) {collisions} of processor '{self.name}' against VarFrame",
+                "each is declared in [constants] and also carried by the "
+                "VarFrame as a measured variable, and a constant is "
+                "substituted into every read, so every equation would run "
+                f"on the declared value(s) {declared} and the measurement "
+                "would never be read",
+                "remove the entry from [constants] to use the measured "
+                "channel, or rename one of the two; a value that is "
+                "measured belongs in the VarFrame, a value that is "
+                "declared belongs in [constants] (REQ-45, REQ-48, SRS "
+                "Section 4.6)",
+            )
         missing = sorted(set(self.spec.required_variables) - available)
         unknown_unc = sorted(
             key

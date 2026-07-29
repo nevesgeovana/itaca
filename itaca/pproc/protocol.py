@@ -70,7 +70,9 @@ class Processor(Protocol):
         Raises
         ------
         ProcessorValidationError
-            If a variable the processor needs is absent.
+            If the VarFrame cannot feed the processor: a variable it
+            needs is absent, or a name it declares as a constant is also
+            a variable the frame carries.
         """
         ...
 

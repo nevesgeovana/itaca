@@ -774,6 +774,13 @@ class Processor(Protocol):
 \end{lstlisting}
 The canonical lifecycle is \code{validate}, then \code{info}, then
 the call itself; a report is requested through the call (REQ-51).
+\code{validate} refuses two things: a variable the file needs that the
+frame does not carry, and a name the file declares in \code{[constants]}
+that the frame also carries as a measured variable. The second is
+refused here rather than when the file is read, because the parser never
+sees a frame, and the same file is legal against a campaign that does
+not log that channel (DD-39, OQ-31). The call runs \code{validate}
+first, so both refusals govern application as well.
 \end{reqbox}
 
 \begin{reqbox}{REQ-46}{\stable}

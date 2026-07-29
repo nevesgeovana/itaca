@@ -252,7 +252,13 @@ class ProcessorNotFoundError(ProcessorError):
 
 
 class ProcessorValidationError(ProcessorError):
-    """A variable a processor needs is absent from the VarFrame (REQ-45)."""
+    """A VarFrame cannot feed a processor (REQ-45).
+
+    Either a variable the processor needs is absent, or a name it
+    declares in ``[constants]`` is also a variable the frame carries, in
+    which case the declared number would silently beat the measurement
+    (DD-39).
+    """
 
 
 class ItceqParseError(ProcessorError):

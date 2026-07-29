@@ -405,6 +405,7 @@ the TDD loop above.
 polar = itc.processor("ft_drag_polar", config={"S_ref": 50.0})
 polar.info()                         # prints: equations, uncertainties, required vars
 polar.validate(db)                   # raises ProcessorValidationError if vars missing
+                                     # or if a [constants] name is a measured channel
 db_out = polar(db, comment="initial polar from FT-2026-A")
 db_out = polar(db, report="reports/ft_drag.pdf")
 \end{lstlisting}

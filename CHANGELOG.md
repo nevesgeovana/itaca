@@ -246,6 +246,31 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Fixed
 
+* **A `.itceq` constant may not shadow a measured channel** (`ITACA-002`,
+  DD-39, OQ-31 resolved). A `[constants]` entry is substituted into
+  every read before an expression evaluates, so a file declaring
+  `rho = 1.225` applied to a campaign flown at `rho = 0.9` computed
+  `q_inf` 36 percent high, with no error, no warning, and no record of
+  the substitution: History showed
+  `compute('q_inf = 0.5 * 1.225 * V ** 2', ...)`, so not even the
+  provenance revealed that a measurement had been discarded.
+  `validate` now refuses the collision, naming the colliding names and
+  the declared value, and the call runs `validate` first so both entry
+  points are closed.
+
+  This is symmetric with DD-37, which already refused the HARMLESS
+  sibling, a constant colliding with an equation target, where the
+  equation's result is merely unreachable. The fix had landed on the
+  safe instance and left the dangerous one.
+
+  **Breaking, and deliberately so.** Anyone using a constant to
+  override a bad channel loses that path. The replacement is to correct
+  the channel in the frame, which is what `[corrections]` and
+  `db.compute` are for; a value that is measured belongs in the
+  VarFrame, and a value that is declared belongs in `[constants]`. The
+  refusal is scoped to `db.vars`, so a constant sharing a DIMENSION's
+  name is unaffected: expressions read variables only.
+
 * **NumPy keyword arguments are refused instead of silently dropped**
   (`ITACA-023`, REQ-44, OQ-37). `np.round(x, decimals=2)` on
   `[1.234, 2.345]` returned `[1., 2.]` rather than `[1.23, 2.35]`: the

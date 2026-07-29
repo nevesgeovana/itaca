@@ -440,7 +440,13 @@ CL_corr  = "CL * blockage"
     read before evaluation, so such an equation would run and its result
     would never be read by anything in the file (DD-37). Redefinition
     within the equation sections is a different thing and stays legal:
-    that is the replacement rule above.
+    that is the replacement rule above. The same collision against a
+    MEASURED channel, where the frame carries a variable of that name,
+    is refused by \code{validate} rather than when the file is read,
+    because only that step sees both the file and the frame. It is the
+    more dangerous of the two: the equation runs on the declared number
+    and the measurement is never read, so the result is wrong rather
+    than merely unreachable (DD-39, OQ-31).
   \item In file order, an equation may only read what an earlier line
     produced. A forward reference is refused when the file is read,
     because the VarFrame may carry the same name, in which case the

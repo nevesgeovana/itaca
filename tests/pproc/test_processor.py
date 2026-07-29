@@ -580,3 +580,201 @@ def test_a_file_that_produces_nothing_is_never_a_reapplication(
         warnings.simplefilter("error")
         twice = processor(once)
     assert twice.state_hash != once.state_hash
+
+
+class TestConstantChannelCollision:
+    """REV-001 ITACA-002, OQ-31 answered REFUSE by the author.
+
+    A `[constants]` entry is substituted into every read before an
+    expression evaluates, so a declared number silently beats a measured
+    channel of the same name. Measured: a file declaring `rho = 1.225`
+    applied to a campaign flown at `rho = 0.9` produced `q_inf` 36
+    percent high, with no error, no warning, and no record of the
+    substitution. History showed
+    `compute('q_inf = 0.5 * 1.225 * V ** 2', ...)`, so not even the
+    provenance revealed that a measurement had been discarded.
+
+    The decision is symmetric with DD-37, which already refuses the
+    HARMLESS sibling: a constant colliding with an equation target,
+    where the equation's result is merely unreachable. The fix had
+    landed on the safe instance and left the dangerous one.
+    """
+
+    @staticmethod
+    def _collide_file(tmp_path: Path) -> Path:
+        path = tmp_path / "collide.itceq"
+        path.write_text(
+            "[meta]\n"
+            'name = "collide"\n'
+            'version = "1.0"\n\n'
+            "[constants]\n"
+            "rho = 1.225\n\n"
+            "[equations]\n"
+            'q_inf = "0.5 * rho * V**2"\n',
+            encoding="utf-8",
+        )
+        return path
+
+    @staticmethod
+    def _campaign() -> VarFrame:
+        """A frame carrying a MEASURED rho, flown at 0.9."""
+        arr = np.column_stack([[0.0, 1.0], [0.9, 0.9], [30.0, 30.0]])
+        return itc.load(arr, names=["alpha", "rho", "V"]).pivot(dims=["alpha"])
+
+    def test_itaca_002_validate_refuses_a_constant_shadowing_a_channel(
+        self, tmp_path: Path
+    ) -> None:
+        """validate is the lifecycle step that can see both sides.
+
+        The parser cannot decide this: `parse_itceq` takes a path and
+        `EquationProcessor.__init__` takes a spec, so neither has ever
+        seen a frame. The same file is legal against a campaign that
+        does not log rho, which is why this is not a file defect.
+        """
+        processor = itc.processor(self._collide_file(tmp_path))
+        with pytest.raises(ProcessorValidationError) as excinfo:
+            processor.validate(self._campaign())
+        message = str(excinfo.value)
+        assert "'rho'" in message
+        # The DECLARED value is in the message, which is what lets a
+        # reader see which number would have won.
+        assert "1.225" in message
+        assert "remove the entry from [constants]" in message
+
+    def test_itaca_002_application_refuses_too(self, tmp_path: Path) -> None:
+        """__call__ runs validate first, so one check closes both doors."""
+        processor = itc.processor(self._collide_file(tmp_path))
+        with pytest.raises(ProcessorValidationError):
+            processor(self._campaign())
+
+    def test_itaca_002_the_measured_value_is_never_used(self, tmp_path: Path) -> None:
+        """The number the defect produced, pinned so it cannot come back.
+
+        0.5 * 1.225 * 30**2 = 551.25 against 0.5 * 0.9 * 30**2 = 405.0,
+        which is the 36 percent BRF-043 reports. If this refusal is ever
+        softened without the author's decision changing, this test says
+        exactly what the library would start computing again.
+        """
+        processor = itc.processor(self._collide_file(tmp_path))
+        db = self._campaign()
+        with pytest.raises(ProcessorValidationError):
+            processor(db)
+        assert "q_inf" not in db.vars
+        declared_would_give = 0.5 * 1.225 * 30.0**2
+        measured_would_give = 0.5 * 0.9 * 30.0**2
+        assert declared_would_give == pytest.approx(551.25)
+        assert measured_would_give == pytest.approx(405.0)
+
+    def test_itaca_002_the_same_file_is_legal_without_the_channel(
+        self, tmp_path: Path
+    ) -> None:
+        """The refusal is about the PAIR, not about the file.
+
+        A campaign that does not log rho is exactly what a declared
+        constant is for, and it must keep working. Without this, the fix
+        would read as "constants are suspect", which is not the rule.
+        """
+        processor = itc.processor(self._collide_file(tmp_path))
+        arr = np.column_stack([[0.0, 1.0], [30.0, 30.0]])
+        db = itc.load(arr, names=["alpha", "V"]).pivot(dims=["alpha"])
+        out = processor(db)
+        assert out.vars["q_inf"].values == pytest.approx([551.25, 551.25])
+
+    def test_itaca_002_a_constant_named_after_a_dimension_is_not_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """The check is scoped to db.vars, and deliberately so.
+
+        Expressions read variables only: compute builds its environment
+        from `db.vars`. A constant sharing a DIMENSION's name shadows
+        nothing, so refusing it would be over-refusal. Measured: this
+        case validates and applies cleanly both before and after.
+        """
+        path = tmp_path / "dimname.itceq"
+        path.write_text(
+            "[meta]\n"
+            'name = "dimname"\n'
+            'version = "1.0"\n\n'
+            "[constants]\n"
+            "alpha = 3.0\n\n"
+            "[equations]\n"
+            'scaled = "alpha * V"\n',
+            encoding="utf-8",
+        )
+        processor = itc.processor(path)
+        arr = np.column_stack([[0.0, 1.0], [30.0, 30.0]])
+        db = itc.load(arr, names=["alpha", "V"]).pivot(dims=["alpha"])
+        out = processor(db)
+        assert out.vars["scaled"].values == pytest.approx([90.0, 90.0])
+
+    def test_itaca_002_a_config_override_is_checked_on_the_resolved_value(
+        self, tmp_path: Path
+    ) -> None:
+        """The check reads self.constants, which is what substitutes.
+
+        A `config=` override changes the value that wins, so checking
+        the resolved mapping rather than the file's own is the honest
+        surface: the message must name the number that would actually
+        have been used.
+        """
+        processor = itc.processor(self._collide_file(tmp_path), config={"rho": 1.0})
+        with pytest.raises(ProcessorValidationError) as excinfo:
+            processor.validate(self._campaign())
+        assert "1.0" in str(excinfo.value)
+
+    def test_itaca_002_the_collision_is_reported_before_an_absence(
+        self, tmp_path: Path
+    ) -> None:
+        """When both conditions hold, the message is deterministic.
+
+        The two fixes are opposites: the absence message says to load
+        the missing channels, and this one says to remove a declaration.
+        Folding them together would produce a message ending in the
+        wrong advice.
+        """
+        path = tmp_path / "both.itceq"
+        path.write_text(
+            "[meta]\n"
+            'name = "both"\n'
+            'version = "1.0"\n\n'
+            "[constants]\n"
+            "rho = 1.225\n\n"
+            "[equations]\n"
+            'q_inf = "0.5 * rho * Vmissing**2"\n',
+            encoding="utf-8",
+        )
+        processor = itc.processor(path)
+        with pytest.raises(ProcessorValidationError) as excinfo:
+            processor.validate(self._campaign())
+        message = str(excinfo.value)
+        assert "[constants]" in message
+        assert "load the missing" not in message
+
+    def test_itaca_002_a_constant_also_declared_in_uncertainties(
+        self, tmp_path: Path
+    ) -> None:
+        """The shape the shipped fixtures actually have.
+
+        A balance file declares `rho` in `[uncertainties]`, and a
+        real-world file adds it to `[constants]` beside it. Measured
+        before the fix: that parses, validate returns silently, and the
+        application assigns a systematic uncertainty to the very channel
+        the constant shadows, so the frame ends up carrying an
+        uncertainty for a number that was never read.
+        """
+        path = tmp_path / "unc.itceq"
+        path.write_text(
+            "[meta]\n"
+            'name = "unc"\n'
+            'version = "1.0"\n\n'
+            "[constants]\n"
+            "rho = 1.225\n\n"
+            "[uncertainties]\n"
+            "rho = 0.01\n\n"
+            "[equations]\n"
+            'q_inf = "0.5 * rho * V**2"\n',
+            encoding="utf-8",
+        )
+        processor = itc.processor(path)
+        with pytest.raises(ProcessorValidationError, match=r"\[constants\]"):
+            processor.validate(self._campaign())

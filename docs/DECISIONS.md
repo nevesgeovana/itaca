@@ -1149,3 +1149,76 @@ their `install` command. The correct fix is `fetch-depth: 0` on that
 job, which lives in a hash-pinned kit body and is not this repository's
 to edit.
 
+## DD-39: A constant may not shadow a measured channel
+
+**Date:** 2026-07-28
+**Status:** confirmed
+**Resolves:** OQ-31
+
+A name declared in `[constants]` that the VarFrame also carries as a
+variable is refused by `validate`, and therefore by the call, which runs
+`validate` first.
+
+**Why.** A constant is substituted into every read before an expression
+evaluates, so a declared number silently beats a measured channel of the
+same name. Measured as `ITACA-002`: a file declaring `rho = 1.225`
+applied to a campaign flown at `rho = 0.9` produced `q_inf` 36 percent
+high, and every coefficient downstream of it wrong by that factor. There
+was no error, no warning, and no record of the substitution: History
+recorded `compute('q_inf = 0.5 * 1.225 * V ** 2', ...)`, so not even the
+provenance showed that a measurement had been discarded. `validate` is
+the REQ-45 lifecycle step that exists to answer "can this frame feed
+this processor" and it returned silently.
+
+**Why this is symmetric with DD-37, not an extension of it.** DD-37
+already refuses the collision between a constant and an equation target,
+whose reasoning is that a name with two definitions of different kinds
+has no obvious reading and the one the parser picks is invisible in the
+file. That reasoning transfers whole; only the location of the second
+definition differs. The in-file case is the HARMLESS one, where the
+equation's result is merely unreachable. The frame case produces a wrong
+number from correct-looking inputs, and the wind tunnel shape that makes
+it likely, a nominal `rho` or `S_ref` declared in the file while the
+acquisition system also logs it, is the common case rather than the
+exotic one. The fix had landed on the safe instance and left the
+dangerous one.
+
+**Where it is checked, and why not at parse time.** The parser never
+sees a frame: `parse_itceq` takes a path and `EquationProcessor.__init__`
+takes a spec. `validate(db)` is the first step that holds both. The same
+file is perfectly legal against a campaign that does not log that
+channel, so this is not a file defect and `ItceqParseError` would be the
+wrong class; `ProcessorValidationError` is the leaf `validate` already
+raises.
+
+The check reads the RESOLVED constants rather than the file's own,
+because a `config=` override changes which number would win, and the
+message must name the number that would actually have been used.
+
+It is raised first and alone rather than folded into the existing
+absence message, because the two fixes are opposites: that message ends
+in "load the missing channels", and this one ends in "remove the entry
+from [constants]".
+
+**Scope.** The refusal is over `db.vars` only. Expressions read
+variables, so a constant sharing a DIMENSION's name shadows nothing and
+is not refused; measured, that case validates and applies cleanly. A
+wider check would be over-refusal.
+
+**Accepted cost, and it is the one nobody measured.** This breaks anyone
+deliberately using a constant to override a bad channel. That path is
+gone and the replacement is to correct the channel in the frame, which
+is what `[corrections]` and `db.compute` are for. The author's decision
+was recorded as REFUSE rather than warn, and it is not to be softened
+without her changing it.
+
+**Rejected alternative:** warn in `validate` and substitute anyway.
+Rejected for the reason DD-37 rejected the same shape: the wrongness is
+silent in the artifact even if the terminal said something, and a
+warning is not carried in History, so a result read a week later shows
+nothing.
+
+**Rejected alternative:** an explicit override marker in the file, or a
+`force=` flag. Rejected for this release as premature: no measured need
+exists for it, and adding an escape hatch beside a refusal that has
+never shipped would design the escape before the rule has been used.

@@ -552,7 +552,7 @@ DD-34.
 ## OQ-31: A `[constants]` name that the VarFrame also carries is silent
 
 **Raised:** 2026-07-27 (V and V re-review of the DD-37 decision)
-**Status:** open
+**Status:** resolved (DD-39, 2026-07-28)
 **Question:** DD-37 refuses a name declared in `[constants]` that is
 also an equation target, because a constant is substituted into every
 read and the equation would run with its result unreachable. The
@@ -581,6 +581,14 @@ and refusing there, with `force=` or an explicit `[constants]` override
 marker as the escape. Whichever way, the check belongs in `validate`,
 which is the REQ-45 lifecycle step that exists to answer "can this frame
 feed this processor" before anything runs.
+
+**Resolved:** 2026-07-28, by the author: **REFUSE**. A constant
+colliding with a measured channel raises in `validate`, symmetric with
+DD-37, which already refuses the in-file sibling. See DD-39 for the
+reasoning, the scope (`db.vars` only, so a dimension name is
+unaffected), and the accepted cost: anyone deliberately using a constant
+to override a bad channel loses that path, and the replacement is to
+correct the channel in the frame.
 
 **SRS:** REQ-45, REQ-46, REQ-48, Section 4.6; DD-37.
 
