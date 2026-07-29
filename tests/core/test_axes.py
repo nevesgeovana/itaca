@@ -1,4 +1,4 @@
-"""Tests for the axes data model (REQ-38, REQ-101; SRS 4.6).
+"""Tests for the axes data model (REQ-38, REQ-101; SRS 4.5).
 
 Usage example (TDD anchor)::
 

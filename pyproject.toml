@@ -61,6 +61,14 @@ dev = [
     # PyYAML it exits 2 having verified NOTHING, rather than degrading to
     # a text scan, so a missing parser would read as an unarmed guard.
     "pyyaml>=6.0,<7.0",
+    # The release-integrity tests build a real wheel and sdist, because
+    # ITACA-004, ITACA-014 and BRF-048 all live in the ARTIFACT and are
+    # invisible to a suite that reads the source tree. Absent here, those
+    # tests error on CI, which installs this extra and nothing else: the
+    # artifact boundary would not run on the machine that gates the
+    # release. This is ITACA-015's class, one tool further out, so
+    # tests/test_tooling_config.py now discovers the spawn sites.
+    "build>=1.0,<2.0",
     # The contributing guide documents `pip install -e ".[dev]"` and says
     # the extra installs everything the tests need. It did not: a test
     # imports pandas at module scope, so the DOCUMENTED command failed at

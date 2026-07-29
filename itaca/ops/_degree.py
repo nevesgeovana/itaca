@@ -8,7 +8,7 @@ line, silently, and ``fill`` reached NumPy and raised a bare
 ``ValueError`` from outside the ITACA hierarchy (ITACA-033).
 
 The rule lives here rather than on ``FitDegreeError`` because that leaf
-means "too few points for this degree" (SRS 4.4), which is a different
+means "too few points for this degree" (REQ-30), which is a different
 invariant: it depends on the data, and this one does not.
 """
 

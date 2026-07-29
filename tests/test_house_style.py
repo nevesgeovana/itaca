@@ -12,19 +12,23 @@ a document whose own correction notice points nowhere. Every SRS
 cross-reference opens a brace on a labeled target, so the guard checks
 that each one is reached by a real reference command.
 
-And guards the tree against personal and institutional identifiers,
-whose rule and remedy live in ``tests/identifiers.py`` so that the same
-implementation also scans the built artifacts in
-``tests/test_release_integrity.py``. Four occurrences shipped past this
-file because the class was not in it.
+And guards the repository against personal and institutional
+identifiers, whose rule and remedy live in ``tests/identifiers.py`` so
+that the same implementation also scans the built artifacts in
+``tests/test_release_integrity.py`` (DD-41). Four occurrences shipped
+past this file because the class was not in it.
 
-Every walk here reports what it scanned. A discovery that silently
-returns nothing passes every check vacuously, which is the shape this
-repository already refuses for the import policy and for the plan and
-incident checkers, where an empty folder exits zero.
+Every walk here asks git what belongs to the repository, and then
+reports what it scanned. A discovery that silently returns nothing
+passes every check vacuously, which is the shape this repository already
+refuses for the import policy and for the plan and incident checkers,
+where an empty folder exits zero; and a walk of the working tree instead
+would take its verdict from build output and from one machine's
+absolute paths.
 """
 
 import re
+import subprocess
 from pathlib import Path
 
 import identifiers
@@ -54,24 +58,70 @@ EXCLUDED_PARTS = {
 }
 _ROOT = Path(__file__).resolve().parents[1]
 
-# Files every walk must reach. A checkout placed under a directory named
-# ".venv" or "_private" would otherwise exclude the whole tree and pass,
-# because the exclusion used to test the ABSOLUTE path's parts.
-_MUST_REACH = ("itaca/core/provenance.py", "README.md", "pyproject.toml")
+# One file per top-level tree that ships, so narrowing the walk cannot
+# go unnoticed. The earlier version named three files that all sat in
+# the scope the guard was being widened OUT of, so adding one word to
+# EXCLUDED_PARTS left every assertion satisfied while the walk went
+# green on the very commit that shipped the defect.
+_MUST_REACH = (
+    "itaca/core/provenance.py",
+    "tests/core/test_provenance_modes.py",
+    "docs/DECISIONS.md",
+    "examples/wt_campaign.py",
+    ".claude/skills/audit/SKILL.md",
+    "CLAUDE.md",
+    "README.md",
+    "pyproject.toml",
+)
+
+
+def _repository_files() -> list[str] | None:
+    """Everything git considers part of the repository, or None.
+
+    The union of tracked files and untracked-but-not-ignored ones: the
+    first is what the sdist is built from, and the second is a file
+    written but not yet added, which a guard must still see. Returns
+    None outside a checkout, where the caller degrades to a filesystem
+    walk rather than skipping.
+    """
+    names: list[str] = []
+    for extra in ([], ["--others", "--exclude-standard"]):
+        done = subprocess.run(
+            ["git", "ls-files", "-z", *extra],
+            capture_output=True,
+            cwd=str(_ROOT),
+        )
+        if done.returncode != 0:
+            return None
+        names += [name for name in done.stdout.decode().split("\0") if name]
+    return names
 
 
 def _walk(suffixes: set[str] | None = None) -> list[tuple[str, Path]]:
-    """Every file under the repository root, as (relative posix, path)."""
+    """Every repository file, as (relative posix, path).
+
+    Asking git rather than the filesystem is what keeps the verdict off
+    local state. A working-tree walk read `dist/`, `itaca.egg-info/` and
+    `.claude/settings.local.json`, so the result depended on what had
+    been built and on one developer's absolute paths, and the artifact
+    test in `test_release_integrity` writes two of those DURING the run.
+    """
+    names = _repository_files()
+    if names is None:  # no checkout: an unpacked sdist, for instance
+        names = [
+            path.relative_to(_ROOT).as_posix()
+            for path in _ROOT.rglob("*")
+            if path.is_file()
+            and not EXCLUDED_PARTS.intersection(path.relative_to(_ROOT).parts)
+        ]
     found: list[tuple[str, Path]] = []
-    for path in sorted(_ROOT.rglob("*")):
+    for name in sorted(set(names)):
+        path = _ROOT / name
         if not path.is_file():
-            continue
-        relative = path.relative_to(_ROOT)
-        if EXCLUDED_PARTS.intersection(relative.parts):
             continue
         if suffixes is not None and path.suffix not in suffixes:
             continue
-        found.append((relative.as_posix(), path))
+        found.append((name, path))
     return found
 
 
@@ -196,11 +246,50 @@ def test_the_identifier_detector_passes_clean_text() -> None:
 
 
 def test_the_authorship_exemption_covers_the_files_it_names_and_no_others() -> None:
-    """The exemption is what makes this guard survivable; pin its edges."""
+    """The exemption is what makes this guard survivable; pin its edges.
+
+    The "no others" half is the half that matters. An exemption keyed on
+    a bare basename would let any file called `LICENSE` or `PKG-INFO`
+    through from anywhere in the tree, which is why the derived metadata
+    is matched by shape and why the misplaced cases below are asserted
+    rather than assumed.
+    """
     line = f"{_GIVEN} {_FAMILY}, aerospace engineer, ITA / {_SPACED}.".encode()
     for exempt in ("LICENSE", "README.md", "docs/srs/main.tex", "CITATION.cff"):
         assert not identifiers.offenders([(exempt, line)]), f"{exempt} should be exempt"
-    for derived in ("itaca-0.2.0.dist-info/METADATA", "itaca.egg-info/PKG-INFO"):
+    for derived in (
+        "PKG-INFO",
+        "itaca-0.2.0.dist-info/METADATA",
+        "itaca-0.2.0.dist-info/licenses/LICENSE",
+        "itaca.egg-info/PKG-INFO",
+    ):
         assert not identifiers.offenders([(derived, line)]), f"{derived} is derived"
-    for guarded in ("tests/core/test_axes.py", "itaca/core/axes.py", "examples/one.py"):
+    for guarded in (
+        "tests/core/test_axes.py",
+        "itaca/core/axes.py",
+        "examples/one.py",
+        "itaca/core/LICENSE",
+        "tests/data/PKG-INFO",
+        "vendor/thing/METADATA",
+        "docs_site/tutorial.py",
+        r"itaca\core\axes.py",
+    ):
         assert identifiers.offenders([(guarded, line)]), f"{guarded} must be guarded"
+    assert not identifiers.offenders([(r"docs\srs\main.tex", line)]), (
+        "the exemption must survive a Windows separator"
+    )
+
+
+def test_a_binary_payload_is_skipped_and_the_limit_is_deliberate() -> None:
+    """Both directions of the skip, so the blind spot cannot move silently.
+
+    `.itc` is a ZIP and carries a user identity by design, so a
+    committed archive fixture would pass both boundaries. That is a
+    stated limit of the rule, not an accident, and it is asserted here so
+    that removing the skip is a visible act.
+    """
+    prose = f"user: {_GIVEN}@{_DOMAIN}".encode()
+    assert identifiers.offenders([("itaca/io/sample.txt", prose)])
+    assert not identifiers.offenders(
+        [("itaca/io/sample.itc", b"PK\x03\x04\x00" + prose)]
+    )

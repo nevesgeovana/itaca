@@ -60,8 +60,9 @@ Compare each claim against the code, not against memory:
    time rather than by a reader.
 3. `CHANGELOG.md`: does the Unreleased section cover everything
    user-visible since the last tag? Cross-check with
-   `git diff --stat <last-tag>..HEAD -- itaca/` (the package is the flat
-   `itaca/` tree: `core`, `ops`, `uncertainty`, `io`, `utils`).
+   `git diff --stat <last-tag>..HEAD -- itaca/` (the whole `itaca/` tree;
+   do not enumerate its packages here, since that list has drifted
+   before and `pproc` was the one it lost).
 4. `docs/srs/`: requirement statuses against reality. Anything marked
    stable or implemented names evidence that still exists; anything
    shipped this cycle appears as a requirement or an amendment, with the
@@ -105,8 +106,9 @@ chapter (`docs/srs/chapters/08_standards_alignment.tex`):
 Not a bug hunt (Tier 1 tests and role-review own that); this pass looks
 for structural improvement in what already shipped:
 
-1. The NumPy-only rule (REQ-82, DD-02): imports in `core/`, `ops/`, and
-   `uncertainty/` against the policy, including deferred imports inside
+1. The NumPy-only rule (REQ-82 as amended by DD-33, which restricts
+   EVERY package and exempts only a lazy pandas import in `io/` and
+   `utils/`): imports against the policy, including deferred imports inside
    functions that dodge the module-level guard. `tests/test_import_policy.py`
    enforces it; a way around it that the test does not cover is a finding,
    and the fix is to extend the test, since the policy guard is a
@@ -126,8 +128,11 @@ for structural improvement in what already shipped:
    file is the list, not this one; enumerating them here has already
    drifted once. A new file outside their reach, or a British spelling
    past the American-with-Z rule, is a finding worth a guard extension.
-   Note that the identifier rule there is a denylist over what ships, so
-   an identifier it does not name is a finding rather than a pass.
+   The identifier rule (DD-41) lives in `tests/identifiers.py`, applied
+   over the repository by `tests/test_house_style.py` and over the built
+   wheel and sdist by `tests/test_release_integrity.py`; it is a
+   denylist, so an identifier it does not name is a finding rather than
+   a pass.
 5. Tooling-config agreement (REQ-96, REQ-80): the ruff pinned in the
    `[dev]` extra, the pre-commit `rev`, and the ruff in the environment
    agree (`tests/test_tooling_config.py`). A drift here is a finding even

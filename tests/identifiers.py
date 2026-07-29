@@ -1,40 +1,44 @@
 """Identifiers that must not travel to a user's machine, and the scan.
 
-One rule, one implementation, two boundaries. ``tests/test_house_style.py``
-scans the source tree on every run, and ``tests/test_release_integrity.py``
-scans the BUILT wheel and sdist, because a source scan's notion of what
-ships is a judgement while the artifact is the ground truth.
+The rule, its authority and the measurement that shaped it are recorded
+in DD-41; this module is its implementation and carries only the notes
+an editor of this file needs.
 
-The first version of this guard scanned ``itaca/`` alone, reasoning that
-the wheel is what reaches a user. An sdist built from that same commit
-carried 241 entries, including ``tests/``, ``docs/``, ``.claude/`` and
-``CLAUDE.md``, because setuptools-scm's file finder places every tracked
-file into the sdist; the exact identifier pair the commit had just
-removed from a docstring was still live three directories away, and
-``pip download itaca --no-binary :all:`` would have delivered it. The
-measurement beat the reasoning, which is why the artifact boundary
-exists and why the source boundary no longer stops at the package.
+One rule, one implementation, two boundaries: ``tests/test_house_style``
+scans the repository, and ``tests/test_release_integrity`` scans the
+built wheel and sdist. Both import this module by bare name, which works
+for the same reason ``from conftest import child_env`` does: pytest's
+default prepend import mode puts ``tests/`` on ``sys.path``. A module in
+a subdirectory must take a fixture instead, as ``conftest`` provides for
+``child_env``.
 
-Authorship is deliberate and is not what this forbids. The library is
-published under the author's own name, so ``LICENSE``, ``CITATION.cff``,
-``README.md``, ``CHANGELOG.md``, ``CLAUDE.md``, ``pyproject.toml`` and
-``docs/`` carry it by decision (DD-41), and the wheel's ``METADATA``, the
-sdist's ``PKG-INFO`` and the vendored license copy are derived from
-those, which is why they are recognized by basename. What must not
-travel is an identifier anywhere else.
+Three notes on the patterns, each of which cost a measurement:
+
+* Every token is assembled from code points, so this file does not carry
+  any of the strings it forbids. An earlier version spelled two of them
+  and exempted itself, which made the rule file the one file in the
+  repository able to defeat the rule, and put both names into every
+  sdist. There is now no exemption for this file and none is needed.
+* The trailing ``\\w*`` on the names is deliberate: without it the
+  author's own commit-trailer email slipped through, because no word
+  boundary falls between the given name and the characters that follow
+  it in an email local part. The LEADING side is deliberately NOT
+  widened: a leading ``\\w*`` would match the surname inside ordinary
+  words, and the measured need was the trailing side alone. A login of
+  the shape ``gneves@`` is therefore missed, and widening the token set
+  is the author's call rather than this file's.
+* An email-SHAPED rule was measured and rejected. The package documents
+  its default identity as ``user@hostname`` in three places and uses
+  ``u@h`` in an example, so shape matching false-positives; and the
+  occurrence that started this had no dot in its domain, so the usual
+  pattern would have missed the very case it was written for.
 
 This is a denylist and catches only the tokens listed. A colleague's
 name, a second institution or a personal filesystem path passes; a new
 identifier is a new entry, added the moment it is noticed rather than
-after it ships. Two consequences worth knowing before editing it. The
-institution token is assembled from code points, so this file does not
-itself carry the string it forbids, and the trailing ``\\w*`` on the
-names is deliberate: without it the author's own commit-trailer email
-slipped through, because a word boundary does not fall between the
-given name and the digits that follow it. A surname is also a citation
-risk: if a docstring ever cites a paper by an author of that name, the
-right move is to widen this file with the exemption stated, not to drop
-the citation.
+after it ships. A surname is also a citation risk: if a docstring ever
+cites a paper by an author of that name, the right move is to widen this
+file with the exemption stated, not to drop the citation.
 """
 
 from __future__ import annotations
@@ -42,14 +46,17 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
-# "tudelft", built from code points for the reason given above. The
-# pattern below accepts the spaced and hyphenated spellings too, which
-# is how it appears in prose rather than in an address.
+# Assembled from code points for the reason given above. In order: the
+# author's given name, her family name, and the institution, whose
+# pattern accepts the spaced and hyphenated spellings that appear in
+# prose as well as the run-together form that appears in an address.
+_GIVEN = "".join(map(chr, (103, 101, 111, 118, 97, 110, 97)))
+_FAMILY = "".join(map(chr, (110, 101, 118, 101, 115)))
 _INSTITUTION = "".join(map(chr, (116, 117, 100, 101, 108, 102, 116)))
 
 FORBIDDEN: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"\bgeovana\w*", re.IGNORECASE), "the author's given name"),
-    (re.compile(r"\bneves\w*", re.IGNORECASE), "the author's family name"),
+    (re.compile(rf"\b{_GIVEN}\w*", re.IGNORECASE), "the author's given name"),
+    (re.compile(rf"\b{_FAMILY}\w*", re.IGNORECASE), "the author's family name"),
     (
         re.compile(rf"\b{_INSTITUTION[:2]}[ _-]?{_INSTITUTION[2:]}\b", re.IGNORECASE),
         "an institution name",
@@ -57,6 +64,8 @@ FORBIDDEN: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 #: Files whose identifier is authorship, recorded by decision (DD-41).
+#: This is the whole exemption set, together with the derived metadata
+#: below; there is no other way for a path to be exempt.
 AUTHORSHIP_PATHS = frozenset(
     {
         "LICENSE",
@@ -68,24 +77,21 @@ AUTHORSHIP_PATHS = frozenset(
     }
 )
 
-#: This file, which must spell two of the tokens to match them. It is
-#: exempt as the RULE and not as authorship, and it is the only such
-#: exemption: the test module that exercises the rule builds its samples
-#: from code points instead, so a mutation there cannot hide behind an
-#: exemption.
-RULE_PATHS = frozenset({"tests/identifiers.py"})
-
-#: Trees whose identifier is authorship. The SRS title page and the
-#: decision, question and plan logs name who decided what, which is the
-#: record itself and not an incidental appearance.
+#: Trees whose content is the decision record itself: the SRS, the
+#: decision log, the question log and the execution plans all name who
+#: decided what, which is what they are for.
 AUTHORSHIP_TREES = ("docs/",)
 
-#: Build output derives its metadata from the files above and renames it,
-#: so the derived copies are recognized wherever the packaging tool puts
-#: them: ``itaca-<v>.dist-info/METADATA`` in the wheel, ``PKG-INFO`` at
-#: the sdist root and under ``itaca.egg-info/``, and the license copy
-#: under ``.dist-info/licenses/``.
-AUTHORSHIP_BASENAMES = frozenset({"METADATA", "PKG-INFO", "LICENSE"})
+#: Build output derives its metadata from the files above and renames
+#: it. Matched by SHAPE rather than by basename, so that a stray
+#: ``itaca/core/LICENSE`` or ``tests/data/PKG-INFO`` is guarded like any
+#: other file instead of being exempted by its name alone.
+_DERIVED_METADATA = (
+    re.compile(r"PKG-INFO"),
+    re.compile(r"[^/]+\.egg-info/PKG-INFO"),
+    re.compile(r"[^/]+\.dist-info/METADATA"),
+    re.compile(r"[^/]+\.dist-info/licenses/.+"),
+)
 
 
 def is_authorship(relpath: str) -> bool:
@@ -101,13 +107,20 @@ def is_authorship(relpath: str) -> bool:
     -------
     bool
         True when the path is exempt.
+
+    Examples
+    --------
+    >>> is_authorship("LICENSE"), is_authorship("docs/DECISIONS.md")
+    (True, True)
+    >>> is_authorship("itaca-0.2.0.dist-info/METADATA")
+    True
+    >>> is_authorship("itaca/core/LICENSE")
+    False
     """
     posix = relpath.replace("\\", "/")
-    if posix in AUTHORSHIP_PATHS or posix in RULE_PATHS:
+    if posix in AUTHORSHIP_PATHS or posix.startswith(AUTHORSHIP_TREES):
         return True
-    if posix.startswith(AUTHORSHIP_TREES):
-        return True
-    return posix.rsplit("/", 1)[-1] in AUTHORSHIP_BASENAMES
+    return any(pattern.fullmatch(posix) for pattern in _DERIVED_METADATA)
 
 
 def offenders(items: Iterable[tuple[str, bytes]]) -> list[str]:
@@ -116,6 +129,11 @@ def offenders(items: Iterable[tuple[str, bytes]]) -> list[str]:
     Takes ``(path, content)`` pairs rather than a directory, so one
     implementation serves a filesystem walk and an archive without
     either boundary re-deriving the rule.
+
+    A payload holding a NUL byte early is skipped as binary. That is a
+    known limit rather than an oversight: ``.itc`` is a ZIP and carries
+    a user identity by design, so a committed archive fixture would pass
+    both boundaries. Nothing tracked is in that shape today.
 
     Parameters
     ----------
@@ -129,9 +147,9 @@ def offenders(items: Iterable[tuple[str, bytes]]) -> list[str]:
 
     Examples
     --------
-    >>> offenders([("itaca/core/thing.py", b"# reviewed by Geovana")])
-    ["itaca/core/thing.py:1: the author's given name"]
-    >>> offenders([("LICENSE", b"Copyright (c) 2026 Geovana Neves")])
+    >>> offenders([("itaca/core/thing.py", b"# an author call at B1")])
+    []
+    >>> offenders([("itaca/core/thing.py", b"# see Section 4.5")])
     []
     """
     found: list[str] = []
@@ -139,7 +157,7 @@ def offenders(items: Iterable[tuple[str, bytes]]) -> list[str]:
         if is_authorship(relpath):
             continue
         if b"\x00" in content[:8192]:
-            continue  # binary; a compiled or image payload, not prose
+            continue
         for lineno, line in enumerate(
             content.decode("utf-8", errors="ignore").splitlines(), start=1
         ):

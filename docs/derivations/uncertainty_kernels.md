@@ -1,8 +1,8 @@
 # Worked derivations: two-component propagation through linear kernels
 
-Prepared for Geovana's validation (numerical-analyst seat), M1 Batch B,
-2026-07-23. Validation evidence toward resolving OQ-18, OQ-24, and
-OQ-26 (all three remain `open` until she signs off). The property tests
+Prepared for the numerical-analyst seat, M1 Batch B, 2026-07-23.
+Validation evidence toward resolving OQ-18, OQ-24, and OQ-26 (all three
+remain `open` until that seat signs off). The property tests
 in `tests/derivations/test_kernel_derivations.py` exercise every claim
 below against the actual kernels; they are the validation evidence.
 

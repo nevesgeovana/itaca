@@ -280,11 +280,16 @@ class TestBuiltArtifactIdentity:
             shipped = list(payload())
             found += identifiers.offenders(shipped)
 
-        # A build that produced an empty archive would pass every
-        # assertion above by scanning nothing, which is the failure this
-        # repository already refuses for its plan and incident checkers.
+        # A build that produced an empty archive, or an sdist that
+        # stopped shipping the tree, would pass every assertion above by
+        # scanning nothing or nearly nothing. Both floors are read, and
+        # both archives must contain a file the scan exists for: the
+        # package module for the wheel, and for the sdist the very test
+        # module whose identifier this guard was written to catch.
         assert len(entries) >= 50, f"the wheel holds {len(entries)} entries"
         assert len(shipped) >= 100, f"the sdist holds {len(shipped)} files"
+        names = [name for name, _ in shipped]
+        assert "tests/core/test_provenance_modes.py" in names, sorted(names)[:20]
         assert not found, (
             f"identifiers travel inside the release artifacts: {found}; "
             f"{identifiers.REMEDY}"

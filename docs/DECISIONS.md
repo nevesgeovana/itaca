@@ -1339,20 +1339,28 @@ them as predating the scope.
 **Status:** confirmed
 **Closes:** BRF-048 (the routed consequence of an answered author decision)
 
-Two rules, one implementation, in `tests/identifiers.py`. No personal or
-institutional identifier appears in a tracked file or in a built
-artifact, EXCEPT in the files where authorship is deliberate: `LICENSE`,
-`CITATION.cff`, `README.md`, `CHANGELOG.md`, `CLAUDE.md`,
-`pyproject.toml`, and `docs/`, together with the build metadata derived
-from them (`METADATA`, `PKG-INFO`, and the vendored license copy).
+One rule, one implementation, in `tests/identifiers.py`, applied at two
+boundaries. No personal or institutional identifier appears in a file
+git considers part of this repository, nor in a built artifact, EXCEPT
+in the files where authorship is deliberate: `LICENSE`, `CITATION.cff`,
+`README.md`, `CHANGELOG.md`, `CLAUDE.md`, `pyproject.toml`, and `docs/`,
+together with the build metadata derived from them (`METADATA`,
+`PKG-INFO`, and the vendored license copy, matched by shape rather than
+by basename so a stray `itaca/core/LICENSE` stays guarded). That list is
+the whole exemption set: the rule file itself is written so that it
+needs no exemption, and no other path is exempt for any reason.
 
 **Why the rule exists.** The author publishes this library under her own
 name, so authorship is intentional and stays. What must not travel is an
-incidental appearance: a name inside a docstring, a comment recording
-who decided something, or an example identity. The category that forced
-it was a doctest binding a given name to an institutional domain, which
-shipped inside the wheel to every machine that installed itaca and would
-have executed had doctests ever been collected.
+INCIDENTAL appearance: a name inside a docstring, a name in a code
+comment, or an example identity. The distinction that makes `docs/`
+exempt rather than guarded is not the file type but the purpose: the
+SRS, the decision log, the question log and the execution plans exist to
+record who decided what, so a name there is the record and not an aside.
+The category that forced the rule was a doctest binding a given name to
+an institutional domain, which shipped inside the wheel to every machine
+that installed itaca and would have executed had doctests ever been
+collected.
 
 **Why the guard is written down here.** It is enforced in CI, and until
 this entry its only authority was a private brief that no clone can
@@ -1366,10 +1374,19 @@ reaches a user. That reasoning was wrong about this repository:
 carries every tracked file. Measured on the commit that removed the four
 package occurrences: 241 entries, including `tests/`, where the exact
 identifier pair was still live in a module docstring headed "the
-contract under test". A source scan encodes a judgement about what
-ships; the archive is the only thing that cannot be wrong about its own
+contract under test". A source scan encodes a judgment about what ships;
+the archive is the only thing that cannot be wrong about its own
 contents. The pair costs one build, shared with the two assertions
-already made against the artifact (DD-38, ITACA-014).
+already made against the artifact (DD-38, ITACA-014), which is why
+`build` became a declared `[dev]` dependency: without it those tests
+error on the machine that gates the release, and the boundary that
+cannot be wrong would be the boundary that never runs.
+
+The source half asks git for its file list rather than walking the
+filesystem, for the same reason. A working-tree walk read `dist/`,
+`itaca.egg-info/` and one developer's local settings, so its verdict
+depended on what had been built, and the artifact test writes two of
+those during the run.
 
 **Why a name and not a shape.** An email-shaped regex was measured and
 rejected. The package legitimately documents its default identity as
@@ -1381,16 +1398,28 @@ very case it was written for.
 **What this decision does not claim.** The guard is a denylist and
 catches only the tokens named. A colleague's name, a second institution
 or a personal path passes, so a new identifier is a new entry, added
-when it is noticed rather than after it ships. A kit-level guard over
-the shipped surface of all three repositories was ordered separately and
-is not superseded by this one: this runs in CI on every change, that one
+when it is noticed rather than after it ships. It also cannot read a
+binary payload, and `.itc` is a ZIP that carries a user identity by
+design, so a committed archive fixture would pass both boundaries;
+nothing tracked is in that shape today, and the limit is asserted in the
+suite so that removing it is a visible act. A kit-level guard over the
+shipped surface of all three repositories was ordered separately and is
+not superseded by this one: this runs in CI on every change, that one
 runs across repositories at promotion time.
+
+**What this decision still owes.** The rule has a home here, in the log
+that records why, and none yet in the SRS Chapter 9 contributing guide
+or the pull-request checklist, which is where a contributor would look
+before meeting it as a red build. That is registered rather than done,
+because it is an SRS amendment and the document version is under a
+release checkpoint.
 
 **Correction this decision records.** `BRF-048` stated that the doctest
 was "the only place in either library where an institution appears bound
 to her identity". Measured on 2026-07-29, it was not: `README.md` binds
 her name to two institutions in the author section, and that text ships
-in the wheel's `METADATA` and did so in v0.1.0. That appearance is
-authorship in a file the same brief declares intentional, so it is
-exempt here rather than removed, but the premise was false and the
-exemption is a decision rather than an oversight.
+in the wheel's `METADATA`. It did so in v0.1.0 too, measured by reading
+`itaca-0.1.0.dist-info/METADATA` out of the published wheel: lines 5, 95
+and 96. That appearance is authorship in a file the same brief declares
+intentional, so it is exempt here rather than removed, but the premise
+was false and the exemption is a decision rather than an oversight.

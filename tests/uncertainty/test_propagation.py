@@ -70,6 +70,28 @@ class TestKnownCases:
         assert result.uncertainty.random["f"][0] == pytest.approx(4.0)
         assert result.uncertainty.combined("f")[0] == pytest.approx(5.0)
 
+    def test_the_declared_coefficient_applies_to_the_random_component_too(
+        self,
+    ) -> None:
+        """OQ-23: one declared r(a, b) governs BOTH components.
+
+        Every other correlated case here asserts on `systematic` alone,
+        so restricting the covariance term to that component would have
+        left the suite green while contradicting the rule stated in
+        `propagation.py` and in SRS Section 4.2. This is the half that
+        was unverified.
+        """
+        db = (
+            _frame()
+            .set_uncertainty({"a": 3.0, "b": 4.0}, component="random")
+            .set_correlation({("a", "b"): 0.5})
+        )
+        result = db.compute("f = a + b")
+        assert result.uncertainty is not None
+        expected = np.sqrt(3.0**2 + 4.0**2 + 2 * 0.5 * 3.0 * 4.0)
+        assert result.uncertainty.random["f"][0] == pytest.approx(expected)
+        assert not result.uncertainty.systematic
+
 
 class TestProperties:
     @given(_u, _u)

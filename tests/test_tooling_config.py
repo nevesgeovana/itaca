@@ -223,3 +223,50 @@ def test_ruff_excludes_markdown_from_the_formatter_scope() -> None:
         "cannot extend the formatter over prose and illustrative samples; "
         f"got {excluded}. The rationale is next to the setting in pyproject."
     )
+
+
+# The suite spawns interpreters to exercise tools it cannot import: mypy
+# on a snippet, and `build` on the repository. Those tools have to be in
+# the extra the contributing guide and CI install, or the test errors on
+# every machine but the author's. That is ITACA-015's defect class, whose
+# fix added one package and no guard, so it recurred the moment a test
+# spawned `build`. Discovering the spawn sites is what makes the rule
+# survive the next tool.
+_SPAWNED_MODULE = re.compile(r'sys\.executable,\s*"-m",\s*"([a-zA-Z_][\w.]*)"')
+_STDLIB_SPAWNS = frozenset({"pytest", "pip", "venv", "json.tool"})
+
+
+def _requirement_names(requirements: list[str]) -> set[str]:
+    return {
+        re.split(r"[<>=!~\[; ]", line, maxsplit=1)[0].lower() for line in requirements
+    }
+
+
+def test_every_module_the_suite_spawns_is_declared_in_the_dev_extra() -> None:
+    """A tool the suite runs but nobody installs is a test that only passes here.
+
+    `pytest` and `pip` are exempt because whatever ran this file already
+    provides them.
+    """
+    declared = _requirement_names(
+        _pyproject()["project"]["optional-dependencies"]["dev"]
+    )
+    spawned: dict[str, str] = {}
+    for path in sorted((ROOT / "tests").rglob("*.py")):
+        for module in _SPAWNED_MODULE.findall(path.read_text(encoding="utf-8")):
+            spawned.setdefault(module, path.relative_to(ROOT).as_posix())
+    assert len(spawned) >= 2, (
+        f"the spawn-site scan found {spawned}, which is too few to be a real "
+        "discovery; the pattern it matches has probably moved"
+    )
+    missing = {
+        module: site
+        for module, site in spawned.items()
+        if module not in _STDLIB_SPAWNS and module not in declared
+    }
+    assert not missing, (
+        f"the suite spawns {missing} (module: spawn site) but the [dev] extra "
+        f"declares {sorted(declared)}; a tool the tests run must be installed "
+        'by `pip install -e ".[dev]"`, or the test errors wherever the author '
+        "did not already have it (ITACA-015's class)."
+    )

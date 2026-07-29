@@ -546,7 +546,7 @@ class TestPartialUncertainty:
 
 class TestBookkeeping:
     def test_tags_preserved(self) -> None:
-        # rotation does not change origin tags (SRS 4.6).
+        # rotation does not change origin tags (SRS 4.3).
         rows = [[0.0, np.nan, 0.0, 0.0], [1.0, 2.0, 0.0, 0.0]]
         filled = (
             itc.load(np.array(rows), names=["alpha", "FX", "FY", "FZ"])

@@ -134,7 +134,10 @@ class TestFillUncertainty:
         assert result.uncertainty.random["CT"][1] == pytest.approx(2.0)
 
     def test_polyfit_with_uncertainty_rejected(self, db: VarFrame) -> None:
-        # DD-18: no sound rule frozen yet (REQ-98 draft): raise, never
-        # silently carry or drop.
+        # DD-18: no sound weight rule is frozen for this path, so it
+        # raises rather than silently carrying or dropping. REQ-98 is
+        # STABLE and its table places fill with interpolate as exact,
+        # which this refusal contradicts; the disagreement is registered
+        # and is the author's to settle, not this test's to assert away.
         with pytest.raises(UncertaintyError):
             self._with_unc(db).fill(along="alpha", method="polyfit", deg=1, window=3)

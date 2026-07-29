@@ -200,6 +200,12 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Changed
 
+* **The source distribution now contains the whole repository**, not
+  only the package: `pip download itaca --no-binary :all:` delivers
+  `tests/`, `docs/`, `examples/` and the workspace configuration
+  alongside `itaca/`. This follows from deriving the version with
+  `setuptools-scm` (DD-38), whose file finder replaces the default
+  selection; the wheel is unchanged and still ships `itaca/` alone.
 * **The minimum supported Python is now 3.11** (was 3.10). This is a
   breaking change for anyone on 3.10: `pip install itaca` there will
   resolve to v0.1.0 rather than upgrading. The reason is `.itceq`,
@@ -246,17 +252,16 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Fixed
 
-* **No personal or institutional identifier ships inside the package or
-  the release artifacts** (`BRF-048`, DD-41). Four occurrences in
-  shipped docstrings stated their fact by naming a person or an
-  institution, one of them the `set_user` Examples section, which bound
-  a given name to an institutional domain and travelled inside every
-  wheel. They now state the fact and cite the record instead. Two guards
-  hold the class: `tests/test_house_style.py` over the tracked tree and
-  `tests/test_release_integrity.py` over the built wheel and sdist,
-  sharing one rule in `tests/identifiers.py`. The artifact half is not
-  redundant: a guard scoped to the package was green while an sdist from
-  the same commit shipped the identical string inside `tests/`.
+* **No personal or institutional identifier appears outside the files
+  where authorship is deliberate** (DD-41), and none at all inside the
+  importable package. Four occurrences in shipped docstrings stated
+  their fact by naming a person or an institution, one of them the
+  `set_user` Examples section, which bound a given name to an
+  institutional domain and traveled inside every wheel. They now state
+  the fact and cite the record instead. Authorship in `LICENSE`,
+  `CITATION.cff`, `README.md`, `CHANGELOG.md`, `pyproject.toml` and the
+  packaging metadata derived from them is intentional and unchanged.
+  DD-41 records the rule, both guards that hold it, and its limits.
 * **`fitmodel` no longer misstates the specification it cites.** Its
   module docstring said the normative REQ-98 table declares no
   `fitmodel` row; the table carries `fitmodel` and `fitvalue` as a
@@ -265,8 +270,9 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   why was not. `propagation.py` likewise called REQ-98 and REQ-99 a
   draft gate awaiting validation, when both were promoted to stable in
   SRS document 0.1.1, and it now names all four provisional rows rather
-  than two. Two `SRS 4.6` citations that pointed at the `.itceq` section
-  now point at Axes (4.5) and the HistoryFrame (4.3).
+  than two. Four `SRS 4.6` citations that pointed at the `.itceq`
+  section now point at Axes (4.5) and the HistoryFrame (4.3), and one
+  `SRS 4.4` in `_degree.py` now cites REQ-30.
 * **`itc.set_user` documents what the identity becomes.** The value is
   captured at VarFrame creation and copied verbatim into every `.itc`
   archive, which is shareable, so the docstring now says to use an
