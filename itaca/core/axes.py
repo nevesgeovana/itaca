@@ -1,4 +1,4 @@
-"""Axes and custom coordinate frames (REQ-38, REQ-100, REQ-101; SRS 4.6).
+"""Axes and custom coordinate frames (REQ-38, REQ-100, REQ-101; SRS 4.5).
 
 An ``Axis`` is a first-class coordinate frame, defined either by a
 constant 3x3 orthogonal ``rotation_matrix`` from the canonical body

@@ -12,7 +12,9 @@ Usage example (TDD anchor)::
 An Axis is either a constant 3x3 orthogonal matrix or a parametric
 frame evaluated per grid point from named angles (REQ-101). The
 built-in wind and stability frames follow AIAA R-004A-1992; their sign
-convention is pending Geovana's SME acceptance.
+convention was accepted by the project's subject matter expert at the
+M1 Phase B2 checkpoint (2026-07-23) and cross-validated against scipy
+(DD-26). See ``itaca/core/axes.py`` for the convention itself.
 """
 
 import numpy as np

@@ -74,7 +74,8 @@ class TestFillMethods:
 
 class TestFillDeprecation:
     def test_positional_method_warns(self, db: VarFrame) -> None:
-        # Geovana's B1 call: fill's positional method is deprecated,
+        # An author call at the M1 Phase B1 checkpoint: fill's positional
+        # method is deprecated,
         # aligning with the keyword-only M1 kernel ops.
         with pytest.warns(FutureWarning, match="keyword-only"):
             result = db.fill("alpha", "linear")

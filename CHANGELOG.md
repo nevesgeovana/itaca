@@ -246,6 +246,31 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Fixed
 
+* **No personal or institutional identifier ships inside the package or
+  the release artifacts** (`BRF-048`, DD-41). Four occurrences in
+  shipped docstrings stated their fact by naming a person or an
+  institution, one of them the `set_user` Examples section, which bound
+  a given name to an institutional domain and travelled inside every
+  wheel. They now state the fact and cite the record instead. Two guards
+  hold the class: `tests/test_house_style.py` over the tracked tree and
+  `tests/test_release_integrity.py` over the built wheel and sdist,
+  sharing one rule in `tests/identifiers.py`. The artifact half is not
+  redundant: a guard scoped to the package was green while an sdist from
+  the same commit shipped the identical string inside `tests/`.
+* **`fitmodel` no longer misstates the specification it cites.** Its
+  module docstring said the normative REQ-98 table declares no
+  `fitmodel` row; the table carries `fitmodel` and `fitvalue` as a
+  provisional row whose coefficient-space rule is not frozen (OQ-24).
+  The behavior was always correct and is unchanged; the description of
+  why was not. `propagation.py` likewise called REQ-98 and REQ-99 a
+  draft gate awaiting validation, when both were promoted to stable in
+  SRS document 0.1.1, and it now names all four provisional rows rather
+  than two. Two `SRS 4.6` citations that pointed at the `.itceq` section
+  now point at Axes (4.5) and the HistoryFrame (4.3).
+* **`itc.set_user` documents what the identity becomes.** The value is
+  captured at VarFrame creation and copied verbatim into every `.itc`
+  archive, which is shareable, so the docstring now says to use an
+  identifier you would publish rather than a personal email address.
 * **Precise public return types, and keyword-only options with a
   deprecation window** (`ITACA-032`, REQ-78, REQ-85). Eight public
   `VarFrame` methods were annotated `-> object`, so a caller under

@@ -24,6 +24,13 @@ its APPLICATION is this repository's. What this file adds is the
 guarantee that the checkers actually run against this repository, and
 that they can still fail; a vendored guard nobody invokes is the exact
 shape of `ITACA-006` one level up.
+
+A fourth item joined them for the same reason rather than from the same
+review: `BRF-048`, the identifiers that must not travel to a user's
+machine (DD-41). Its rule lives in `tests/identifiers.py` and its other
+half runs over the source tree in `tests/test_house_style.py`; what
+belongs here is the half that reads the archive, because what ships is a
+question only the archive can answer.
 """
 
 from __future__ import annotations
@@ -34,8 +41,11 @@ import sys
 import tarfile
 import tomllib
 import zipfile
+from collections.abc import Iterator
 from pathlib import Path
 
+import identifiers
+import pytest
 from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -134,15 +144,23 @@ def test_the_release_gate_checker_had_something_to_check() -> None:
 
 
 class TestBuiltArtifactIdentity:
-    """`ITACA-004` and `ITACA-014` live in the BUILT artifact, so that is
-    what these assert. Both findings were invisible to a suite that only
-    ever looked at the source tree: mypy passed over the sources while
-    consumers got no typing at all, and the version was consistent
-    everywhere in-tree while being wrong about which code it was.
+    """`ITACA-004`, `ITACA-014` and `BRF-048` live in the BUILT artifact,
+    so that is what these assert. All three were invisible to a suite that
+    only ever looked at the source tree: mypy passed over the sources
+    while consumers got no typing at all, the version was consistent
+    everywhere in-tree while being wrong about which code it was, and an
+    identifier guard scoped to the package was green while the sdist
+    shipped the same identifier inside `tests/`.
 
-    One build serves both, because building twice would double the
-    slowest test in the suite for no extra evidence.
+    One build serves all of them, through a class-scoped fixture, because
+    building once per assertion would multiply the slowest test in the
+    suite for no extra evidence.
     """
+
+    @pytest.fixture(scope="class")
+    def artifacts(self, tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
+        """The wheel and the sdist, built once for this class."""
+        return self._build(tmp_path_factory.mktemp("dist"))
 
     @staticmethod
     def _build(tmp_path: Path) -> tuple[Path, Path]:
@@ -162,7 +180,7 @@ class TestBuiltArtifactIdentity:
         return wheels[0], sdists[0]
 
     def test_itaca_004_and_014_the_built_artifact_carries_both(
-        self, tmp_path: Path
+        self, artifacts: tuple[Path, Path]
     ) -> None:
         """The artifact is named for the code it holds, and ships py.typed.
 
@@ -179,7 +197,7 @@ class TestBuiltArtifactIdentity:
         mypy against the installed package got nothing, while this
         repository's own mypy gate passed against the source tree.
         """
-        wheel, sdist = self._build(tmp_path)
+        wheel, sdist = artifacts
         version = importlib.metadata.version("itaca")
 
         # ITACA-004: the filename, the metadata and the code agree.
@@ -219,6 +237,58 @@ class TestBuiltArtifactIdentity:
             assert any(
                 name.endswith("itaca/py.typed") for name in archive.getnames()
             ), "itaca/py.typed missing from the sdist"
+
+    def test_brf048_no_identifier_travels_inside_the_built_artifacts(
+        self, artifacts: tuple[Path, Path]
+    ) -> None:
+        """No personal or institutional identifier ships, outside authorship.
+
+        `BRF-048`, measured before the fix: four occurrences sat in the
+        importable package, one of them a doctest binding a given name to
+        an institutional domain. Measured AFTER that fix and before this
+        one: an sdist built from the same commit carried 241 entries,
+        because setuptools-scm's file finder now places every tracked
+        file into it, and `tests/core/test_provenance_modes.py` still
+        held the identical string in the module docstring its own heading
+        calls "the contract under test".
+
+        The source guard in `tests/test_house_style.py` decides what
+        ships by reasoning about it. This one reads the archive, which is
+        the only thing that cannot be wrong about its own contents, and
+        it is why the pair exists rather than either alone.
+        """
+        wheel, sdist = artifacts
+        found: list[str] = []
+
+        with zipfile.ZipFile(wheel) as archive:
+            entries = [name for name in archive.namelist() if not name.endswith("/")]
+            found += identifiers.offenders(
+                (name, archive.read(name)) for name in entries
+            )
+        assert "itaca/core/provenance.py" in entries, entries[:20]
+
+        with tarfile.open(sdist) as bundle:
+
+            def payload() -> Iterator[tuple[str, bytes]]:
+                for member in bundle.getmembers():
+                    handle = bundle.extractfile(member) if member.isfile() else None
+                    if handle is not None:
+                        # Strip the "itaca-<version>/" root so the paths
+                        # the rule sees are repository-relative.
+                        yield member.name.split("/", 1)[-1], handle.read()
+
+            shipped = list(payload())
+            found += identifiers.offenders(shipped)
+
+        # A build that produced an empty archive would pass every
+        # assertion above by scanning nothing, which is the failure this
+        # repository already refuses for its plan and incident checkers.
+        assert len(entries) >= 50, f"the wheel holds {len(entries)} entries"
+        assert len(shipped) >= 100, f"the sdist holds {len(shipped)} files"
+        assert not found, (
+            f"identifiers travel inside the release artifacts: {found}; "
+            f"{identifiers.REMEDY}"
+        )
 
     def test_itaca_014_the_typed_classifier_is_actually_declared(self) -> None:
         """The other half of the promise, so the pair cannot drift apart.

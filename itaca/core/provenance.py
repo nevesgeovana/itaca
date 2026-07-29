@@ -67,6 +67,15 @@ def set_user(name: str | None) -> None:
     ProvenanceError
         If ``name`` is an empty or blank string.
 
+    Notes
+    -----
+    The identity is captured when a VarFrame is created, so frames
+    already in hand keep the identity in force at their creation. It is
+    copied verbatim into every ``.itc`` archive, which is a shareable
+    artifact, so use an identifier you would publish and not a personal
+    email address. Any non-empty string is accepted; ``user@hostname``
+    is the shape of the default, not a validated requirement.
+
     Examples
     --------
     >>> import itaca as itc

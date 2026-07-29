@@ -19,7 +19,7 @@ FULL = """\
 [meta]
 name        = "Aircraft balance campaign: power off"
 version     = "1.0"
-author      = "Geovana Neves"
+author      = "A. Analyst"
 description = "6-component internal balance"
 
 [constants]

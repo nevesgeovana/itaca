@@ -13,7 +13,7 @@ component covariance (built from the declared correlation, OQ-23), so
 both UncFrame components propagate as ``diag(R C R^T)``. When a
 referenced angle carries uncertainty, its chain-rule sensitivity
 ``dR/dangle @ v`` adds to the variance (REQ-101). Origin tags are
-preserved unchanged (SRS 4.6).
+preserved unchanged (SRS 4.3).
 """
 
 from __future__ import annotations

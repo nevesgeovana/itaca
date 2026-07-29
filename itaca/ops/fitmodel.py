@@ -4,9 +4,10 @@ The swept dimension becomes ``<dim>_coef`` with string labels
 ``dim^0`` to ``dim^N`` (ascending exponents, OQ-11). The original
 sweep range is recorded in the coefficient dimension's description so
 that ``fitvalue`` can tag evaluations inside (+1) or beyond (-1) the
-fitted range (REQ-32). The normative REQ-98 table declares no
-fitmodel row, so the operation raises when uncertainty is present
-rather than guessing (DD-18); the gap is queued for the author
+fitted range (REQ-32). The normative REQ-98 table carries ``fitmodel``
+and ``fitvalue`` as a provisional row whose coefficient-space rule is
+not yet frozen, so the operation raises when uncertainty is present
+rather than guessing (DD-18); the rule is queued for the author
 (OQ-24).
 
 Both operations keep the variable names and replace what those names

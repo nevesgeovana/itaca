@@ -179,7 +179,8 @@ class TestFitvalue:
         assert dense.history.last.comment == "densify"
 
     def test_uncertainty_rejected(self, prov) -> None:  # type: ignore[no-untyped-def]
-        # Geovana's B1 call: fitvalue defers with fitmodel and raises
+        # An author call at the M1 Phase B1 checkpoint (OQ-24): fitvalue
+        # defers with fitmodel and raises
         # when uncertainty is present until the coefficient-space rule
         # (OQ-24) is frozen, keeping forward and inverse coherent.
         coef = Dimension(

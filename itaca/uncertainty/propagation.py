@@ -6,11 +6,12 @@ declare no correlations pay no accuracy cost. The systematic and
 random components propagate separately and recombine as RSS only at
 reporting time (REQ-99).
 
-Note (REQ-98/REQ-99): the declared correlation r(a, b) applies
-identically to both components. This choice was validated at the M0
-Phase 4 checkpoint (2026-07-21) and both requirements are stable as of
-SRS document 0.1.1; the smooth and diff row of REQ-98 remains
-provisional pending OQ-18.
+Note (OQ-23; SRS Section 4.2, REQ-40 and REQ-41): the declared
+correlation r(a, b) applies identically to both components. That choice
+was approved at the M0 Phase 4 checkpoint (2026-07-21), the same
+checkpoint at which REQ-98 and REQ-99 were promoted to stable in SRS
+document 0.1.1. The provisional rows of REQ-98 are smooth, diff,
+fitmodel and fitvalue, pending OQ-18 and OQ-24.
 """
 
 from __future__ import annotations

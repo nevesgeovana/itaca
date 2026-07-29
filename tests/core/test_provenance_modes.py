@@ -4,7 +4,7 @@ Usage example (the contract under test)::
 
     import itaca as itc
 
-    itc.set_user("geovana@tudelft")
+    itc.set_user("analyst@lab01")
     itc.set_mode("draft")
 """
 
@@ -26,8 +26,8 @@ class TestSessionState:
 
     def test_set_user_overrides_and_resets(self) -> None:
         default = provenance.current_user()
-        itc.set_user("geovana@tudelft")
-        assert provenance.current_user() == "geovana@tudelft"
+        itc.set_user("analyst@lab01")
+        assert provenance.current_user() == "analyst@lab01"
         itc.set_user(None)
         assert provenance.current_user() == default
 

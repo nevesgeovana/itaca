@@ -122,10 +122,12 @@ for structural improvement in what already shipped:
    suggested fix). A message that names a symptom instead of a cause, or
    an exception outside the `ITACAError` tree, is a finding
    (`tests/test_errors.py` is the home for the guard).
-4. House style: `tests/test_house_style.py` guards against em and en
-   dashes and a dropped LaTeX control sequence in the SRS sources; a new
-   file outside its reach, or a British spelling past the American-with-Z
-   rule, is a finding worth a guard extension.
+4. House style: `tests/test_house_style.py` holds the guards, and that
+   file is the list, not this one; enumerating them here has already
+   drifted once. A new file outside their reach, or a British spelling
+   past the American-with-Z rule, is a finding worth a guard extension.
+   Note that the identifier rule there is a denylist over what ships, so
+   an identifier it does not name is a finding rather than a pass.
 5. Tooling-config agreement (REQ-96, REQ-80): the ruff pinned in the
    `[dev]` extra, the pre-commit `rev`, and the ruff in the environment
    agree (`tests/test_tooling_config.py`). A drift here is a finding even

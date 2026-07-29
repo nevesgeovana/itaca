@@ -2,7 +2,7 @@
 
 These tests exercise the proposed frozen rules of
 ``docs/derivations/uncertainty_kernels.md`` against the actual kernels,
-for Geovana's numerical-analyst validation at Batch B. Where a claim is
+for the numerical analyst's validation at Batch B. Where a claim is
 "the rule matches independent LPU," the test cross-checks it against an
 independent Monte Carlo draw rather than restating the closed form, so a
 regression in the rule (not just in NumPy) would fail. The ops
