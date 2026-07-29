@@ -157,6 +157,48 @@ class ItceqSpec:
                 written.append(equation.target)
         return tuple(written)
 
+    @property
+    def builtin_constants(self) -> tuple[str, ...]:
+        """Built-in expression constants any expression reads (REQ-44).
+
+        ``required_variables`` subtracts ``pi`` and ``e`` unconditionally,
+        which is right for "which channels must the frame supply" and
+        wrong for "can this frame feed this processor": a frame carrying a
+        variable named ``e`` makes every read of that name ambiguous while
+        the name appears in no field for anything to notice.
+
+        Computed over equations AND corrections, in the shape of
+        :attr:`targets` beside it, because ``__call__`` evaluates both. An
+        earlier form scanned only ``equations``, so a correction reading
+        the name passed ``validate`` and then failed partway through the
+        application, after earlier equations had already been written.
+
+        Returns
+        -------
+        tuple of str
+            The subset of ``pi`` and ``e`` read as a name, sorted.
+
+        Examples
+        --------
+        >>> spec = parse_itceq("drag.itceq")  # doctest: +SKIP
+        >>> spec.builtin_constants               # doctest: +SKIP
+        ('e', 'pi')
+        """
+        found: set[str] = set()
+        for equation in (*self.equations, *self.corrections):
+            # No try/except. Every expression here already parsed in
+            # `_dependencies` at read time, so a SyntaxError is an
+            # impossible state, and swallowing one would silently skip
+            # the shadowing check for that equation, which is the very
+            # defect this property exists to catch.
+            tree = ast.parse(equation.expression, mode="eval")
+            found |= {
+                node.id
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Name) and node.id in _EXPRESSION_CONSTANTS
+            }
+        return tuple(sorted(found))
+
 
 def parse_itceq(path: str | Path, *, auto_sort: bool = False) -> ItceqSpec:
     """Read and validate an .itceq file (REQ-48).
@@ -479,46 +521,6 @@ def _dependencies(source: Path, equation: Equation) -> set[str]:
         and id(node) not in skip
         and node.id not in _EXPRESSION_CONSTANTS
     }
-
-
-def builtin_constants_read(equations: Iterable[Equation]) -> set[str]:
-    """Built-in expression constants the equations reference (REQ-44).
-
-    ``_dependencies`` subtracts these unconditionally, which is right for
-    "which channels must the frame supply" and wrong for "can this frame
-    feed this processor": a frame carrying a variable named ``e`` makes
-    every read of that name ambiguous, and the name never appears in
-    ``required_variables`` for anything to notice. Exposed so
-    ``EquationProcessor.validate`` can refuse the collision at the
-    lifecycle step that holds both the file and the frame (CHK1-001).
-
-    Parameters
-    ----------
-    equations : iterable of Equation
-        The equations to scan.
-
-    Returns
-    -------
-    set of str
-        The subset of ``pi`` and ``e`` any expression reads as a name.
-
-    Examples
-    --------
-    >>> builtin_constants_read([Equation("CDi", "CL ** 2 / (pi * AR * e)")])
-    {'e', 'pi'}
-    """
-    found: set[str] = set()
-    for equation in equations:
-        try:
-            tree = ast.parse(equation.expression, mode="eval")
-        except SyntaxError:  # pragma: no cover - _dependencies already refused
-            continue
-        found |= {
-            node.id
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Name) and node.id in _EXPRESSION_CONSTANTS
-        }
-    return found
 
 
 def _resolve(

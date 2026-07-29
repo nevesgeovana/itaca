@@ -26,6 +26,18 @@ def _normalize(
     normalized: dict[str, NDArray[Any]] = {}
     for name, values in component.items():
         array = np.asarray(values, dtype=float)
+        # NaN is NOT refused here, and the omission is deliberate rather
+        # than forgotten. A blanket finiteness rule on the assembled
+        # array is the structurally right home for it, and it was tried:
+        # it breaks `compute(where=, fill=)` and both `fill` uncertainty
+        # paths, which write NaN on purpose for cells the operation did
+        # not touch. So this array carries TWO meanings of NaN, missing
+        # and invalid, and separating them is a numerical-analyst
+        # decision, not a refactor. Recorded as OQ-40; until it is
+        # answered the finiteness rule lives one layer up, on the
+        # DECLARED magnitude only, and a relative spec can still inherit
+        # a NaN from the data (R3-ITA-007, pinned by an xfail ratchet in
+        # tests/test_chk1_open_defects.py).
         finite = array[np.isfinite(array)]
         if finite.size and np.any(finite < 0):
             raise UncertaintyError(

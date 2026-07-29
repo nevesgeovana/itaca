@@ -208,7 +208,7 @@ def test_itaca_007_no_requirement_silently_stops_being_reached() -> None:
     The first version of this check skipped with a list and could
     therefore never fail: a requirement that IS implemented today but
     loses its citation to a refactor would silently join the unreached
-    set, the count would move from 28 to 29, and the run would stay
+    set, the count would move from 26 to 27, and the run would stay
     green. That is the self-skipping evidence this repository names for
     the plan and incident checkers, where an empty folder reports "no
     entries" and exits zero.
@@ -219,9 +219,12 @@ def test_itaca_007_no_requirement_silently_stops_being_reached() -> None:
 
     Note the walk's blind spot, stated because the earlier message
     asserted the opposite: it reads only `*.py`. REQ-75 is implemented
-    in `pyproject.toml` (`--cov-fail-under=90`) and REQ-78 in
-    `[tool.mypy] strict`, so a requirement implemented in CONFIGURATION
-    is invisible here and must not be read as unimplemented.
+    in `pyproject.toml` (`--cov-fail-under=90`) and REQ-94 is the
+    changelog rule, so a requirement implemented in CONFIGURATION is
+    invisible here and must not be read as unimplemented. REQ-78 used to
+    be the example and no longer is: it left the unreached set once the
+    walk stopped reading its own inventory, because it is genuinely
+    cited in the suite.
     """
     trace = build_trace()
     reached = {identifier for identifier, req in trace.items() if req.code or req.tests}
@@ -241,6 +244,15 @@ def test_itaca_007_a_new_unreached_requirement_cannot_appear_unnoticed() -> None
     a legitimate state for a future milestone, and an illegitimate one
     for a requirement someone meant to implement. The set below makes
     the difference a written act rather than a silence.
+
+    Both directions are asserted. Only the first used to be: a STALE
+    entry, one that has since gained an implementation, was invisible,
+    and it is load-bearing rather than cosmetic, because
+    `_REACHED_AT_LANE_CLOSE` is the complement of this set. A
+    requirement wrongly left here is permanently exempt from the ratchet
+    above, so its implementation could disappear with CI green. That is
+    the same self-skipping shape the docstring above names, and it is
+    how REQ-78 and REQ-85 sat here after they had stopped qualifying.
     """
     trace = build_trace()
     unreached = {
@@ -252,6 +264,14 @@ def test_itaca_007_a_new_unreached_requirement_cannot_appear_unnoticed() -> None
         "nothing. Implement and cite them, or add them to "
         "_UNREACHED_AT_LANE_CLOSE with the milestone that will "
         "(ITACA-007)."
+    )
+    stale = sorted(_UNREACHED_AT_LANE_CLOSE - unreached)
+    assert not stale, (
+        f"requirement(s) {stale} are listed in _UNREACHED_AT_LANE_CLOSE and "
+        "are now reached by the library or the suite. Remove them from the "
+        "set: while they sit there they are excluded from "
+        "_REACHED_AT_LANE_CLOSE, so their implementation could disappear "
+        "without failing the ratchet above (ITACA-007)."
     )
 
 

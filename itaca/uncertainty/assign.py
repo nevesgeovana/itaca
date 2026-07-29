@@ -23,33 +23,48 @@ from itaca.core.varframe import VarFrame
 _COMPONENTS = ("systematic", "random")
 
 
-def _scalar(name: str, value: object, origin: str) -> float:
+def _scalar(name: str, value: object, origin: str, display: object) -> float:
     """Parse the declared magnitude, refusing anything that is not one.
 
     ``float()`` was called unguarded on both branches, so a typo in a
     percentage escaped as ``ValueError`` and a wrong type as
     ``TypeError``, neither inside the hierarchy REQ-81 promises
-    (``ITACA-031``); and a parse that succeeded on ``nan`` or ``inf`` put
-    a non-finite standard uncertainty into the state, which then
-    propagated into every derived quantity (``R3-ITA-007``). UncFrame
-    already refuses a NEGATIVE one with a GUM citation; finiteness is the
-    same rule and was simply missing.
+    (``ITACA-031``).
+
+    Finiteness is checked here, on the DECLARED magnitude, and that is
+    known to be the proximate cause rather than the structural one. The
+    structural home is :class:`~itaca.core.uncframe.UncFrame`, beside the
+    negativity rule and on the assembled array, because a relative spec
+    resolves against the data and a valid ``"5%"`` against a variable
+    carrying NaN still produces a non-finite standard uncertainty without
+    passing through this function. That fix was attempted and reverted:
+    the array legitimately carries NaN for cells ``compute(where=)`` and
+    ``fill`` did not touch, so NaN means BOTH missing and invalid there
+    and separating the two is a numerical-analyst decision. Registered as
+    OQ-40 with the measurement; the remaining hole is pinned by an xfail
+    ratchet rather than left in prose (``R3-ITA-007``).
+
+    ``display`` is what the caller actually passed, so the first part of
+    the message names an object they can find in their own code; the
+    percentage branch parses a stripped copy the caller never typed.
     """
     try:
         number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError) as error:
         raise UncertaintyError(
-            f"uncertainty {value!r} for '{name}'",
+            f"uncertainty {display!r} for '{name}'",
             f"{origin} is not a number",
             'use a float (absolute) or e.g. "0.05%" (relative, REQ-39)',
         ) from error
     if not np.isfinite(number):
         raise UncertaintyError(
-            f"uncertainty {value!r} for '{name}'",
+            f"uncertainty {display!r} for '{name}'",
             f"{origin} is not finite, and a non-finite standard uncertainty "
-            "would propagate into every quantity derived from this variable",
-            "declare a finite, non-negative standard uncertainty "
-            "(GUM clause 2.3.1, REQ-39)",
+            f"would propagate into every quantity derived from '{name}'",
+            "declare a finite, non-negative standard uncertainty; a "
+            "standard uncertainty is a standard deviation, and the "
+            "combined form sums finite terms (GUM clauses 2.3.1 and "
+            "5.1.2, REQ-39)",
         )
     return number
 
@@ -64,9 +79,9 @@ def _resolve_value(
                 "string values must be relative percentages",
                 'use a float (absolute) or e.g. "0.05%" (relative, REQ-39)',
             )
-        fraction = _scalar(name, value[:-1], "the percentage") / 100.0
+        fraction = _scalar(name, value[:-1], "the percentage", value) / 100.0
         return np.asarray(fraction * np.abs(reference))
-    return np.full(reference.shape, _scalar(name, value, "the value"))
+    return np.full(reference.shape, _scalar(name, value, "the value", value))
 
 
 def set_uncertainty(

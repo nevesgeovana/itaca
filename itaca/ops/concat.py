@@ -109,21 +109,48 @@ def _validate_inputs(frames: Sequence[VarFrame], along: str) -> None:
     # REQ-107 makes the recorded source axis the thing that keeps a
     # repeated rotation an identity, so mixing the axis silently is
     # exactly what defeats it (CHK1-003).
-    groups: dict[str, set[str]] = {}
+    #
+    # Driven by the UNION of group names, never by what each frame
+    # happens to declare. `rotate` registers a group only when it rotates
+    # it, so a frame that never called `declare_vector` carries NO entry
+    # while still holding FX/FY/FZ, and `group_axis` answers "body" for
+    # it by design. An intersection-shaped check therefore saw one axis,
+    # passed, and left the exact double rotation this refuses reachable
+    # through the commonest shape of all: nobody declared anything. The
+    # correlation guard below is the pattern, comparing the full store of
+    # every input rather than the keys they share.
+    names: set[str] = set()
     for frame in frames:
-        for name in frame.axes.vector_groups:
-            groups.setdefault(name, set()).add(frame.axes.group_axis(name))
-    mixed = sorted(name for name, axes in groups.items() if len(axes) > 1)
-    if mixed:
-        detail = {name: sorted(groups[name]) for name in mixed}
-        raise AxesError(
-            f"vector group(s) {mixed} across the inputs",
-            f"they are expressed in different axis systems {detail}, and "
-            "concat would record a single source axis for all of them, so a "
-            "later rotate would transform some rows twice",
-            "express every input in the same axis before concatenating, by "
-            "rotating them to a common target (REQ-38, REQ-107)",
-        )
+        names |= set(frame.axes.vector_groups)
+    for name in sorted(names):
+        axes = {frame.axes.group_axis(name) for frame in frames}
+        if len(axes) > 1:
+            per_input = [frame.axes.group_axis(name) for frame in frames]
+            raise AxesError(
+                f"vector group '{name}' across the inputs",
+                f"the inputs express it in different axis systems "
+                f"{per_input}, and concat records ONE source axis for the "
+                f"merged frame, so a later rotate would transform the rows "
+                f"already in the target a second time",
+                "express every input in the same axis before concatenating, "
+                "by rotating them to a common target; an input that never "
+                "declared the group counts as the canonical body axis "
+                "(REQ-38, REQ-107)",
+            )
+        components = {
+            frame.axes.vector_groups[name]
+            for frame in frames
+            if name in frame.axes.vector_groups
+        }
+        if len(components) > 1:
+            raise AxesError(
+                f"vector group '{name}' across the inputs",
+                f"the inputs declare it over different components "
+                f"{sorted(components)}, and concat would record one of them "
+                "for the merged frame",
+                "declare the same components on every input, or use "
+                "distinct group names (REQ-38)",
+            )
     stores = [
         dict(frame.correlation.pairs) if frame.correlation is not None else {}
         for frame in frames
@@ -186,6 +213,13 @@ def concat(
         Inputs in different operating modes (REQ-12).
     UncertaintyError
         Uncertainty present on some inputs but not all (DD-18).
+    AxesError
+        A vector group is expressed in different axis systems across the
+        inputs, or declared over different components. The merged frame
+        records ONE source axis, so mixing them would leave a later
+        ``rotate`` transforming the rows already in the target a second
+        time. An input that never declared the group counts as the
+        canonical body axis (REQ-38, REQ-107).
 
     Examples
     --------

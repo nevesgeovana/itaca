@@ -841,3 +841,64 @@ the field. Whichever way, the silent loss on round trip is the part
 that must not survive.
 
 **SRS:** REQ-28, REQ-70, REQ-103.
+
+## OQ-40: A NaN in an UncFrame means both "missing" and "invalid"
+
+**Raised:** 2026-07-29 (CHK-1 remediation, REV-003 R3-ITA-007)
+**Status:** open
+**Question:** `set_uncertainty` now refuses a non-finite DECLARED
+magnitude, which closes the reported instance. It does not close the
+defect: `_resolve_value` computes a relative spec as
+`fraction * abs(values)`, so a perfectly valid `"5%"` against a variable
+carrying NaN still writes a NaN standard uncertainty, and the `.itc`
+reopen path and propagation results bypass the scalar check entirely.
+
+The structural home for the rule is `UncFrame._normalize`, beside the
+negativity check and on the assembled array. That was implemented and
+reverted, and the measurement is the reason: it fails
+`tests/ops/test_compute.py::TestWhereFill::test_uncertainty_only_for_filtered_in`
+and both `tests/ops/test_fill.py::TestFillUncertainty` cases, because
+`compute(where=, fill=)` and `fill` write NaN deliberately into the
+uncertainty array for cells the operation did not touch.
+
+So one array carries two meanings of NaN: "this cell has no propagated
+uncertainty" and "this uncertainty is not a number". A finiteness rule
+cannot be added until they are distinguishable.
+
+**Proposed handling:** the numerical analyst seat decides. Options as
+they stand: carry an explicit mask beside the components so missing is
+representable without NaN; keep NaN as missing and validate only at the
+declaration boundary, stating the rule in REQ-39; or forbid NaN in the
+array and give the untouched-cell case a zero with a tag.
+
+**SRS:** REQ-39, REQ-98, REQ-99.
+
+## OQ-41: Three refusals prescribe a rename, and there is no rename operation
+
+**Raised:** 2026-07-29 (CHK-1 remediation, API designer pass)
+**Status:** open
+**Question:** The CHK1-001 and R3-ITA-008 refusals both tell the user to
+rename a variable. No `rename` exists anywhere in the package, and
+`itc.load` has no rename or column-mapping parameter, so the third part
+of the three-part message names a capability the library does not have.
+
+The motivating case is the one the fix was built for: a wind-tunnel CSV
+carrying an Oswald efficiency column `e` loads, is visible in
+`db.vars["e"]`, and every expression reading it is now refused. The
+available exits are all outside the library or outside provenance: edit
+the source file, which changes `source_hash` and the archived campaign
+file; go through pandas and reload, which drops `source_files`; or
+`dataclasses.replace` through a private path, which `set_metadata`'s own
+docstring condemns by name. For a CSV, folder or dict source there is no
+`names=` to correct at all.
+
+**Proposed handling:** the author decides, since this is a public
+surface addition and a domain vocabulary call. Options: a recorded
+`db.rename({old: new})` that rewrites dims, vars, uncertainty keys,
+correlation pairs, tags and vector groups together, which is also the
+missing symmetric partner of `set_metadata`; an `itc.load(..., rename=)`
+for file sources only; or keeping the refusals and naming only routes
+that exist, with their provenance cost stated. The messages currently
+take the third option.
+
+**SRS:** REQ-01, REQ-44, REQ-101.

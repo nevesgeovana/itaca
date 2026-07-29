@@ -335,9 +335,13 @@ def _convert(node: ast.expr, known: Set[str], text: str) -> Node:
                 f"({node.id} = {_CONSTANTS[node.id]!r}) and a variable the "
                 "VarFrame carries, so the expression would silently read "
                 "the constant and never the measurement",
-                f"rename the variable, or compute with the constant "
-                f"written out; a measured channel named '{node.id}' cannot "
-                "be referenced while the constant shadows it (REQ-44)",
+                f"give the channel another name on the way in, with "
+                f"itc.load(..., names=[...]) for an array source or by "
+                f"correcting the header for a file source (which changes "
+                f"Provenance.source_hash); a measured channel named "
+                f"'{node.id}' cannot be referenced while the constant "
+                "shadows it. A recorded rename operation does not exist "
+                "yet and is OQ-41 (REQ-44, DD-42)",
             )
         if node.id in _CONSTANTS:
             return Const(_CONSTANTS[node.id])

@@ -143,6 +143,35 @@ def test_the_release_gate_checker_had_something_to_check() -> None:
     assert "scanned 0 workflow file(s)" not in done.stdout, done.stdout
 
 
+def test_no_workflow_file_carries_a_byte_order_mark() -> None:
+    """A workflow must start with its first character, not with a BOM.
+
+    Measured, and the reason this test exists: the commit that fixed
+    `R3-ITA-001` also introduced `EF BB BF` at the head of `release.yml`,
+    written by a Windows shell whose `utf8` encoding emits one. Nothing
+    saw it. PyYAML decodes a BOM-prefixed document happily, so the
+    permissions guard below stayed green while the one file on the
+    tag-only path had been corrupted at the byte level, on a path whose
+    closure evidence is a canary run rather than a parse.
+
+    Read as bytes deliberately. Every text-mode reader in this suite
+    would strip the BOM before any assertion could see it, which is
+    precisely how it survived.
+    """
+    offenders = []
+    checked = 0
+    for path in sorted(_WORKFLOWS.glob("*.yml")):
+        checked += 1
+        if path.read_bytes().startswith(b"\xef\xbb\xbf"):
+            offenders.append(path.name)
+    assert checked >= 2, f"only {checked} workflow file(s) inspected"
+    assert not offenders, (
+        f"workflow file(s) {offenders} begin with a UTF-8 byte order mark. "
+        "Some YAML consumers treat it as content; write these files as "
+        "UTF-8 without a BOM."
+    )
+
+
 def test_r3_ita_001_every_caller_grants_what_the_called_gate_needs() -> None:
     """`R3-ITA-001`: a caller must grant `contents: read` to a gate that
     checks out.
@@ -193,9 +222,22 @@ def test_r3_ita_001_every_caller_grants_what_the_called_gate_needs() -> None:
                 f"{name}: job '{job_name}' calls {target}, which checks out, "
                 "and declares no permissions block"
             )
-            assert granted.get("contents") == "read", (
+            # GitHub accepts a scalar shorthand as well as a mapping, and
+            # `write` is a legitimate stronger grant (a job that creates a
+            # release needs it). The rule is that contents must be
+            # READABLE, not that it must be exactly "read": asserting the
+            # narrower thing would fail a correct workflow, and `.get` on
+            # the scalar form would raise AttributeError instead of
+            # reporting a policy failure.
+            if isinstance(granted, str):
+                contents = "read" if granted == "read-all" else None
+                if granted == "write-all":
+                    contents = "write"
+            else:
+                contents = granted.get("contents")
+            assert contents in {"read", "write"}, (
                 f"{name}: job '{job_name}' calls {target}, which runs "
-                f"actions/checkout, but grants {dict(granted)}. Declaring any "
+                f"actions/checkout, but grants {granted}. Declaring any "
                 "permission sets the rest to none and a reusable workflow "
                 "cannot exceed its caller, so the checkout cannot succeed "
                 "(R3-ITA-001)."

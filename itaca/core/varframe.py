@@ -142,9 +142,12 @@ class VarFrame:
                 "construction of a VarFrame carrying each as BOTH a "
                 "dimension and a variable, which makes every reference to "
                 "the name ambiguous and loses one of the two on export",
-                "rename one of the pair; in datapoint mode the synthetic "
-                "dimension is called 'datapoint', so a column of that name "
-                "must be renamed on the way in (SRS 4.1.1, REQ-01)",
+                "in datapoint mode the synthetic dimension is called "
+                "'datapoint', so give that column another name on the way "
+                "in: itc.load(..., names=[...]) for an array source, or "
+                "correct the header for a file source (which changes "
+                "Provenance.source_hash). A recorded rename operation does "
+                "not exist yet and is OQ-41 (SRS 4.1.1, REQ-01)",
             )
         expected = tuple(d.cardinality for d in dims.values())
         for key, var in variables.items():
@@ -1557,7 +1560,20 @@ class VarFrame:
         UncertaintyKeyError
             If a key does not match any variable.
         UncertaintyError
-            On an invalid component or a malformed relative value.
+            On an invalid component; on a value that is neither a number
+            nor a relative percentage string; or on a non-finite declared
+            magnitude, which is not a standard deviation and would
+            propagate into everything derived from the variable (GUM
+            clauses 2.3.1 and 5.1.2).
+
+        Notes
+        -----
+        Finiteness is validated on the DECLARED magnitude only. A
+        relative spec resolves against the data, so ``"5%"`` on a
+        variable carrying NaN still yields a non-finite standard
+        uncertainty; whether the array itself should refuse one is
+        OQ-40, because the same array carries NaN deliberately for cells
+        ``compute(where=)`` and ``fill`` did not touch.
 
         Examples
         --------

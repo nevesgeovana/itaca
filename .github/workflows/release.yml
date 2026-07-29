@@ -1,4 +1,4 @@
-﻿# Release (DD-21 incremental releases; M1 plan Phase B0).
+# Release (DD-21 incremental releases; M1 plan Phase B0).
 #
 # This file is a CALLER of the vendored shared release gate and holds no
 # build, check or publish logic of its own. That is the whole point of

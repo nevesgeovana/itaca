@@ -1,4 +1,4 @@
-"""CHK-1: the defects measured OPEN at the 0.2.0 release checkpoint.
+﻿"""CHK-1: the defects measured OPEN at the 0.2.0 release checkpoint.
 
 Every test here was reproduced by a probe during the CHK-1 release
 checkpoint against `730649f`, and each is named for the finding it comes
@@ -8,7 +8,7 @@ Two kinds of test live here, and the difference is deliberate.
 
 A test marked ``xfail(strict=True)`` pins a defect that is OPEN. It fails
 today, which is why it is marked, and the marker is a RATCHET rather
-than a excuse: the moment the defect is fixed the test passes, strict
+than an excuse: the moment the defect is fixed the test passes, strict
 xfail turns an unexpected pass into a failure, and whoever fixed it must
 come here and remove the marker. An open defect recorded only in prose
 is invisible to CI; recorded this way it cannot be forgotten and it
@@ -36,7 +36,7 @@ import pytest
 
 import itaca as itc
 from itaca.core.coords import Cartesian, Polar
-from itaca.core.errors import ITACAError
+from itaca.core.errors import AxesError, DataError, ITACAError
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -77,6 +77,23 @@ def test_chk1_001_builtin_constant_does_not_shadow_a_measured_channel() -> None:
     assert float(np.asarray(out.vars["half"].values).ravel()[0]) == pytest.approx(
         np.pi / 2.0
     )
+
+
+@pytest.mark.parametrize("name", ["pi", "e"])
+def test_chk1_001_the_rule_covers_every_builtin_constant(name: str) -> None:
+    """Neither constant is exempt, and this is why the case is parametrized.
+
+    The rule is about a MEASURED channel becoming unreadable, which is
+    true of any name the expression language also supplies. A narrowing
+    to one of the two would leave the other silently returning the
+    constant while the surrounding comment still stated the general rule,
+    so the guard needs a guard: this test fails the moment the condition
+    stops covering both names, whatever the reason.
+    """
+    db = itc.load(np.array([[2.0, 3.0]]), names=[name, "other"])
+    with pytest.raises(ITACAError) as raised:
+        db.compute(f"y = {name} * other")
+    assert name in str(raised.value)
 
 
 def test_chk1_002_negative_itceq_constant_keeps_its_sign_under_a_power(
@@ -153,12 +170,67 @@ def test_chk1_003_concat_refuses_to_mix_vector_groups_from_different_axes() -> N
     wind = build(1.0).rotate("wind")
     assert body.axes.group_axis("force") == "body"
     assert wind.axes.group_axis("force") == "wind"
-    with pytest.raises(ITACAError) as raised:
+    with pytest.raises(AxesError, match="different axis systems"):
         itc.concat([body, wind], along="k")
-    assert "force" in str(raised.value)
     # Two inputs agreeing on the axis still concatenate.
     joined = itc.concat([body, build(1.0)], along="k")
     assert joined.axes.group_axis("force") == "body"
+
+
+@pytest.mark.parametrize("reversed_order", [False, True])
+def test_chk1_003_the_axis_check_covers_the_undeclared_input(
+    reversed_order: bool,
+) -> None:
+    """The commonest shape of all: nobody called ``declare_vector``.
+
+    ``rotate`` registers a group only when it rotates it, so a raw frame
+    carries FX/FY/FZ with NO entry in ``vector_groups`` while
+    ``group_axis`` answers ``"body"`` for it by design. A check driven by
+    what each frame declares saw one axis, passed, and left the double
+    rotation reachable through the path where the user never declared
+    anything. Driving it from the union of names closes that, and both
+    argument orders are wrong in their own direction, so both are pinned.
+    """
+    rows = [[0.0, 90.0, 0.0, 1.0, 0.0, 0.0]]
+    names = ["k", "alpha", "beta", "FX", "FY", "FZ"]
+
+    def build(k: float) -> object:
+        db = itc.load(np.array([[k, *rows[0][1:]]]), names=names).pivot(dims=["k"])
+        return db.set_metadata({"alpha": {"unit": "deg"}, "beta": {"unit": "deg"}})
+
+    raw = build(0.0)
+    rotated = build(1.0).declare_vector("force", ["FX", "FY", "FZ"]).rotate("wind")
+    assert "force" not in raw.axes.vector_groups
+    assert rotated.axes.group_axis("force") == "wind"
+    inputs = [rotated, raw] if reversed_order else [raw, rotated]
+    with pytest.raises(AxesError, match="different axis systems"):
+        itc.concat(inputs, along="k")
+
+
+def test_chk1_001_a_correction_reading_a_shadowed_channel_is_refused_at_validate(
+    tmp_path: Path,
+) -> None:
+    """``__call__`` runs corrections too, so ``validate`` must see them.
+
+    Scanning only ``[equations]`` let a correction reading ``e`` pass
+    validation and then fail inside ``compute`` partway through the
+    application, after ``set_uncertainty`` had run and after earlier
+    equations had already been written. The check reads the spec
+    property, which is computed over both sections.
+    """
+    path = tmp_path / "corr.itceq"
+    path.write_text(
+        '[meta]\nname = "corr"\nversion = "1.0"\n\n'
+        '[equations]\nCL = "FZ / q"\n\n'
+        '[corrections]\nCL = "CL * e"\n',
+        encoding="utf-8",
+    )
+    proc = itc.processor(str(path))
+    assert proc.spec.builtin_constants == ("e",)
+    carries_e = itc.load(np.array([[1.0, 2.0, 0.5]]), names=["FZ", "q", "e"])
+    with pytest.raises(ITACAError) as raised:
+        proc.validate(carries_e)
+    assert "e" in str(raised.value)
 
 
 @pytest.mark.xfail(strict=True, reason="R3-ITA-002: open at 730649f")
@@ -216,7 +288,22 @@ def test_r3_ita_006_processor_applies_declared_uncertainty_to_an_existing_target
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("value", [float("nan"), float("inf"), "nan%", "inf%"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        float("nan"),
+        float("inf"),
+        "nan%",
+        "inf%",
+        # The malformed-percentage cases. Without these the ValueError
+        # arm of the parse is caught by nothing: every value above is
+        # accepted by float() and lands in the finiteness branch, so
+        # narrowing the except clause to TypeError left the suite green.
+        "abc%",
+        "5.0.0%",
+        object(),
+    ],
+)
 def test_r3_ita_007_set_uncertainty_refuses_a_non_finite_value(value: object) -> None:
     """A non-finite standard uncertainty is not a standard uncertainty.
 
@@ -229,6 +316,27 @@ def test_r3_ita_007_set_uncertainty_refuses_a_non_finite_value(value: object) ->
         db.set_uncertainty({"x": value})
 
 
+@pytest.mark.xfail(strict=True, reason="R3-ITA-007 structural half: OQ-40")
+def test_r3_ita_007_a_relative_spec_cannot_inherit_a_non_finite_value() -> None:
+    """The half of R3-ITA-007 the declared-magnitude check does not reach.
+
+    ``"5%"`` is a valid spec and ``_resolve_value`` resolves it against
+    the data, so a variable carrying NaN yields a NaN standard
+    uncertainty with nothing refused. The structural fix is a finiteness
+    rule on the assembled array in ``UncFrame``, beside the negativity
+    rule; it was attempted and reverted because ``compute(where=)`` and
+    both ``fill`` uncertainty paths write NaN deliberately for cells they
+    did not touch, so that array carries two meanings of NaN and
+    separating them is the numerical analyst's call (OQ-40).
+
+    Pinned here rather than left in prose, so the remaining hole is
+    visible to CI and this ratchet turns the moment OQ-40 is answered.
+    """
+    db = itc.load(np.array([[1.0], [np.nan]]), names=["x"])
+    with pytest.raises(ITACAError):
+        db.set_uncertainty({"x": "5%"})
+
+
 def test_r3_ita_009_csv_row_wider_than_the_header_is_refused(tmp_path: Path) -> None:
     """A cell past the header width must not vanish.
 
@@ -239,7 +347,7 @@ def test_r3_ita_009_csv_row_wider_than_the_header_is_refused(tmp_path: Path) -> 
     """
     path = tmp_path / "ragged.csv"
     path.write_text("a,b\n1,2,3\n4,5\n", encoding="utf-8")
-    with pytest.raises(ITACAError):
+    with pytest.raises(DataError, match="fields against a header"):
         itc.load(path)
 
 
@@ -251,13 +359,17 @@ def test_r3_ita_008_a_variable_cannot_collide_with_the_synthetic_dimension() -> 
     ``select`` then resolves the dimension, and ``to_pandas`` loses one
     of the two columns to a dict-key overwrite.
     """
-    with pytest.raises(ITACAError) as raised:
+    with pytest.raises(DataError, match="BOTH a dimension and a variable"):
         itc.load(np.array([[10.0, 1.0], [20.0, 2.0]]), names=["datapoint", "a"])
-    assert "datapoint" in str(raised.value)
-    # The invariant is on the constructor, so no operation can build one
-    # either, and an ordinary frame is unaffected.
-    ordinary = itc.load(np.array([[10.0, 1.0], [20.0, 2.0]]), names=["b", "a"])
-    assert set(ordinary.dims).isdisjoint(set(ordinary.vars))
+    # The invariant is on the CONSTRUCTOR, so an operation cannot build
+    # one either. Asserted by driving one rather than by restating the
+    # claim: `expand` adds a dimension, and it must refuse a name the
+    # frame already carries as a variable.
+    ordinary = itc.load(np.array([[0.0, 1.0], [1.0, 2.0]]), names=["i", "a"]).pivot(
+        dims=["i"]
+    )
+    with pytest.raises(ITACAError):
+        ordinary.expand("a", [0.0, 1.0])
 
 
 @pytest.mark.xfail(strict=True, reason="R3-ITA-013: open at 730649f")
@@ -465,10 +577,13 @@ def test_itaca_012_no_chapter_claims_an_absent_export_symbol() -> None:
 def test_r3_ita_010_the_trace_does_not_count_its_own_inventory_as_evidence() -> None:
     """A requirement id listed as unreached must not thereby be reached.
 
-    ``build_trace`` walks the whole suite including the module that
-    declares ``_UNREACHED_AT_LANE_CLOSE``, so all 28 ids in that
-    inventory register as test citations of themselves. Excluding the
-    file moves the unreached count from 0 to 25.
+    ``build_trace`` WALKED the whole suite including the module that
+    declares ``_UNREACHED_AT_LANE_CLOSE``, so the 28 ids the inventory
+    then carried registered as test citations of themselves and the gate
+    reported zero unreached. Excluding the file restores the honest
+    count, whose single home is ``_UNREACHED_AT_LANE_CLOSE`` itself;
+    it is deliberately not restated here, because a number with two
+    homes is what the sibling defect ``ITACA-012`` is made of.
     """
     from tests.test_requirement_trace import build_trace
 

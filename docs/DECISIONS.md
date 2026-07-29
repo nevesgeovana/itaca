@@ -1423,3 +1423,50 @@ in the wheel's `METADATA`. It did so in v0.1.0 too, measured by reading
 and 96. That appearance is authorship in a file the same brief declares
 intentional, so it is exempt here rather than removed, but the premise
 was false and the exemption is a decision rather than an oversight.
+
+## DD-42: A built-in expression constant may not shadow a measured channel
+
+**Date:** 2026-07-29
+**Status:** confirmed
+**Context:** CHK-1 remediation, finding CHK1-001. Related: DD-37, DD-39,
+OQ-31, OQ-41.
+
+REQ-44 names `pi` and `e` as constants the expression language supplies
+and says nothing about what happens when the VarFrame carries a variable
+of the same name. `_convert` tested the constant table before the frame's
+own names, so the constant won, silently.
+
+The measurement that forced the decision: `e` is the Oswald span
+efficiency factor, the single most likely name collision in this
+library's target domain. On a frame carrying `e = 0.5`,
+`CDi = CL**2 / (pi * AR * e)` returned `0.01463746`, which is the value
+for Euler's number, against `0.07957747` for the measurement. Neither the
+result nor History said anything. The `.itceq` path was worse: `validate`
+certified the frame as usable because `_dependencies` subtracts the
+constants unconditionally, so the name never reached
+`required_variables`.
+
+**Decision:** the collision is REFUSED, at `db.compute` and at
+`EquationProcessor.validate`, naming the colliding name.
+
+**Why refusal rather than letting the frame win.** Two remedies were
+live and only one cannot produce a wrong number. Letting the frame win
+silently changes the meaning of `pi` and `e` for every expression in a
+file written against the language, which is the same class of silent
+substitution DD-39 refuses in the other direction. Refusal is also
+symmetric with DD-39 and DD-37, which already refuse a `[constants]`
+name against a measured channel and against an equation target: the
+source of the number differs, the defect does not.
+
+Neither name is exempt. `pi` is no safer than `e`, because the defect is
+that a MEASURED channel becomes unreadable, and that is true of any name
+the language also supplies.
+
+**What this costs, stated rather than hidden.** A frame carrying a
+variable named `pi` or `e` cannot reference it in any expression, and
+the library has no rename operation to get out with. That gap is OQ-41,
+and it is the reason this entry is confirmed rather than frozen without
+one: if the author chooses a different remedy, this entry is superseded
+rather than edited.
+
+**SRS:** REQ-44, REQ-45 amended in the same change.

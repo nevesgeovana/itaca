@@ -6,6 +6,93 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
+### Changed
+
+The CHK-1 release checkpoint turned five previously accepted inputs into
+refusals. Each is listed with the number that used to come out wrong,
+because that is the part a reader needs in order to tell whether their
+own data was affected.
+
+* **BREAKING. A built-in expression constant may not shadow a measured
+  channel** (`CHK1-001`, DD-42). `pi` and `e` were tested before the
+  frame's own names, so a frame carrying a variable named `e` read
+  Euler's number instead: `CDi = CL**2 / (pi * AR * e)` on `e = 0.5`
+  returned `0.01463746` against the correct `0.07957747`, and neither
+  the result nor History said so. `e` is the Oswald span efficiency
+  factor, so this is the most likely collision in the library's own
+  domain. `db.compute` and `EquationProcessor.validate` now refuse it,
+  naming the name. Symmetric with DD-39, which already refuses the
+  `[constants]` form of the same defect. **Migration:** give the channel
+  another name on the way in, with `itc.load(..., names=[...])` for an
+  array source or by correcting the header for a file source. A recorded
+  rename operation does not exist yet and is OQ-41.
+* **BREAKING. `itc.load` refuses a CSV row wider than its header**
+  (`R3-ITA-009`). Rows were read by header position, so every cell past
+  that width was dropped with no signal while Provenance went on hashing
+  the complete file bytes: the source hash certified content the frame
+  did not represent. A row that wide is a malformed file, either a
+  truncated header or a delimiter inside an unquoted field.
+  **Migration:** correct the header, or quote the offending field. A row
+  NARROWER than the header is still filled with NaN, unchanged.
+* **BREAKING. A VarFrame may not carry one name as both a dimension and
+  a variable** (`R3-ITA-008`). Datapoint mode always creates the
+  synthetic `datapoint` dimension and also accepted a column of that
+  name, so one frame carried both: `select` resolved the dimension and
+  never the variable, `to_csv` emitted a duplicate header the loader
+  then refused to read back, and `to_pandas` lost one of the two columns
+  to a dict-key overwrite. Enforced on the constructor, beside the
+  correlation invariant, so no operation can build one either.
+  **Migration:** as above.
+* **BREAKING. `itc.concat` refuses inputs whose vector groups sit in
+  different axis systems** (`CHK1-003`). `concat` rebuilds on the first
+  input, so its AxisRegistry stood for every row: a body-axis frame
+  joined to an already-rotated wind-axis frame came out claiming one
+  axis for all of them, and the next `rotate` transformed the rotated
+  rows a second time. REQ-107 makes the recorded source axis the thing
+  that keeps a repeated rotation an identity. An input that never
+  declared the group counts as the canonical body axis, so the check
+  covers the common shape where nobody called `declare_vector`.
+  **Migration:** rotate every input to a common target first.
+* **BREAKING for a non-finite value. `db.set_uncertainty` refuses a
+  declared magnitude that is not a finite number** (`R3-ITA-007`), and a
+  malformed one now raises `UncertaintyError` rather than a bare
+  `ValueError` or `TypeError` (`ITACA-031`). A NaN standard uncertainty
+  propagated into every quantity derived from the variable.
+  **Known limitation, stated rather than implied:** only the DECLARED
+  magnitude is validated. A relative spec resolves against the data, so
+  `"5%"` on a variable carrying NaN still yields a non-finite standard
+  uncertainty. The structural fix belongs in `UncFrame` and is blocked
+  on OQ-40, because that array carries NaN deliberately for cells
+  `compute(where=)` and `fill` did not touch.
+
+### Fixed
+
+* A negative `.itceq` `[constants]` value kept its sign under a power
+  (`CHK1-002`). Substitution round-tripped through `ast.unparse`, which
+  writes a negative float as the bare token `-0.25`; re-parsed in the
+  base of a power it bound as `-(0.25 ** 2)`, so `x_ref ** 2` with
+  `x_ref = -0.25` returned `-0.125` where `+0.125` is correct. Worse,
+  History recorded `Cm = -0.25 ** 2 * CN`, an expression that is not
+  equivalent to the file's, so the provenance record was
+  self-consistent and wrong. Negative reference stations are ordinary in
+  this domain.
+* The release workflow could not check out (`R3-ITA-001`).
+  `release.yml` declared `id-token: write` and nothing else, while the
+  gate it calls runs `actions/checkout` three times; declaring any
+  permission sets every undeclared one to `none`, and a reusable
+  workflow cannot exceed its caller. The green runs came from `ci.yml`,
+  a different caller that does grant `contents: read`, and the publish
+  jobs it skips were the ones that would have exercised this path.
+  `tests/test_release_integrity.py` now asserts every checkout-bearing
+  caller grants it.
+* The requirement traceability matrix counted its own gap inventory as
+  evidence (`R3-ITA-010`). `build_trace` walked the whole suite
+  including the module declaring `_UNREACHED_AT_LANE_CLOSE`, so every id
+  in that inventory registered as a test citation of the requirement it
+  records as unreached, and the gate reported zero unreached where the
+  honest figure is 26. The walk now skips its own file, and the ratchet
+  asserts both directions, so a stale entry can no longer hide.
+
 ### Added
 
 * M1 Phase B3b, processors and the `.itceq` equation file (REQ-45 to

@@ -22,6 +22,7 @@ beat the measurement and neither the result nor History would say so
 from __future__ import annotations
 
 import ast
+import math
 import warnings
 from collections.abc import Mapping
 from types import MappingProxyType
@@ -32,11 +33,7 @@ from itaca.core.errors import (
     ProcessorIdempotenceWarning,
     ProcessorValidationError,
 )
-from itaca.pproc.equations.parser import (
-    Equation,
-    ItceqSpec,
-    builtin_constants_read,
-)
+from itaca.pproc.equations.parser import Equation, ItceqSpec
 
 if TYPE_CHECKING:
     from itaca.core.varframe import VarFrame
@@ -169,12 +166,22 @@ class EquationProcessor:
         ------
         ProcessorValidationError
             If a variable an equation reads, or an ``[uncertainties]``
-            entry names, is absent and is not produced by the file; or
-            if a name declared in ``[constants]`` is also a variable the
+            entry names, is absent and is not produced by the file; if a
+            name declared in ``[constants]`` is also a variable the frame
+            carries; or if a name any expression reads as a built-in
+            expression constant (``pi``, ``e``) is also a variable the
             frame carries.
 
         Notes
         -----
+        There are two collision checks and they are ordered
+        constants-first, because a file can hit both and the message
+        should name the declaration the author controls. Both are
+        whole-file: they cover ``[equations]`` and ``[corrections]``,
+        since ``__call__`` evaluates both and a refusal that arrived
+        mid-application would land after earlier equations had already
+        been written.
+
         The collision case is refused HERE and not at parse time
         because the parser never sees the frame: ``parse_itceq`` takes a
         path and ``EquationProcessor.__init__`` takes a spec, so
@@ -229,7 +236,13 @@ class EquationProcessor:
         # name got Euler's number (CHK1-001). Refused beside the
         # [constants] case because it is the same defect with a different
         # source of the number.
-        shadowed = sorted(builtin_constants_read(self.spec.equations) & available)
+        # Read from the spec property, so corrections are covered too:
+        # __call__ evaluates equations AND corrections, and scanning only
+        # the first moved the refusal to mid-application, after earlier
+        # equations had already been written. Neither name is exempt:
+        # `pi` is no safer than `e`, because the defect is a MEASURED
+        # channel becoming unreadable.
+        shadowed = sorted(set(self.spec.builtin_constants) & available)
         if shadowed:
             raise ProcessorValidationError(
                 f"name(s) {shadowed} of processor '{self.name}' against VarFrame",
@@ -237,9 +250,13 @@ class EquationProcessor:
                 "carried by the VarFrame as a measured variable, so every "
                 "equation reading the name would use the constant and the "
                 "measurement would never be read",
-                "rename the VarFrame variable; a measured channel cannot be "
-                "referenced while a language constant shadows it (REQ-44, "
-                "REQ-45)",
+                "give the channel another name on the way in, with "
+                "itc.load(..., names=[...]) for an array source or by "
+                "correcting the header for a file source (which changes "
+                "Provenance.source_hash); a measured channel cannot be "
+                "referenced while a language constant shadows it. A "
+                "recorded rename operation does not exist yet and is "
+                "OQ-41 (REQ-44, REQ-45, DD-42)",
             )
         missing = sorted(set(self.spec.required_variables) - available)
         unknown_unc = sorted(
@@ -491,8 +508,13 @@ class _ConstantSubstitution(ast.NodeTransformer):
         if node.id not in self.constants:
             return node
         value = self.constants[node.id]
-        if value < 0:
-            return ast.UnaryOp(op=ast.USub(), operand=ast.Constant(value=-value))
+        # Guarded on the SIGN BIT, not on `value < 0`, so that -0.0 takes
+        # this branch too: `-0.0 ** 2` unparses to a bare token that
+        # re-parses as `-(0.0 ** 2)` and evaluates to -0.0, which is not
+        # 0.0 once anything divides by it, and History would again record
+        # an expression that is not the file's.
+        if math.copysign(1.0, value) < 0:
+            return ast.UnaryOp(op=ast.USub(), operand=ast.Constant(value=abs(value)))
         return ast.Constant(value=value)
 
 

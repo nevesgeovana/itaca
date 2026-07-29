@@ -99,8 +99,13 @@ def load(
     Raises
     ------
     DataError
-        On unreadable sources, invalid arguments, or non-numeric
-        variable columns.
+        On unreadable sources, invalid arguments, non-numeric variable
+        columns, a CSV row carrying more fields than its header (which
+        would otherwise drop the excess silently while Provenance still
+        hashed the whole file), or a column name that collides with the
+        synthetic ``datapoint`` dimension created in datapoint mode.
+    DuplicateNameError
+        A name is repeated in ``names`` or in a CSV header.
     LoadCoordinateError
         When a dict-mode coordinate tuple length does not match
         ``dims`` (REQ-03).
