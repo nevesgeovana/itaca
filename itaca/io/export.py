@@ -8,14 +8,20 @@ Every export embeds Provenance metadata and a History summary
 
 from __future__ import annotations
 
+import csv
 import json
+import warnings
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
 
-from itaca.core.errors import DraftModeExportError, MissingDependencyError
+from itaca.core.errors import (
+    DraftModeExportError,
+    DraftModeExportWarning,
+    MissingDependencyError,
+)
 from itaca.core.varframe import VarFrame
 
 DRAFT_WARNING = (
@@ -25,14 +31,41 @@ DRAFT_WARNING = (
 )
 
 
-def guard_draft(db: VarFrame, allow_draft: bool, operation: str) -> None:
-    """Enforce the draft-mode export guard (REQ-11)."""
+def guard_draft(
+    db: VarFrame,
+    allow_draft: bool,
+    operation: str,
+    *,
+    embeds_header: bool = True,
+) -> None:
+    """Enforce the draft-mode export guard (REQ-11).
+
+    ``embeds_header`` is False for an export whose return value has
+    nowhere to carry the draft banner. The CSV, JSON and ``.itc`` paths
+    write it into the output; ``to_pandas`` and ``to_numpy`` hand back a
+    plain DataFrame and plain arrays, so for them the guard raising or
+    returning silently was the whole of REQ-11, and a caller who passed
+    ``allow_draft=True`` received draft data carrying no warning at all
+    (ITACA-005). Those paths emit a
+    :class:`~itaca.core.errors.DraftModeExportWarning` instead.
+    """
     if db.mode == "draft" and not allow_draft:
         raise DraftModeExportError(
             "VarFrame in draft mode",
             f"{operation} blocked by the draft export guard",
             "promote to production first, or pass allow_draft=True as a "
             "deliberate second decision (REQ-11)",
+        )
+    if db.mode == "draft" and allow_draft and not embeds_header:
+        warnings.warn(
+            DraftModeExportWarning(
+                "VarFrame in draft mode",
+                f"{operation} returns an object with no place to embed the "
+                "draft-mode banner, so the data leaves ITACA unmarked",
+                "treat the result as exploratory, or promote to production "
+                "before exporting (REQ-11)",
+            ),
+            stacklevel=3,
         )
 
 
@@ -96,12 +129,19 @@ def to_csv(
         return written
     target = Path(path)
     names, columns = _flat_columns(db)
-    lines = _header_lines(db)
-    lines.append(",".join(names))
     n_rows = columns[0].shape[0] if columns else 0
-    for row in range(n_rows):
-        lines.append(",".join(str(column[row]) for column in columns))
-    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # csv.writer, not ','.join: a name or a value containing the
+    # delimiter, a quote or a newline silently changed the column count
+    # of the row it appeared in, so the file parsed as a different table
+    # than the one exported (ITACA-019). Quoting and escaping belong to
+    # the writer, which does them to RFC 4180.
+    with open(target, "w", newline="", encoding="utf-8") as handle:
+        for line in _header_lines(db):
+            handle.write(line + "\n")
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(names)
+        for row in range(n_rows):
+            writer.writerow([str(column[row]) for column in columns])
     return target
 
 
@@ -158,8 +198,33 @@ def to_json(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Pat
             },
         }
     target = Path(path)
-    target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    # allow_nan=False: NaN, Infinity and -Infinity are NOT JSON (RFC
+    # 8259). Emitting them produced a file a strict parser refuses,
+    # which is a silent interoperability break in the format chosen for
+    # interoperability (ITACA-019). Non-finite values become null, and
+    # the policy is explicit rather than inherited from a default.
+    target.write_text(
+        json.dumps(_nullify_non_finite(payload), indent=2, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
     return target
+
+
+def _nullify_non_finite(node: Any) -> Any:
+    """Replace every non-finite float with None, recursively.
+
+    JSON has no NaN, Infinity or -Infinity (RFC 8259), so a value that
+    is not finite cannot be written faithfully. Writing null says the
+    value is absent, which is what a NaN in this library means; writing
+    the bare tokens said the file was JSON when it was not.
+    """
+    if isinstance(node, dict):
+        return {key: _nullify_non_finite(value) for key, value in node.items()}
+    if isinstance(node, list):
+        return [_nullify_non_finite(value) for value in node]
+    if isinstance(node, float) and not np.isfinite(node):
+        return None
+    return node
 
 
 def to_pandas(db: VarFrame, *, allow_draft: bool = False) -> Any:
@@ -167,9 +232,9 @@ def to_pandas(db: VarFrame, *, allow_draft: bool = False) -> Any:
 
     See ``VarFrame.to_pandas`` for the parameter description.
     """
-    guard_draft(db, allow_draft, "to_pandas")
+    guard_draft(db, allow_draft, "to_pandas", embeds_header=False)
     try:
-        import pandas as pd
+        import pandas as pd  # noqa: TID251 (REQ-05, REQ-84: the licensed lazy pandas import)
     except ImportError:
         raise MissingDependencyError(
             "pandas",
@@ -191,7 +256,7 @@ def to_numpy(
 
     See ``VarFrame.to_numpy`` for the parameter description.
     """
-    guard_draft(db, allow_draft, "to_numpy")
+    guard_draft(db, allow_draft, "to_numpy", embeds_header=False)
     arrays = {
         name: var.values.copy() if copy else var.values for name, var in db.vars.items()
     }

@@ -29,6 +29,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.errors import (
+    AxesError,
     AxisNotFoundError,
     RotationMatrixError,
     VectorGroupError,
@@ -160,9 +161,11 @@ class Axis:
 
     def __post_init__(self) -> None:
         if self.parent is not None:
-            raise NotImplementedError(
-                f"Axis '{self.name}': chained transforms via parent are "
-                "not implemented yet; leave parent=None (REQ-38)"
+            raise AxesError(
+                f"Axis '{self.name}'",
+                "a parent frame was given, and chained transforms are not implemented",
+                "leave parent=None and define the frame relative to the "
+                "canonical body axis (REQ-38)",
             )
         has_matrix = self.rotation_matrix is not None
         has_angles = self.angles_from is not None
@@ -374,6 +377,15 @@ class AxisRegistry:
         RotationMatrixError
             An axis of the same name is already registered.
         """
+        if axis.name in _BUILTINS:
+            raise RotationMatrixError(
+                f"axis '{axis.name}'",
+                "that name is a built-in coordinate frame, and registering "
+                "over it would silently replace the canonical frame for "
+                "every operation downstream",
+                "choose a distinct axis name; the built-in frames are "
+                f"{sorted(_BUILTINS)} (REQ-38, AIAA R-004A)",
+            )
         if axis.name in self.axes:
             raise RotationMatrixError(
                 f"axis '{axis.name}'",
@@ -417,12 +429,29 @@ class AxisRegistry:
                 f"declared with {len(comps)} components, not three",
                 "a vector group is a triplet (x, y, z) (REQ-38)",
             )
+        if len(set(comps)) != 3:
+            raise VectorGroupError(
+                f"vector group '{name}' with components {list(comps)}",
+                "the same variable is named more than once, so the triplet "
+                "does not define three independent components",
+                "pass three distinct component names (REQ-38)",
+            )
         if name in self.vector_groups:
             raise VectorGroupError(
                 f"vector group '{name}'",
                 "a group of that name is already declared",
                 "choose a distinct group name, or resolve the existing one (REQ-38)",
             )
+        for other, other_comps in self.vector_groups.items():
+            shared = sorted(set(comps) & set(other_comps))
+            if shared:
+                raise VectorGroupError(
+                    f"vector groups '{name}' and '{other}'",
+                    f"both claim the component(s) {shared}, so a rotation "
+                    "would transform the same variables twice in one call",
+                    "give each group its own components, or rotate one group "
+                    "at a time with vector_groups= (REQ-38)",
+                )
         if axis != "body":
             self.resolve(axis)
         return AxisRegistry(

@@ -119,26 +119,29 @@ ignore = ["D105"]
 convention = "numpy"
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
-# The ban is repository-wide and the exemptions are below, so the
-# scope of these three is every itaca package except io/ and utils/,
-# which is exactly what REQ-82 requires as amended on 2026-07-27
-# (DD-33). Stated that way, a package added later is restricted by
-# default rather than escaping a list nobody remembered to extend.
-"xarray".msg = "NumPy-only rule (REQ-82, DD-02): xarray is barred from every itaca package except io/ and utils/"
-"dask".msg = "NumPy-only rule (REQ-82, DD-02): dask is barred from every itaca package except io/ and utils/"
-"pandas".msg = "NumPy-only rule (REQ-82, DD-02): pandas is barred from every itaca package except io/ and utils/, which import it lazily (REQ-05, REQ-84)"
+# The ban is repository-wide and NO package is exempt from it. REQ-82's
+# exception clause licenses pandas, lazily, in io/ and utils/; it does
+# not license xarray or dask anywhere, and exempting those packages
+# wholesale was broader than the licence on both sides (ITACA-013). A
+# licensed pandas import takes a targeted `# noqa: TID251` at its own
+# site, so a package added later is restricted by default and each
+# exemption is visible in the file that takes it.
+"xarray".msg = "NumPy-only rule (REQ-82, DD-02): xarray is barred from every itaca package, with no exception"
+"dask".msg = "NumPy-only rule (REQ-82, DD-02): dask is barred from every itaca package, with no exception"
+"pandas".msg = "NumPy-only rule (REQ-82, DD-02): pandas is barred from library code except for a lazy import in io/ or utils/, which must carry its own `# noqa: TID251` (REQ-05, REQ-84)"
 "scipy".msg = "Dev-only geometry oracle (DD-26): scipy is barred from library code; use it only under tests/oracle/"
 "uncertainties".msg = "Dev-only GUM oracle (DD-25): uncertainties is barred from library code; use it only under tests/oracle/"
 
 [tool.ruff.lint.per-file-ignores]
-# These are the exemptions the ban above is scoped by. io/ and utils/
-# may use pandas lazily (REQ-05, REQ-84); tests may use anything.
-# tests/test_import_policy.py parses the itaca/ keys here rather than
-# retyping them, so the AST guard and this list cannot drift apart. The
-# tests/** key has no counterpart there, because tests/ is not a
-# package that guard walks; it is excluded on that side by name.
-"itaca/io/**" = ["TID251"]
-"itaca/utils/**" = ["TID251"]
+# NO library package is exempt from TID251 any more. REQ-82's exception
+# licenses PANDAS, lazily, in io/ and utils/; it does not license xarray
+# or dask anywhere. Exempting those packages wholesale was broader than
+# the licence on both sides, and it was measured: an `import xarray`
+# added to itaca/io/ passed ruff AND the AST guard (ITACA-013, proven by
+# mutation). The exemption is now granted per IMPORT SITE with a
+# targeted `# noqa: TID251`, so each one is visible in the file that
+# takes it and a new banned import cannot inherit a package's licence.
+# tests/** may use anything; it is not a package the AST guard walks.
 "tests/**" = ["TID251", "D"]
 
 # -----------------------------------------------------------------------------

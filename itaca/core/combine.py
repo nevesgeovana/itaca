@@ -93,12 +93,28 @@ def combine(
             "combine received an unknown operation",
             f"use one of {sorted([*operations((1.0, 1.0))])} (REQ-37)",
         )
-    if not -1.0 <= cross_correlation <= 1.0:
+    if not np.isfinite(cross_correlation) or not -1.0 <= cross_correlation <= 1.0:
         raise CorrelationMatrixError(
             f"cross_correlation={cross_correlation!r}",
-            "combine received a correlation coefficient outside [-1, 1]",
-            "correlation coefficients satisfy |r| <= 1 (REQ-40)",
+            "combine received a correlation coefficient that is not finite "
+            "and within [-1, 1]",
+            "correlation coefficients satisfy |r| <= 1 and must be finite (REQ-40)",
         )
+    if weights is not None:
+        if not all(np.isfinite(w) for w in weights):
+            raise DataError(
+                f"weights {weights!r}",
+                "combine received a non-finite weight",
+                "pass finite weights (REQ-37)",
+            )
+        total = float(weights[0]) + float(weights[1])
+        if total == 0.0:
+            raise DataError(
+                f"weights {weights!r}",
+                "combine received weights summing to zero, so the weighted "
+                "mean divides by zero",
+                "pass weights whose sum is non-zero (REQ-37)",
+            )
     operation_impl = table[op]
     content = content_of(db)
     systematic: dict[str, NDArray[Any]] = {}

@@ -19,6 +19,7 @@ __all__ = [
     "DependencyError",
     "DimensionNotFoundError",
     "DraftModeExportError",
+    "DraftModeExportWarning",
     "DuplicateNameError",
     "FitDegreeError",
     "HashMismatchError",
@@ -218,6 +219,19 @@ class OperatingModeMixError(ProvenanceError):
 
 class HashMismatchError(ProvenanceError):
     """itc.open detects source-hash drift (REQ-103)."""
+
+
+class DraftModeExportWarning(ProvenanceError, Warning):  # noqa: N818
+    """A draft frame left through an export that carries no warning.
+
+    Named for the condition rather than with an ``Error`` suffix
+    because it IS a warning, following the
+    :class:`ProcessorIdempotenceWarning` precedent. ``to_pandas`` and
+    ``to_numpy`` hand back plain objects with nowhere to embed the
+    REQ-11 draft banner that the CSV, JSON and ``.itc`` headers carry,
+    so the banner is raised through the warnings system instead of
+    being silently dropped (REQ-11, ITACA-005).
+    """
 
 
 class VersionResolutionError(ProvenanceError):

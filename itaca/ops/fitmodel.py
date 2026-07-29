@@ -32,6 +32,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from itaca.core.arithmetic import worst_case_tags
 from itaca.core.dimension import Dimension
 from itaca.core.errors import (
     DataError,
@@ -192,6 +193,11 @@ def fitvalue(
 
     content = content_of(db)
     consumed_sources: set[str] = set()
+    # The tag accumulated so far, per variable, across the coefficient
+    # dimensions already processed (ITACA-027).
+    accumulated: dict[str, _Array] = (
+        dict(content.tags) if content.tags is not None else {}
+    )
     for coef_name in coef_dims:
         if coef_name not in content.dims:
             raise DimensionNotFoundError(
@@ -236,9 +242,30 @@ def fitvalue(
             inside = (targets >= lo) & (targets <= hi)
             line_tags = np.where(inside, np.int8(1), np.int8(-1))
             spread = np.broadcast_to(line_tags, (flat.shape[0], targets.size)).copy()
-            new_tags[name] = np.moveaxis(spread.reshape(out_shape), -1, axis).astype(
-                np.int8
-            )
+            this_axis = np.moveaxis(spread.reshape(out_shape), -1, axis).astype(np.int8)
+            # ITACA-027: carry the tag ALREADY accumulated for this
+            # variable through the same reduction the values undergo, and
+            # take the semantic worst case against this axis's verdict.
+            # Assigning `this_axis` alone made the tag reflect only the
+            # LAST coefficient dimension processed, so which extrapolation
+            # was hidden depended on the ORDER of coef_dims: measured, the
+            # same point reported +1 or -1 purely by swapping the list.
+            carried = accumulated.get(name)
+            if carried is None:
+                new_tags[name] = this_axis
+                continue
+            moved_t = np.moveaxis(carried, axis, -1).reshape(-1, n_coef)
+            worst = np.zeros(moved_t.shape[0], dtype=np.int8)
+            worst[np.any(moved_t == 1, axis=-1)] = np.int8(1)
+            worst[np.any(moved_t == -1, axis=-1)] = np.int8(-1)
+            reduced = np.moveaxis(
+                np.broadcast_to(worst[:, None], (worst.size, targets.size))
+                .copy()
+                .reshape(out_shape),
+                -1,
+                axis,
+            ).astype(np.int8)
+            new_tags[name] = worst_case_tags(reduced, this_axis)
 
         new_dim = Dimension(name=source, coords=targets)
         dims = [
@@ -247,6 +274,7 @@ def fitvalue(
         ]
         content.dims = dict(dims)
         content.tags = new_tags
+        accumulated = new_tags
 
     unused = sorted(set(at) - consumed_sources)
     if unused:

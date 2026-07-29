@@ -31,11 +31,20 @@ import itaca
 # The NumPy-only rule bars xarray/dask/pandas from library code. scipy
 # and uncertainties are dev-only test oracles (DD-25, DD-26): barred
 # from ALL library code, allowed only under tests/oracle/.
-BANNED_TOP_LEVEL = {"xarray", "dask", "pandas"}
+ALWAYS_BANNED = {"xarray", "dask"}
+"""Barred from EVERY library package, with no exception anywhere."""
+
+PANDAS = {"pandas"}
 ORACLE_ONLY = {"scipy", "uncertainties"}
 
-EXEMPT_PACKAGES = frozenset({"io", "utils"})
-"""Library packages the NumPy-only ban does not cover (REQ-05, REQ-84)."""
+PANDAS_EXEMPT_PACKAGES = frozenset({"io", "utils"})
+"""Packages REQ-82 licenses to import pandas LAZILY (REQ-05, REQ-84).
+
+The xarray and dask ban is not narrowed by this set. Exempting these
+packages from the whole banned list was measured to let `import xarray`
+and `import dask` through both enforcement layers (ITACA-013), which is
+broader than the licence REQ-82 actually grants.
+"""
 
 # Packages known to exist. Not the list the guards walk: it is a floor
 # under the walk, so a discovery that silently returns nothing fails
@@ -60,8 +69,10 @@ def library_packages() -> tuple[str, ...]:
 
 
 def restricted_packages() -> tuple[str, ...]:
-    """The discovered packages the NumPy-only ban covers."""
-    return tuple(name for name in library_packages() if name not in EXEMPT_PACKAGES)
+    """The discovered packages the PANDAS exemption does not cover."""
+    return tuple(
+        name for name in library_packages() if name not in PANDAS_EXEMPT_PACKAGES
+    )
 
 
 def _exempt_packages_in_pyproject() -> set[str]:
@@ -131,21 +142,28 @@ def test_discovery_finds_every_known_package() -> None:
     )
 
 
-def test_the_two_exemption_declarations_agree() -> None:
+def test_itaca_013_no_library_package_is_exempt_wholesale() -> None:
+    """The ruff exemption may no longer be granted per package.
+
+    A package-wide TID251 exemption licenses every banned import in that
+    package, not only the one REQ-82 allows. Measured before the fix, by
+    mutation: `import xarray` and `import dask` added to `itaca/io/`
+    passed ruff AND passed the AST guard below, because both layers
+    exempted the PACKAGE rather than the import (ITACA-013).
+    """
     declared = _exempt_packages_in_pyproject()
-    assert declared == set(EXEMPT_PACKAGES), (
-        f"the ruff per-file-ignores exempt the itaca package(s) "
-        f"{sorted(declared)} from {TID251} while this guard exempts "
-        f"{sorted(EXEMPT_PACKAGES)}. Only library package keys are compared: "
-        "per-file-ignores also exempts tests/**, which is not a package this "
-        "guard walks, so that key is excluded rather than counted as a "
-        "disagreement. Move both sides together, or the belt and the braces "
-        "stop covering the same packages (REQ-82, DD-02)."
+    assert not declared, (
+        f"pyproject per-file-ignores exempts the itaca package(s) "
+        f"{sorted(declared)} from {TID251} wholesale. REQ-82 licenses "
+        "pandas lazily in io/ and utils/; it licenses nothing else, and no "
+        "package is exempt from the xarray and dask ban. Grant the "
+        "exemption at the import site with a targeted `# noqa: TID251` "
+        "instead (REQ-82, DD-02, DD-33)."
     )
 
 
 def test_every_exempt_package_exists() -> None:
-    unknown = sorted(EXEMPT_PACKAGES - set(library_packages()))
+    unknown = sorted(PANDAS_EXEMPT_PACKAGES - set(library_packages()))
     assert not unknown, (
         f"the NumPy-only exemption names package(s) {unknown} that do not "
         "exist under itaca/; an exemption for a package that was renamed or "
@@ -153,10 +171,26 @@ def test_every_exempt_package_exists() -> None:
     )
 
 
-def test_numpy_only_rule() -> None:
-    offenders = _offenders(restricted_packages(), BANNED_TOP_LEVEL)
+def test_itaca_013_xarray_and_dask_are_barred_from_every_package() -> None:
+    """No package, not even io/ or utils/, may import xarray or dask.
+
+    This is the half the wholesale exemption opened. REQ-82's exception
+    clause licenses pandas and nothing else, so this ban is walked over
+    EVERY discovered package rather than over the restricted subset.
+    """
+    offenders = _offenders(library_packages(), ALWAYS_BANNED)
     assert not offenders, (
-        f"NumPy-only rule violated (REQ-82) in {restricted_packages()}: {offenders}"
+        f"xarray or dask imported by library code (REQ-82, DD-33): "
+        f"{offenders}. The pandas exception does not extend to them in "
+        "any package."
+    )
+
+
+def test_numpy_only_rule() -> None:
+    offenders = _offenders(restricted_packages(), PANDAS)
+    assert not offenders, (
+        f"pandas imported outside {sorted(PANDAS_EXEMPT_PACKAGES)} "
+        f"(REQ-82) in {restricted_packages()}: {offenders}"
     )
 
 

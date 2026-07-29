@@ -20,6 +20,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+import itaca as itc
 from itaca.core.axes import (
     Axis,
     AxisRegistry,
@@ -27,7 +28,12 @@ from itaca.core.axes import (
     stability_axis,
     wind_axis,
 )
-from itaca.core.errors import AxisNotFoundError, RotationMatrixError, VectorGroupError
+from itaca.core.errors import (
+    AxesError,
+    AxisNotFoundError,
+    RotationMatrixError,
+    VectorGroupError,
+)
 
 _angle = st.floats(min_value=-1.4, max_value=1.4, allow_nan=False, allow_infinity=False)
 
@@ -67,10 +73,20 @@ class TestAxisConstruction:
         with pytest.raises(RotationMatrixError, match="reflection"):
             Axis(name="bad", rotation_matrix=reflection)
 
-    def test_parent_not_implemented(self) -> None:
+    def test_itaca_031_parent_raises_inside_the_hierarchy(self) -> None:
+        """A public boundary must not leak a bare NotImplementedError.
+
+        REQ-81 promises every failure carries the object, the operation
+        and a suggested fix, and DD-10 promises every exception derives
+        from ITACAError. `Axis(parent=...)` did neither: a caller
+        catching `ITACAError` around a frame declaration did not catch
+        it at all.
+        """
         body = Axis(name="body", rotation_matrix=np.eye(3))
-        with pytest.raises(NotImplementedError, match="chained"):
+        with pytest.raises(AxesError, match="chained") as excinfo:
             Axis(name="child", rotation_matrix=np.eye(3), parent=body)
+        assert isinstance(excinfo.value, itc.ITACAError)
+        assert "leave parent=None" in str(excinfo.value)
 
     def test_matrix_is_read_only(self) -> None:
         axis = Axis(name="rig", rotation_matrix=np.eye(3))
