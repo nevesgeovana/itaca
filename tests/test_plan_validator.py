@@ -33,15 +33,40 @@ why the mutation companion can finally be wired as a tier-1 test here.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
+from test_management_root import (  # the canonical resolver, not a second copy
+    ManagementRootError,
+    resolve_management_root,
+)
 
 _CHECKER_NAME = "check_plan_kit.py"
 _COMPANION_NAME = "check_plan_kit_mutations.py"
+_REPO = Path(__file__).resolve().parents[1]
+
+
+def _ledger_dir() -> Path | None:
+    """The resolved plan ledger, or None when no root is resolvable.
+
+    Resolution goes through ``resolve_management_root``, the single home of
+    the rule in CLAUDE.md, "Where the session documents live". Reusing it
+    rather than re-deriving the root here is deliberate: a second copy of a
+    resolution rule is how the two drift apart, and this file only needs the
+    answer.
+    """
+    try:
+        root, _branch = resolve_management_root(
+            os.environ.get("ITACA_MANAGEMENT_ROOT"), repo=_REPO
+        )
+    except ManagementRootError:
+        return None
+    ledger = root / "plan"
+    return ledger if ledger.is_dir() else None
 
 
 def _resolve() -> tuple[Path, Path] | None:
@@ -106,3 +131,94 @@ def test_the_plan_checker_can_still_fail() -> None:
         env=child_env(),
     )
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+def _entry_count(output: str) -> int | None:
+    """The count from a ``N entries checked (...)`` line, or None."""
+    match = re.search(r"(\d+) entries checked", output)
+    return int(match.group(1)) if match else None
+
+
+def test_a_zero_entry_ledger_report_is_a_failure_here() -> None:
+    """Read the checker's entry COUNT, not only its exit code.
+
+    ``ITC-20260727-1612``. ``check_plan_kit.py`` exits ZERO on an empty
+    ledger folder, printing ``no entries in <dir>``, while a MISSING folder
+    is refused loudly with ``not a directory`` and exit 1. So the loud case
+    is handled and the empty one is not, and a run pointed at the wrong path
+    reports success.
+
+    ``CLAUDE.md`` already tells the reader to read the entry count rather
+    than the exit code. That is documentation, and this repository's own
+    incident rule says documentation is not a guard. This test is that
+    instruction expressed as a mechanism: whatever the exit code was, a
+    report covering zero entries fails here.
+
+    What this does NOT claim: it does not fix the checker. That file is a
+    shared-kit artifact resolved through ``ITACA_PLAN_VALIDATOR`` and is not
+    itaca's to edit, so the refusal itself is routed to the kit and pinned
+    below. What itaca owns is its own CONSUMPTION of the checker, and that
+    is exactly what is guarded here.
+    """
+    resolved = _resolve()
+    if resolved is None:
+        pytest.skip("ITACA_PLAN_VALIDATOR is unset; plan checker not configured here")
+    checker, _ = resolved
+    ledger = _ledger_dir()
+    if ledger is None:
+        pytest.skip(
+            "no plan ledger is resolvable here; ITACA_MANAGEMENT_ROOT is unset "
+            "and _private/plan is absent, so there is nothing to validate"
+        )
+    done = subprocess.run(
+        [sys.executable, str(checker), str(ledger)],
+        capture_output=True,
+        text=True,
+        env=child_env(),
+    )
+    output = done.stdout + done.stderr
+    count = _entry_count(output)
+    assert count is not None and count > 0, (
+        f"the plan checker reported no entries for the ledger at {ledger}, and "
+        f"exited {done.returncode}. An empty ledger folder exits ZERO, so this "
+        f"reads as a pass while nothing was validated (ITC-20260727-1612). "
+        f"Either the resolved ledger path is wrong or the ledger is empty; "
+        f"check ITACA_MANAGEMENT_ROOT. Checker output: {output.strip()!r}"
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="ITC-20260727-1612: the kit checker exits 0 on an empty ledger folder",
+)
+def test_the_plan_checker_refuses_an_empty_ledger_folder(tmp_path: Path) -> None:
+    """The kit-side half of ``ITC-20260727-1612``, pinned as a ratchet.
+
+    The desired behavior is that an empty ledger folder is refused, either
+    outright or unless an explicit ``--allow-empty`` is passed for the
+    genuine first-run case. It is not refused today, which is why this is
+    marked. The marker is the ratchet: the moment the kit is fixed and
+    re-vendored, this passes, strict xfail turns that into a failure, and
+    whoever fixed it must come here and remove the marker.
+
+    Recorded this way rather than in prose because the checker is reached
+    through an environment variable and its defect is therefore invisible to
+    this repository's suite unless something asserts it.
+    """
+    resolved = _resolve()
+    if resolved is None:
+        pytest.skip("ITACA_PLAN_VALIDATOR is unset; plan checker not configured here")
+    checker, _ = resolved
+    empty = tmp_path / "plan"
+    empty.mkdir()
+    done = subprocess.run(
+        [sys.executable, str(checker), str(empty)],
+        capture_output=True,
+        text=True,
+        env=child_env(),
+    )
+    assert done.returncode != 0, (
+        f"an empty ledger folder exited {done.returncode}, so a run against the "
+        f"wrong path looks like a pass. Output: "
+        f"{(done.stdout + done.stderr).strip()!r}"
+    )

@@ -417,11 +417,27 @@ def _env_located() -> list[tuple[str, Path]]:
     validator = os.environ.get("ITACA_PLAN_VALIDATOR")
     if validator:
         target = Path(validator)
-        directory = target.parent if target.suffix == ".py" else target
-        located.append(("check_plan_kit.py", directory / "check_plan_kit.py"))
-        located.append(
-            ("check_plan_kit_mutations.py", directory / "check_plan_kit_mutations.py")
-        )
+        if target.suffix == ".py" and not target.is_file():
+            # ITC-20260727-1542. A .py value naming a file that exists
+            # NOWHERE must not be reinterpreted as its parent directory.
+            # ITACA_PLAN_VALIDATOR was once set to a retired
+            # check_plan_entries.py; the parent happened to hold a
+            # version-matched check_plan_kit.py, so the derivation below
+            # succeeded and this suite stayed green while the plan skill
+            # resolved the same variable to a path that does not exist and
+            # validation silently skipped. Pointing at the configured value
+            # itself makes the caller's is_file assertion name the real
+            # error instead of hiding it one directory up.
+            located.append(("check_plan_kit.py", target))
+        else:
+            directory = target.parent if target.suffix == ".py" else target
+            located.append(("check_plan_kit.py", directory / "check_plan_kit.py"))
+            located.append(
+                (
+                    "check_plan_kit_mutations.py",
+                    directory / "check_plan_kit_mutations.py",
+                )
+            )
     return located
 
 
@@ -455,6 +471,48 @@ def test_env_located_shared_tools_match_the_manifest() -> None:
             f"shared tool is a configuration error, not a clean skip."
         )
         _assert_matches_manifest(key, path)
+
+
+def test_a_configured_locator_names_something_that_exists() -> None:
+    """A locator naming nothing must fail, never be reinterpreted.
+
+    ``ITC-20260727-1542``. ``ITACA_PLAN_VALIDATOR`` was set to a retired
+    ``check_plan_entries.py``, a file present in no tree. ``_env_located``
+    derived a DIRECTORY from a ``.py`` value by taking its parent, that
+    parent happened to hold a version-matched ``check_plan_kit.py``, and so
+    this suite stayed green. The consequence was one-sided, which is what
+    makes it worth a guard rather than a correction: the test was fine and
+    the plan skill was not, because it resolved the same variable to
+    ``.../check_plan_entries.py/check_plan_kit.py`` and plan validation had
+    been silently skipping. A guard reporting green while the behavior it
+    guards is absent is the failure class the incident rule exists to catch.
+
+    The variable was repaired the same day. The repair is not the fix: the
+    derivation trusted a path it never checked, so the next mistyped value
+    would have failed in exactly the same way. This test checks the
+    CONFIGURED value itself, so no parent directory can stand in for it.
+    """
+    configured = [
+        (name, Path(value))
+        for name in ("ITACA_INCIDENT_LEDGER", "ITACA_PLAN_VALIDATOR")
+        if (value := os.environ.get(name))
+    ]
+    if not configured:
+        pytest.skip(
+            "neither ITACA_INCIDENT_LEDGER nor ITACA_PLAN_VALIDATOR is set; "
+            "there is no configured locator to check"
+        )
+    missing = [f"{name}={path}" for name, path in configured if not path.exists()]
+    assert not missing, (
+        f"a configured shared-tool locator names a path that does not exist: "
+        f"{missing}. This is a configuration error and not a skip. Note the "
+        f"failure mode this guards (ITC-20260727-1542): when the value ends in "
+        f"'.py', the directory derived from it is the PARENT, so a value naming "
+        f"nothing can still resolve to a valid checker beside it and green this "
+        f"suite while the plan skill resolves the same value to nothing. Point "
+        f"the variable at the directory holding the checker, or at the checker "
+        f"itself, and make sure that path exists."
+    )
 
 
 def test_snap_script_matches_the_manifest_where_it_is_deployed() -> None:
