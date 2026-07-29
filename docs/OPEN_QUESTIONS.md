@@ -902,3 +902,58 @@ that exist, with their provenance cost stated. The messages currently
 take the third option.
 
 **SRS:** REQ-01, REQ-44, REQ-101.
+
+Correction appended 2026-07-29 (ITC-20260729-1450, architect and API
+designer passes): the SRS line above should read REQ-01, REQ-44, REQ-45.
+REQ-101 is condition-dependent axes and has nothing to do with a rename;
+REQ-45 is the requirement carrying the third of the three refusal sites
+the heading counts, through `Processor.validate`. Appended rather than
+edited, per the append-only rule.
+
+## OQ-42: Does the interpolation polynomial weight matrix apply to fill's polyfit path?
+
+**Raised:** 2026-07-29 (ITC-20260729-1450, V&V, architect and API
+designer passes, independently)
+**Status:** open
+**Question:** `fill(method="polyfit")` refuses when uncertainty is
+present and is carried as a provisional row of REQ-98 pending OQ-18. Two
+reviewer passes established that OQ-18 as written cannot lift it: OQ-18
+asks whether the systematic component should track sign changes of
+`smooth` and `diff` KERNEL weights, and the fill polyfit refusal is not
+a question about the sign of a weight. It is that the fill path emits no
+weights at all.
+
+That framing was itself challenged, correctly. `polyfit_matrix(x,
+targets, deg) = vander_t @ pinv(vander)` in `ops/_interp_kernels.py` is
+the exact least-squares polynomial weight matrix, and
+`db.interpolate(method="polyfit", deg=...)` reaches it and propagates
+both components through it with no uncertainty guard. So a polynomial
+weight rule is not hypothetical in this library; it ships, and REQ-98's
+table declares it exact. On the `global_fit=True` path the two are the
+same rule over the same support.
+
+**Why it is not simply an implementation gap.** The moving-window path
+differs from interpolation in a way that is not cosmetic: fill chooses
+the support set PER GAP from the cells that are not NaN, so the weight
+matrix depends on the missingness pattern rather than on the grid alone.
+Interpolation never faces that. Whether the same matrix is admissible
+there, and what it means for the systematic component when the support
+changes between neighboring gaps, is the substance of the question.
+
+**Proposed handling:** the numerical-analyst seat decides, and this is
+her call rather than an implementer's, because the answer changes what
+the library GUARANTEES and not only what it computes. Options: adopt
+`polyfit_matrix` over the chosen support and remove
+`fill(method="polyfit")` from the provisional family, returning REQ-98's
+count to four; adopt it for `global_fit=True` only, where the support is
+the whole valid set, and keep the moving-window path refusing; or keep
+both refusing until OQ-18 settles the sign question, on the ground that
+the two share the mixed-sign systematic behavior already carried as a
+validation item.
+
+**Measured, so the question starts from numbers rather than from
+recollection:** the moving polynomial fit is linear in the variable
+values to within superposition departure of 1.3e-13, so linearity is
+not the obstacle.
+
+**SRS:** REQ-26, REQ-98.

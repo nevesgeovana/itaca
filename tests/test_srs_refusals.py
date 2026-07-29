@@ -4,15 +4,15 @@ Usage example (the contract under test)::
 
     provisional = srs_provisional_operations()   # parsed from REQ-98
     refusing = measured_refusing_operations()    # measured by calling them
-    assert provisional == refusing
+    assert set(provisional) == set(refusing)
 
 `ITC-20260729-1450`, a blocker on the v0.2.0 tag. The CHK-1 release
 checkpoint added five public refusals to surfaces whose stable
-requirement text contradicted them, and REQ-98 carried the count of its
-own provisional family in four places at three different values while
-the normative table still claimed that two of them propagate. Both are
-one defect: a normative document holding a hand-maintained inventory
-that nothing compares against the thing it inventories.
+requirement text contradicted them, and REQ-98 carried its provisional
+family in four places at three different values while the normative
+table still claimed that two of them propagate. Both are one defect: a
+normative document holding a hand-maintained inventory that nothing
+compares against the thing it inventories.
 
 Documentation is not a guard, so the amendment is not the fix. This file
 is. It reads the enumeration OUT of the SRS and measures the behavior BY
@@ -20,18 +20,33 @@ RUNNING it, so the two cannot drift apart in either direction: an
 operation that starts refusing without being named fails here, and a
 name in REQ-98 that stops refusing fails here too.
 
-The parse is asserted to have found something before it is compared. A
-regex that silently matches nothing would make every assertion below
-vacuous, which is the shape this repository already refuses for the
-import policy and for the plan and incident checkers, where an empty
-folder exits zero.
+Three things this file does that a first version did not, each because a
+reviewer measured the omission and showed the guard passing on a defect:
+
+* Every probe builds its input OUTSIDE the ``try``, and a caught refusal
+  is attributed to the module that raised it. A setup that itself raised
+  ``UncertaintyError`` was otherwise credited to the operation under
+  test, which was then recorded as refusing without ever being called.
+* The normative table is checked in BOTH directions, per row. An
+  existence check over the provisional names let the table's rows be
+  swapped outright, which is the original defect with its sign flipped.
+* What must be probed is derived from the table's own first column, not
+  from a directory listing, so an operation living outside
+  ``itaca/ops/`` cannot escape the requirement.
+
+Every parse is asserted to have found something before it is compared. A
+regex that silently matches nothing would make the assertions vacuous,
+which is the shape this repository already refuses for the import policy
+and for the plan and incident checkers, where an empty folder exits zero.
 """
 
 from __future__ import annotations
 
 import re
+import traceback
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any, NamedTuple
 
 import numpy as np
 import pytest
@@ -40,10 +55,22 @@ import itaca as itc
 from itaca.core.errors import UncertaintyError
 from itaca.core.varframe import VarFrame
 
-SRS = Path(__file__).resolve().parents[1] / "docs" / "srs"
-CHAPTERS = SRS / "chapters"
+ROOT = Path(__file__).resolve().parents[1]
+CHAPTERS = ROOT / "docs" / "srs" / "chapters"
 
 _CODE = re.compile(r"\\code\{((?:[^{}]|\{[^{}]*\})*)\}")
+
+
+def _tokens(text: str) -> list[str]:
+    r"""Every ``\code{}`` payload, with LaTeX escaping undone.
+
+    ``translate\_moments`` is the operation's name in the source and
+    ``translate_moments`` is its name in Python; comparing the two
+    without this reported a missing probe for an operation that has one.
+    """
+    return [found.replace("\\_", "_") for found in _CODE.findall(text)]
+
+
 #: The sentence REQ-98 declares as the single home of the list. Anchored
 #: on the promise itself, so rewording the promise fails loudly here
 #: rather than silently reducing the parse to nothing.
@@ -53,6 +80,17 @@ _PROVISIONAL = re.compile(
     re.DOTALL,
 )
 _COUNT_WORDS = {"THREE": 3, "FOUR": 4, "FIVE": 5, "SIX": 6, "SEVEN": 7}
+_NUMBER_WORDS = (
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+)
 
 
 def reqbox(identifier: str) -> str:
@@ -80,18 +118,79 @@ def srs_provisional_operations() -> set[str]:
         "module reads the list from there, so a silent parse failure would "
         "pass them all while checking nothing (ITC-20260729-1450)."
     )
-    names = set(_CODE.findall(found.group(1)))
+    names = set(_tokens(found.group(1)))
     assert names, "the enumeration sentence in REQ-98 names no operation"
     return names
 
 
+def _table_rows() -> list[tuple[str, str]]:
+    """The normative UncFrame table, as (first cell, effect cell) pairs."""
+    body = reqbox("REQ-98")
+    assert "tabularx" in body, "REQ-98 no longer carries its normative table"
+    table = body[body.index("tabularx") :]
+    rows = []
+    for chunk in table.split("\\\\"):
+        if "&" not in chunk or "textbf" in chunk or "midrule" in chunk:
+            continue
+        head, effect = chunk.split("&", 1)
+        rows.append((head, effect))
+    assert len(rows) >= 5, (
+        f"the normative table parsed to {len(rows)} rows; the row-by-row "
+        "check below would be vacuous on a broken parse"
+    )
+    return rows
+
+
+def _row_labels(head: str) -> set[str]:
+    """The operation labels a table row's first cell names.
+
+    ``fill`` appears in two rows distinguished only by their method
+    qualifier, so a bare operation name is not enough to identify what a
+    row governs.
+    """
+    tokens = _tokens(head)
+    methods = [token for token in tokens if token.startswith("method=")]
+    operations = [
+        token
+        for token in tokens
+        if not token.startswith("method=") and not token.startswith('"')
+    ]
+    labels: set[str] = set()
+    for operation in operations:
+        if operation == "fill" and methods:
+            labels |= {f"fill({method})" for method in methods}
+        else:
+            labels.add(operation)
+    return labels
+
+
+def srs_table_operations() -> set[str]:
+    """Every operation the normative table governs, by bare name."""
+    names: set[str] = set()
+    for head, _ in _table_rows():
+        names |= {label.split("(")[0] for label in _row_labels(head)}
+    assert len(names) >= 10, (
+        f"the table's first column parsed to {len(names)} operations, which "
+        "is fewer than the release ships; the coverage check would be weak"
+    )
+    return names
+
+
 # --------------------------------------------------------------------
-# Probes. One per operation the library exposes, each applied to a frame
-# that CARRIES uncertainty, so what refuses is measured and never
-# declared. The coverage assertion below requires one for every module
-# in `itaca/ops/`, which is what stops a new operation from arriving
-# with its UncFrame effect undecided (DD-18, REQ-98).
+# Probes. One per operation the normative table governs, each applied to
+# a frame that CARRIES uncertainty, so what refuses is measured and never
+# declared. `setup` runs outside the try in the measurement below, so a
+# refusal raised while BUILDING the input is loud instead of being
+# credited to the operation under test.
 # --------------------------------------------------------------------
+
+
+class Probe(NamedTuple):
+    """One operation, its input, and the module expected to refuse."""
+
+    module: str
+    setup: Callable[[], Any]
+    call: Callable[[Any], object]
 
 
 def _sweep(values: list[float] | None = None) -> VarFrame:
@@ -103,6 +202,17 @@ def _sweep(values: list[float] | None = None) -> VarFrame:
     return db.set_uncertainty({"CT": 0.01})
 
 
+def _gappy() -> VarFrame:
+    """The same sweep with one NaN, so fill has something to do."""
+    return _sweep([0.0, 1.0, float("nan"), 3.0, 4.0, 5.0, 6.0])
+
+
+def _datapoint() -> VarFrame:
+    """A datapoint-mode frame with uncertainty, ready for pivot."""
+    arr = np.column_stack([np.arange(5.0), np.arange(5.0) ** 2])
+    return itc.load(arr, names=["alpha", "CT"]).set_uncertainty({"CT": 0.01})
+
+
 def _balance() -> VarFrame:
     """A one-point balance frame with force and moment groups."""
     rows = [[0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 0.0, 0.0, 0.0]]
@@ -112,6 +222,13 @@ def _balance() -> VarFrame:
     db = db.declare_vector("force", ["FX", "FY", "FZ"])
     db = db.declare_vector("moment", ["MX", "MY", "MZ"])
     return db.set_uncertainty({"FX": 0.01, "FY": 0.01, "FZ": 0.01})
+
+
+def _two_sweeps() -> list[VarFrame]:
+    """Two frames with disjoint coordinates, for concat."""
+    low = _sweep([0.0, 1.0, 2.0])
+    high = _sweep([3.0, 4.0, 5.0]).interpolate({"alpha": [3.0, 4.0, 5.0]})
+    return [low, high]
 
 
 def _coefficients() -> VarFrame:
@@ -126,102 +243,151 @@ def _coefficients() -> VarFrame:
         np.column_stack([np.arange(7.0), np.arange(7.0) ** 2]),
         names=["alpha", "CT"],
     ).pivot(dims=["alpha"])
-    fitted = clean.fitmodel(along="alpha", deg=2)
-    return fitted.set_uncertainty({"CT": 0.01})
+    return clean.fitmodel(along="alpha", deg=2).set_uncertainty({"CT": 0.01})
 
 
-#: label -> (ops module it belongs to, the call). The label is the token
-#: REQ-98 uses, so the comparison below is against the specification's
-#: own vocabulary rather than a paraphrase of it.
-PROBES: dict[str, tuple[str, Callable[[], object]]] = {
-    "select": ("select", lambda: _sweep().select({"alpha": [0.0, 1.0, 2.0]})),
-    "squeeze": (
-        "squeeze",
-        lambda: _sweep().select({"alpha": [0.0]}).squeeze(),
+#: label -> Probe. The label is the token REQ-98 uses, so the comparison
+#: below is against the specification's own vocabulary rather than a
+#: paraphrase of it.
+PROBES: dict[str, Probe] = {
+    "select": Probe("select", _sweep, lambda db: db.select({"alpha": [0.0, 1.0, 2.0]})),
+    "at": Probe("select", _sweep, lambda db: db.at(alpha=0.0)),
+    "squeeze": Probe(
+        "squeeze", lambda: _sweep().select({"alpha": [0.0]}), lambda db: db.squeeze()
     ),
-    "expand": ("expand", lambda: _sweep().expand("mach", [0.5])),
-    "concat": (
-        "concat",
-        lambda: itc.concat(
-            [
-                _sweep([0.0, 1.0, 2.0]),
-                _sweep([3.0, 4.0, 5.0]).interpolate({"alpha": [3.0, 4.0, 5.0]}),
-            ],
-            along="alpha",
-        ),
+    "expand": Probe("expand", _sweep, lambda db: db.expand("mach", [0.5])),
+    "pivot": Probe("pivot", _datapoint, lambda db: db.pivot(dims=["alpha"])),
+    "concat": Probe(
+        "concat", _two_sweeps, lambda pair: itc.concat(pair, along="alpha")
     ),
-    "interpolate": (
-        "interpolate",
-        lambda: _sweep().interpolate({"alpha": [0.5, 1.5]}),
+    "interpolate": Probe(
+        "interpolate", _sweep, lambda db: db.interpolate({"alpha": [0.5, 1.5]})
     ),
-    "average": ("average", lambda: _sweep().average(along="alpha")),
-    "integrate": (
-        "integrate",
-        lambda: _sweep().integrate("CT", over="alpha"),
+    "average": Probe("average", _sweep, lambda db: db.average(along="alpha")),
+    "integrate": Probe(
+        "integrate", _sweep, lambda db: db.integrate("CT", over="alpha")
     ),
-    "compute": ("compute", lambda: _sweep().compute("f = CT * 2")),
-    "rotate": ("rotate", lambda: _balance().rotate("wind")),
-    "translate_moments": (
-        "moments",
-        lambda: _balance().translate_moments(to_point=[0.1, 0.0, 0.0]),
+    "compute": Probe("compute", _sweep, lambda db: db.compute("f = CT * 2")),
+    "rotate": Probe("rotate", _balance, lambda db: db.rotate("wind")),
+    "translate_moments": Probe(
+        "moments", _balance, lambda db: db.translate_moments(to_point=[0.1, 0.0, 0.0])
     ),
-    'fill(method="linear")': (
+    "combine": Probe(
+        "combine", _two_sweeps, lambda pair: pair[0].combine(pair[0], op="sum")
+    ),
+    'fill(method="linear")': Probe(
+        "fill", _gappy, lambda db: db.fill(along="alpha", method="linear")
+    ),
+    'fill(method="polyfit")': Probe(
         "fill",
-        lambda: _sweep([0.0, 1.0, float("nan"), 3.0, 4.0, 5.0, 6.0]).fill(
-            along="alpha", method="linear"
-        ),
+        _gappy,
+        lambda db: db.fill(along="alpha", method="polyfit", deg=1, window=3),
     ),
-    'fill(method="polyfit")': (
-        "fill",
-        lambda: _sweep([0.0, 1.0, float("nan"), 3.0, 4.0, 5.0, 6.0]).fill(
-            along="alpha", method="polyfit", deg=1, window=3
-        ),
-    ),
-    "smooth": (
+    "smooth": Probe(
         "smooth",
-        lambda: _sweep().smooth(along="alpha", method="moving_avg", window=3),
+        _sweep,
+        lambda db: db.smooth(along="alpha", method="moving_avg", window=3),
     ),
-    "diff": ("diff", lambda: _sweep().diff(along="alpha", window=3, deg=1)),
-    "fitmodel": ("fitmodel", lambda: _sweep().fitmodel(along="alpha", deg=2)),
-    "fitvalue": (
+    "diff": Probe("diff", _sweep, lambda db: db.diff(along="alpha", window=3, deg=1)),
+    "fitmodel": Probe("fitmodel", _sweep, lambda db: db.fitmodel(along="alpha", deg=2)),
+    "fitvalue": Probe(
         "fitmodel",
-        lambda: _coefficients().fitvalue(
+        _coefficients,
+        lambda db: db.fitvalue(
             coef_dims=["alpha_coef"], at={"alpha": np.array([0.5, 1.5])}
         ),
     ),
 }
 
+#: Operations the normative table governs that the release does not ship
+#: yet. The exemption is not taken on trust: the test below fails the
+#: moment one of these resolves, so a shipped operation cannot keep
+#: sitting here and stay unprobed.
+_NOT_YET_IMPLEMENTED = frozenset({"statistics"})
 
-def measured_refusing_operations() -> set[str]:
-    """Every probe that raises ``UncertaintyError``, measured by calling."""
-    refusing: set[str] = set()
-    for label, (_, call) in PROBES.items():
+
+def measured_refusing_operations() -> dict[str, str]:
+    """Every probe that refuses, mapped to the module that raised.
+
+    The setup runs OUTSIDE the try on purpose. A probe whose input
+    construction raises ``UncertaintyError`` would otherwise be recorded
+    as refusing without the operation under test ever being called, and
+    the comparison would pass while measuring nothing.
+    """
+    refusing: dict[str, str] = {}
+    for label, probe in PROBES.items():
+        prepared = probe.setup()
         try:
-            call()
-        except UncertaintyError:
-            refusing.add(label)
+            probe.call(prepared)
+        except UncertaintyError as error:
+            frames = traceback.extract_tb(error.__traceback__)
+            refusing[label] = Path(frames[-1].filename).stem
     return refusing
 
 
-def test_every_operation_module_is_probed() -> None:
+def test_every_operation_in_the_normative_table_is_probed() -> None:
     """A new operation cannot arrive with its UncFrame effect undecided.
 
-    Without this, the comparison below stays green for any operation
-    nobody thought to add a probe for, which is the same self-skipping
-    shape the enumeration defect had: the check would be measuring a
-    subset it also defines.
+    The demanded set is derived from the table's own first column rather
+    than from a directory listing, because REQ-98 governs operations
+    wherever they live: ``pivot`` is in ``itaca/io/`` and ``combine`` in
+    ``itaca/core/``, so a directory-scoped check would let either start
+    refusing while the requirement's list stayed wrong and green.
     """
-    modules = {
-        path.stem
-        for path in (Path(__file__).resolve().parents[1] / "itaca" / "ops").glob("*.py")
-        if not path.stem.startswith("_")
-    }
-    probed = {module for module, _ in PROBES.values()}
-    missing = sorted(modules - probed)
+    declared = srs_table_operations()
+    probed = {label.split("(")[0] for label in PROBES}
+    missing = sorted(declared - probed - _NOT_YET_IMPLEMENTED)
     assert not missing, (
-        f"operation module(s) {missing} have no uncertainty probe in PROBES, "
+        f"the normative table governs {missing}, which no probe exercises, "
         "so whether they propagate or refuse is unmeasured and REQ-98 cannot "
         "be checked against them. Add a probe and declare the effect (DD-18)."
+    )
+
+
+def test_the_unimplemented_exemption_is_still_true() -> None:
+    """The exemption above is a ratchet, not a permanent allowance."""
+    for name in sorted(_NOT_YET_IMPLEMENTED):
+        reachable = hasattr(VarFrame, name) or hasattr(itc, name)
+        assert not reachable, (
+            f"'{name}' is exempt from the probe requirement on the ground "
+            "that it does not ship yet, and it now resolves. Write its probe "
+            "and remove it from _NOT_YET_IMPLEMENTED (REQ-98, DD-18)."
+        )
+
+
+def test_every_operation_module_is_probed() -> None:
+    """The directory half, kept as a second net under the table half.
+
+    The table is the specification's inventory and this is the code's.
+    Either can be wrong on its own; a module here that the table never
+    names is a requirement gap rather than a probe gap, and it surfaces
+    as this failure.
+    """
+    # A subpackage's operation is named by its DIRECTORY, not by the
+    # `__init__` stem: filtering leading underscores discarded
+    # `newfamily/__init__.py` as private, so a whole new operation family
+    # could arrive unprobed while this check stayed green.
+    ops = ROOT / "itaca" / "ops"
+    modules = set()
+    for path in ops.rglob("*.py"):
+        # A flat module is named by its own stem; anything inside a
+        # subpackage is named by the subpackage. `ops/__init__.py` falls
+        # out of the first branch as `__init__` and is filtered as
+        # private, which is what makes the second branch reachable only
+        # for a genuinely new family.
+        name = path.stem if path.parent == ops else path.parent.name
+        if name.startswith("_"):
+            continue
+        modules.add(name)
+    assert len(modules) >= 10, (
+        f"the ops walk found {len(modules)} modules; a broken walk would "
+        "pass this check while inspecting nothing"
+    )
+    probed = {probe.module for probe in PROBES.values()}
+    missing = sorted(modules - probed)
+    assert not missing, (
+        f"operation module(s) {missing} have no uncertainty probe in PROBES "
+        "(REQ-98, DD-18)."
     )
 
 
@@ -232,13 +398,30 @@ def test_req98_names_exactly_the_operations_that_refuse_uncertainty() -> None:
     fails, which is what makes this a guard rather than a restatement.
     """
     declared = srs_provisional_operations()
-    measured = measured_refusing_operations()
+    measured = set(measured_refusing_operations())
     assert declared == measured, (
         f"REQ-98 names {sorted(declared)} as provisional while the library "
         f"actually refuses uncertainty in {sorted(measured)}. The SRS is the "
         "authoritative specification, so an operation that refuses must be "
         "named there and a name there must refuse (ITC-20260729-1450)."
     )
+
+
+def test_each_refusal_is_raised_by_the_operation_under_test() -> None:
+    """A refusal must come from the operation, not from its fixture.
+
+    Without this the measurement above can be satisfied by a probe whose
+    setup raised: the label is recorded, the operation is never called,
+    and the guard reports agreement it never established.
+    """
+    for label, origin in measured_refusing_operations().items():
+        expected = PROBES[label].module
+        assert origin == expected, (
+            f"the probe for '{label}' was recorded as refusing, but the "
+            f"UncertaintyError was raised in '{origin}.py' rather than in "
+            f"'{expected}.py', so the refusal belongs to another operation "
+            "and this probe measured nothing (ITC-20260729-1450)."
+        )
 
 
 def test_req98_states_the_count_it_enumerates() -> None:
@@ -260,39 +443,62 @@ def test_req98_states_the_count_it_enumerates() -> None:
     )
 
 
-def test_the_normative_table_gives_every_provisional_row_as_raising() -> None:
-    """The table is normative, so a row claiming propagation is the spec.
+def test_the_normative_table_agrees_with_the_provisional_list_row_by_row() -> None:
+    """Both directions, every row. Existence checking is not enough.
 
     Its `smooth`, `diff` row stated that they propagate through their
-    kernel weights, which the implementation has never done. A reader
-    following the normative table would have written code that cannot
-    run.
+    kernel weights, which the implementation has never done, and a
+    reader following the normative table would have written code that
+    cannot run. The inverse is the same defect: a row promising a raise
+    for an operation that propagates sends a user away from a result
+    they could have had. Checking only that the provisional names appear
+    somewhere with the word "raise" caught neither when the two `fill`
+    rows were swapped outright.
     """
-    body = reqbox("REQ-98")
-    table = body[body.index("tabularx") :]
-    rows = [row for row in table.split("\\\\") if "&" in row]
-    for name in sorted(srs_provisional_operations()):
-        bare = name.split("(")[0]
-        owning = [row for row in rows if f"\\code{{{bare}}}" in row.split("&")[0]]
-        assert owning, f"no normative table row names {bare}"
-        assert any("raise" in row for row in owning), (
-            f"the normative UncFrame row for {bare} does not say it raises, "
-            f"while REQ-98 names it provisional and the code refuses. Row(s): "
-            f"{[row.strip()[:80] for row in owning]}"
+    provisional = srs_provisional_operations()
+    covered: set[str] = set()
+    for head, effect in _table_rows():
+        labels = _row_labels(head)
+        if not labels:
+            continue
+        covered |= labels
+        overlap = labels & provisional
+        assert overlap in (set(), labels), (
+            f"the table row for {sorted(labels)} mixes provisional and "
+            f"propagating operations ({sorted(overlap)} are provisional), so "
+            "one normative effect is stated for two different behaviors"
         )
+        claims_raise = "raise" in effect
+        assert claims_raise == bool(overlap), (
+            f"the normative row for {sorted(labels)} "
+            f"{'claims a raise' if claims_raise else 'claims propagation'} "
+            f"while REQ-98 lists {sorted(provisional)} as provisional. The "
+            "table is normative, so a row that disagrees with the list IS "
+            "the specification (ITC-20260729-1450)."
+        )
+    unrowed = sorted(provisional - covered)
+    assert not unrowed, (
+        f"{unrowed} are named provisional by REQ-98 and have no row in its "
+        "normative table, so their UncFrame effect is undeclared (DD-18)."
+    )
 
 
 #: The CHK-1 refusals, and the phrase each governing requirement must
-#: carry. Deliberately the ERROR CLASS or the refused condition, never a
-#: whole sentence: this pins that the text describes the behavior, and
-#: leaves the author free to word it.
+#: carry. Every phrase was chosen by measuring it ABSENT from the
+#: pre-amendment text: a phrase that already existed pins nothing, and
+#: `datapoint` plus `DataError` were both present in REQ-01 before the
+#: amendment, so reverting REQ-01 entirely was invisible to this check.
 _CHK1_REFUSALS = (
-    ("REQ-01", ("datapoint", "DataError"), "a column named datapoint is refused"),
+    (
+        "REQ-01",
+        ("R3-ITA-008", "both a dimension and a variable"),
+        "a column named datapoint is refused",
+    ),
     ("REQ-24", ("AxesError",), "concat refuses mixed vector-group axes"),
     ("REQ-107", ("AxesError",), "the same refusal from the axis-registry side"),
-    ("REQ-39", ("FINITE", "UncertaintyError"), "a non-finite magnitude is refused"),
-    ("REQ-44", ("shadow", "DataError"), "a constant may not shadow a channel"),
-    ("REQ-45", ("three things",), "validate refuses three things, not two"),
+    ("REQ-39", ("FINITE", "5.1.2"), "a non-finite magnitude is refused"),
+    ("REQ-44", ("shadow", "DD-42"), "a constant may not shadow a channel"),
+    ("REQ-45", ("three things", "DD-42"), "validate refuses three things, not two"),
 )
 
 
@@ -320,23 +526,99 @@ def test_each_chk1_refusal_is_described_by_its_requirement(
     )
 
 
+def _carve_out() -> str:
+    """REQ-92's major-version-zero paragraph, where the list used to be."""
+    body = reqbox("REQ-92")
+    start = body.index("Major version zero")
+    end = body.index("Every breaking change")
+    return body[start:end]
+
+
 def test_req92_does_not_enumerate_the_breaking_changes() -> None:
     """The removal is the fix; a corrected count would go stale again.
 
-    REQ-92 named three breaking changes and shipped nine. The remedy was
+    REQ-92 named three breaking changes and shipped more. The remedy was
     not to recount: `CHANGELOG.md` is where the requirement's own next
     paragraph already mandates the list, and a duplicate inventory in a
-    normative document goes stale independently of its original. This
-    pins that the duplicate does not come back, and that the obligation
-    which replaces it is still stated.
+    normative document goes stale independently of its original. A bare
+    count is that same artifact with its evidence removed, so the
+    property asserted here is that the carve-out states NO number, not
+    merely that one dead phrase is gone.
     """
-    body = reqbox("REQ-92")
-    assert "ships three" not in body, (
-        "REQ-92 enumerates the breaking changes again. The enumeration "
-        "belongs in CHANGELOG.md alone (ITC-20260729-1450)."
+    carve = _carve_out()
+    assert "does NOT enumerate" in carve, (
+        "REQ-92's carve-out must say that it does not enumerate the breaking "
+        "changes, so a reader knows the omission is deliberate"
     )
+    # Scoped to sentences that talk about breaking changes, because
+    # "one" is an ordinary English word ("the one it duplicates") and a
+    # blanket ban would fail on prose that counts nothing.
+    about_breaks = [
+        sentence
+        for sentence in re.split(r"(?<=\.)\s", carve)
+        if re.search(r"\bbreak", sentence, re.I)
+    ]
+    assert about_breaks, (
+        "REQ-92's carve-out no longer discusses breaking changes at all; "
+        "the check below would pass vacuously"
+    )
+    counted = sorted(
+        {
+            word
+            for sentence in about_breaks
+            for word in _NUMBER_WORDS
+            if re.search(rf"\b{word}\b", sentence, re.I)
+        }
+    )
+    assert not counted, (
+        f"REQ-92's carve-out counts breaking changes: {counted}. The "
+        "enumeration and the count both belong in CHANGELOG.md alone, which "
+        "is what the requirement's next paragraph already mandates. A bare "
+        "count is the removed inventory with its evidence stripped off, and "
+        "goes stale the same way (ITC-20260729-1450)."
+    )
+
+
+def test_req92_still_requires_the_marker_that_replaced_the_enumeration() -> None:
+    """What REQ-92 rests on after the removal must still be stated."""
+    body = reqbox("REQ-92")
     assert "CHANGELOG.md" in body and "BREAKING" in body, (
         "REQ-92 must still require every breaking change to be marked "
         "BREAKING in CHANGELOG.md; that obligation is what replaces the "
-        "version bump while the major version is zero."
+        "version bump while the major version is zero, and after the "
+        "enumeration was removed it carries the whole weight."
+    )
+
+
+def test_every_breaking_change_in_the_release_notes_carries_the_marker() -> None:
+    """REQ-92's obligation, measured against the file it names.
+
+    The enumeration was removed from the requirement on the ground that
+    `CHANGELOG.md` is the single authority. That made the authority load
+    bearing, and it did not hold: four entries declared a break in prose
+    or in mixed case, so a reader grepping for the marker the
+    requirement names would have found five of nine.
+    """
+    lines = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+    headings = [index for index, line in enumerate(lines) if line.startswith("## [")]
+    assert len(headings) >= 2, (
+        f"CHANGELOG.md has {len(headings)} version heading(s); the release "
+        "section could not be delimited and this check would inspect the "
+        "wrong text"
+    )
+    section = lines[headings[0] : headings[1]]
+    assert any("**BREAKING" in line for line in section), (
+        "no breaking change is marked in the release notes; this check "
+        "would pass vacuously on a section it failed to find"
+    )
+    unmarked = [
+        f"{index + 1}: {line.strip()[:70]}"
+        for index, line in enumerate(section)
+        if "**Breaking" in line and "**BREAKING" not in line
+    ]
+    assert not unmarked, (
+        f"release-note entr(ies) {unmarked} declare a breaking change "
+        "without the literal BREAKING marker REQ-92 requires. REQ-92 no "
+        "longer enumerates the breaks, so this file is the only inventory "
+        "and grepping the marker has to find all of them."
     )

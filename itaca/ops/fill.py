@@ -5,12 +5,14 @@ Filled values are tagged ``+1`` (SRS 4.3). With ``method="linear"`` or
 weights per REQ-98: systematic through the weight sum (fully
 correlated), random through the RSS of weights.
 
-``method="polyfit"`` produces no weights at all: it evaluates the
-fitted polynomial directly and emits no (neighbor, weight) pairs, so
-the propagation loop has nothing to consume and skips those entries.
-It is therefore one of the five provisional operations of REQ-98,
-pending OQ-18, and filling with uncertainty present raises rather than
-guessing a rule (DD-18).
+``method="polyfit"`` emits no weights: it evaluates the fitted
+polynomial directly and produces no (neighbor, weight) pairs, so the
+propagation loop has nothing to consume and skips those entries. It is
+therefore one of the provisional operations REQ-98 enumerates, and
+filling with uncertainty present raises rather than guessing a rule
+(DD-18). Whether the interpolation polynomial weight matrix applies
+here, given that fill picks its support per gap from the cells that are
+not NaN, is OQ-42.
 """
 
 from __future__ import annotations
@@ -151,8 +153,10 @@ def fill(
         if db.uncertainty is not None:
             raise UncertaintyError(
                 "fill(method='polyfit')",
-                "uncertainty propagation through moving-fit weights is "
-                "not frozen yet (REQ-98 provisional row, OQ-18)",
+                "this path evaluates the fitted polynomial directly and "
+                "produces no weights to propagate through, and no "
+                "replacement rule is frozen (REQ-98 provisional row, "
+                "OQ-42)",
                 "fill before assigning uncertainty, or use method="
                 "'linear' or 'nearest'",
             )

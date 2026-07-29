@@ -30,25 +30,33 @@ OQ-41).
 
 Two enumerations were false in normative text and are corrected
 differently, because only one of them should exist at all. REQ-92
-claimed \code{0.2.0} ships three breaking changes where nine carry the
-marker; its enumeration is REMOVED rather than recounted, since
-\code{CHANGELOG.md} is where the same requirement already mandates the
-list, and a duplicate inventory goes stale independently of its
-original. REQ-98 named its provisional operations at three different
-counts across four places while Table~\ref{tab:unc-ops} still claimed
-\code{smooth} and \code{diff} propagate; the list is now given ONCE, at
-five, adding \code{fill} with \code{method="polyfit"}, and REQ-26 gains
-the matching per-method split. The ground recorded for
-\code{fill(method="polyfit")} is that its path produces no weights at
-all, not that its weights are data dependent: that earlier reasoning
-was measured false and would have drawn \code{interpolate} into the
-family with it.
+claimed \code{0.2.0} ships three breaking changes and it ships more; its
+enumeration is REMOVED rather than recounted, and no replacement count
+is put in its place, since \code{CHANGELOG.md} is where the same
+requirement already mandates the list, a duplicate inventory goes stale
+independently of its original, and a bare count is that same artifact
+with its evidence removed. REQ-98 carried its provisional family at
+three different counts across four places while
+Table~\ref{tab:unc-ops} still claimed \code{smooth} and \code{diff}
+propagate; the list is now given ONCE, at five, adding \code{fill} with
+\code{method="polyfit"}, and REQ-26 gains the matching per-method split.
+The ground recorded for \code{fill(method="polyfit")} is that the fill
+path emits no weights for the propagation to consume. Explicitly not
+that its weights are data dependent, which was measured false and would
+have drawn \code{interpolate} into the family with it; and explicitly
+not that no polynomial weight rule exists, since one ships and
+\code{interpolate} propagates through it. Whether that matrix is
+admissible over a support chosen per gap is OQ-42, opened here, and it
+may return the count to four.
 
 This is a document-version BUMP rather than a same-baseline refinement,
-for the reason the 0.2.1 entry established and one more. Six \stable{}
-requirements change text, which is the threshold that entry set; and a
-reader holding v0.2.0 needs to be able to name which document version
-first described the refusals that release actually shipped.\\
+for the reason the 0.2.1 entry established and one more. Nine \stable{}
+requirements change text, the six listed above for the refusals and
+REQ-92, REQ-98 and REQ-26 for the two enumerations, which is well past
+the threshold that entry set; and a reader holding v0.2.0 needs to be
+able to name which document version first described the refusals that
+release actually shipped. The argument does not rest on the count being
+exact, which is why it is given with its list beside it.\\
 
 0.2.1 & 2026-07-28 & Geovana Neves &
 Independent-review amendment (REV-001, reproduced as \code{ITA-0}).

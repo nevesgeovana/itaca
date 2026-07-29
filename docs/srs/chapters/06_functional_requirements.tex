@@ -30,7 +30,9 @@ user=None, comment=None)} is the single entry point for loading data into
 When \code{dims} is omitted or set to \code{None}, the result is in
 \emph{datapoint mode}: a single synthetic dimension named
 \code{datapoint} indexes rows in acquisition order and every column
-becomes a variable. A later call to \code{db.pivot(dims=[...])}
+that does not collide with a dimension name becomes a variable, the
+collision rule being the one stated below. A later call to
+\code{db.pivot(dims=[...])}
 reorganizes the data into a structured VarFrame. String-valued columns
 are accepted only as dimension coordinates; loading one as a variable
 raises \code{DataError} (OQ-21).
@@ -413,12 +415,13 @@ and warns from v0.2.0 (M1 Phase B1 decision).
 
 The three methods do not share one uncertainty rule. \code{"linear"}
 and \code{"nearest"} propagate through their fill weights, both
-components, per REQ-98. \code{"polyfit"} produces no weights at all: it
-evaluates the fitted polynomial directly, so there is nothing for the
-propagation to consume, and filling with uncertainty present and
+components, per REQ-98. \code{"polyfit"} emits no weights: it evaluates
+the fitted polynomial directly, so there is nothing for the propagation
+to consume, and filling with uncertainty present and
 \code{method="polyfit"} raises \code{UncertaintyError} rather than
-guessing a rule. It is therefore one of the five provisional operations
-of REQ-98, pending OQ-18.
+guessing a rule. It is therefore one of the provisional operations
+REQ-98 enumerates, pending OQ-42, which asks whether the interpolation
+polynomial weight matrix applies to a support chosen per gap.
 \end{reqbox}
 
 \begin{reqbox}{REQ-27}{\stable}
@@ -850,23 +853,36 @@ FIVE operations are provisional, and this is the one place the list is
 given rather than restated: \code{smooth}, \code{diff},
 \code{fitmodel}, \code{fitvalue}, \code{fill(method="polyfit")}. Each
 RAISES when uncertainty is present rather
-than guessing, and each stays provisional until OQ-18 and OQ-24 are
-resolved. The count is stated because it was previously carried in four
-places at three different values while five operations refused, which
-is the enumeration defect \code{ITC-20260729-1450} closes.
+than guessing, and each stays provisional until OQ-18, OQ-24 and OQ-42
+are resolved. The count is stated because it was previously carried in
+four places at three different values while five operations refused,
+which is the enumeration defect \code{ITC-20260729-1450} closes.
 
-\code{fill(method="polyfit")} belongs to that family for a reason worth
-recording, because a weaker one was written down first and is wrong. It
-is NOT that the moving polynomial fit has data-dependent weights:
-measured, its superposition departs by $1.3 \times 10^{-13}$, and applied
-consistently that argument would draw \code{interpolate} into the family
-as well. It is that the polyfit path has NO WEIGHT PATH AT ALL. The
-\code{"linear"} and \code{"nearest"} methods emit a list of (neighbor,
-weight) pairs that the propagation loop then consumes, while the polyfit
-branch evaluates the fitted polynomial directly and emits no pairs, so
-the loop has nothing to propagate through and skips those entries.
-Propagating would mean inventing a weight rule the fit never produced,
-which is precisely what OQ-18 has not yet frozen (REQ-26). The M0 rows
+\code{fill(method="polyfit")} belongs to that family for a narrower
+reason than the other four, and the difference is recorded rather than
+smoothed over, because a wider claim was written down first and does
+not survive contact with this library's own code. It is NOT that the
+moving polynomial fit has data-dependent weights: measured, its
+superposition departs by $1.3 \times 10^{-13}$, and applied consistently
+that argument would draw \code{interpolate} into the family as well. Nor
+is it that no polynomial weight rule exists anywhere: a least-squares
+polynomial weight matrix ships in this package and
+\code{db.interpolate(method="polyfit")} propagates both components
+through it, which the table below records as exact.
+
+It is that the FILL path emits no weights for the propagation to
+consume. Its \code{"linear"} and \code{"nearest"} methods produce a list
+of (neighbor, weight) pairs and the propagation loop consumes it, while
+the polyfit branch evaluates the fitted polynomial directly and produces
+no pairs, so the loop skips those entries. Whether the interpolation
+weight matrix is the right rule to reach for there is a real question
+and not a foregone one, because fill's support set is chosen per gap and
+depends on which cells are NaN, which the interpolation case never faces.
+That question is OQ-42, and it belongs to the numerical-analyst seat.
+Until it is answered the operation refuses, which is the only behavior
+that cannot produce a wrong number; if the answer is that the shipped
+matrix applies, \code{fill(method="polyfit")} leaves this family and the
+count returns to four (REQ-26). The M0 rows
 were validated against the
 implementation on 2026-07-21; the M1 weight-based rows
 (\code{interpolate} and the reductions) were validated at the M1
@@ -897,10 +913,10 @@ gain).\\
 frozen (OQ-18); both raise when uncertainty is present. This row
 formerly stated that they propagate through those weights, which the
 implementation has never done.\\
-\code{fill} (\code{method="polyfit"}) & Same family and the same open
-question (OQ-18): the polyfit path produces no weights for the
-propagation to consume, so it raises when uncertainty is present. The
-other two fill methods propagate, per their row above (REQ-26).\\
+\code{fill} (\code{method="polyfit"}) & Same family, different open
+question (OQ-42): this path emits no weights for the propagation to
+consume, so it raises when uncertainty is present. The other two fill
+methods propagate, per their row above (REQ-26).\\
 \code{fitmodel}, \code{fitvalue} & Coefficient-space rule not yet
 frozen (OQ-24); both raise when uncertainty is present until
 validated. \code{fitvalue}'s forward evaluation is exact and linear,

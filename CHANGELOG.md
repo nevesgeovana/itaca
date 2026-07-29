@@ -6,11 +6,12 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
-### Read this first: five operations refuse uncertainty on purpose
-
+**Read this first: five operations refuse uncertainty on purpose.**
 This is a deliberate design position, not a defect, and it is stated at
 the top of these notes because it is the first thing a user propagating
-uncertainty through this release will hit.
+uncertainty through this release will hit. These five are a different
+set from the five CHK-1 input refusals listed under Changed below; the
+two are unrelated and the coincidence of number is just that.
 
 Five operations **raise** when the VarFrame carries an UncFrame, rather
 than returning a number:
@@ -28,16 +29,29 @@ weight path at all, since that method evaluates the fitted polynomial
 directly and emits no weights for the propagation to consume. REQ-98
 carries all five as its provisional rows and is normative.
 
-**What lifts this:** OQ-18 (kernel and moving-fit weights) and OQ-24
-(coefficient space). Both are open, and both are numerical-analyst
-decisions rather than implementation work. Until they are answered, the
-refusal stands.
+**What lifts this:** OQ-18 (kernel and moving-fit weights) for `smooth`
+and `diff`, OQ-24 (coefficient space) for `fitmodel` and `fitvalue`, and
+OQ-42 for `fill(method="polyfit")`, which asks whether the polynomial
+weight matrix `interpolate` already propagates through applies to a
+support that fill picks per gap from the cells that are not NaN. All
+three are open and all three are numerical-analyst decisions. Until they
+are answered, the refusal stands.
 
 **What to do now:** run these operations *before* assigning uncertainty,
 or use a method that does propagate (`fill(method="linear")` or
 `fill(method="nearest")`). Every other operation in this release either
-propagates through its weights or through its Jacobian; none silently
-drops or silently carries an UncFrame.
+carries its components unchanged, propagates through its weights, or
+propagates through its Jacobian; none silently drops or silently carries
+an UncFrame.
+
+**Two limits of that advice, stated because you will otherwise find them
+the hard way.** There is no `drop_uncertainty`, so once a frame carries
+an UncFrame the only way back is to re-run from `itc.load`; and applying
+a processor assigns its `[uncertainties]` section itself, so
+`proc(db).smooth(...)` refuses even though you never called
+`set_uncertainty`. Whether a recorded `db.drop_uncertainty` should exist,
+as the symmetric partner of `db.drop_correlation`, is registered and
+belongs to the author.
 
 ### Changed
 
@@ -340,8 +354,8 @@ own data was affected.
   alongside `itaca/`. This follows from deriving the version with
   `setuptools-scm` (DD-38), whose file finder replaces the default
   selection; the wheel is unchanged and still ships `itaca/` alone.
-* **The minimum supported Python is now 3.11** (was 3.10). This is a
-  breaking change for anyone on 3.10: `pip install itaca` there will
+* **BREAKING. The minimum supported Python is now 3.11** (was 3.10).
+  This breaks anyone on 3.10: `pip install itaca` there will
   resolve to v0.1.0 rather than upgrading. The reason is `.itceq`,
   which the SRS specifies as a TOML-structured file (REQ-48) and which
   M1 Phase B3b implements: only from 3.11 does the standard library
@@ -456,14 +470,19 @@ own data was affected.
   marked BREAKING here with its migration, which is the obligation that
   replaces the version bump while the major version is zero.
 
-  REQ-92 used to enumerate the breaks itself, and named three. Nine
-  carry the marker in this file, measured 2026-07-29, because the
-  CHK-1 checkpoint added five more refusals after the requirement was
+  REQ-92 used to enumerate the breaks itself, and named three, because
+  the CHK-1 checkpoint added more refusals after the requirement was
   written and the version-resolution break was never counted. The
-  enumeration has been REMOVED from REQ-92 rather than corrected: this
-  file is where the requirement already mandates the list, and a
-  duplicate inventory in a normative document goes stale independently
-  of the one it duplicates. SRS document 0.2.2 records the amendment.
+  enumeration has been REMOVED from REQ-92 rather than corrected, and
+  no replacement count was put in its place: a bare count is the same
+  stale artifact with its evidence removed. This file is where the
+  requirement already mandates the list, and a duplicate inventory in a
+  normative document goes stale independently of the one it duplicates.
+  Four entries here declared a break in prose or in mixed case rather
+  than with the marker the requirement names; all of them now carry
+  `BREAKING`, so the obligation REQ-92 now rests on is actually true of
+  this file. `tests/test_srs_refusals.py` holds it. SRS document 0.2.2
+  records the amendment.
 
 * **REQ-105 and REQ-106 surfaces are marked PROVISIONAL**
   (`itc.no_default`, `itc.register_accessor`). Both ship in 0.2.0
@@ -548,7 +567,7 @@ own data was affected.
   deliberately left distinct. Hash equality implies semantic identity;
   hash inequality proves nothing about semantic difference.
 
-  **Breaking for existing `.itc` archives.** An archive written before
+  **BREAKING for existing `.itc` archives.** An archive written before
   0.2.0 whose dims or variables carry a unit, description or long name
   now fails `itc.open` with `HashMismatchError`, because the recorded
   digest predates the scope. The archive is intact; the remedy is to
@@ -574,7 +593,7 @@ own data was affected.
   equation's result is merely unreachable. The fix had landed on the
   safe instance and left the dangerous one.
 
-  **Breaking, and deliberately so.** Anyone using a constant to
+  **BREAKING, and deliberately so.** Anyone using a constant to
   override a bad channel loses that path. The replacement is to correct
   the channel in the frame, which is what `[corrections]` and
   `db.compute` are for; a value that is measured belongs in the
@@ -642,7 +661,7 @@ own data was affected.
   other commit as `X.Y.Z.devN` naming the release being worked toward,
   with `N` the commits since the last release tag.
 
-  **Breaking for source checkouts.** `import itaca` itself now raises
+  **BREAKING for source checkouts.** `import itaca` itself now raises
   `VersionResolutionError` on a tree that was never installed. The
   version is resolved at import time, and a guess would be stamped into
   Provenance and into `.itc` archives as though it were a fact, so
