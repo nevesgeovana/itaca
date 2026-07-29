@@ -135,7 +135,8 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   Etkin wind/stability conventions, SME-accepted), the immutable
   `AxisRegistry`, `db.register_axis` and `db.declare_vector(...,
   axis=...)` binding each vector group to its source axis system
-  (REQ-107 draft; the surface standardizes on "axis" for a coordinate
+  (REQ-107, promoted to stable in SRS 0.2.1; the surface standardizes
+  on "axis" for a coordinate
   system, distinct from `select(Frame=)`), and
   `db.rotate(target_axis, vector_groups=...)` (REQ-38, REQ-101):
   each group transforms from its own source frame to the target,
