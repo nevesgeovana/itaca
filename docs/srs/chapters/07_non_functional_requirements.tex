@@ -522,19 +522,37 @@ initial development, and SemVer clause~4 applies: the public API is not
 
 stable and a breaking change MAY ship in a \code{MINOR} bump. This is
 
-stated rather than left implicit because \code{0.2.0} ships three:
+stated rather than left implicit because \code{0.2.0} ships several of
 
-the Python floor rising to 3.11, pre-0.2.0 \itc{} archives carrying
+them, and under the rule above with no carve-out that release would be
 
-metadata no longer verifying under the widened REQ-103 scope (DD-40),
+non-conforming; the requirement rather than the release is what was
 
-and a \code{[constants]} name colliding with a measured channel now
+wrong.
 
-being refused (DD-39). Under the rule above and no carve-out, that
 
-release would be non-conforming, and the requirement rather than the
 
-release is what was wrong.
+This requirement does NOT enumerate them, and the absence is a
+
+correction rather than an omission. It used to name three, which was
+
+the count when the carve-out was written and was already false by the
+
+time the release closed: the CHK-1 checkpoint turned five further
+
+accepted inputs into public refusals, and nine breaking changes carry
+
+the marker in \code{CHANGELOG.md}, measured on 2026-07-29. A second
+
+inventory inside a normative document goes stale independently of the
+
+one it duplicates, which is the defect this amendment closes rather
+
+than repeats. The enumeration lives in \code{CHANGELOG.md}, which the
+
+paragraph below already requires, and that file is the single authority
+
+for what a release broke.
 
 
 

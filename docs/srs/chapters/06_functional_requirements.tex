@@ -34,6 +34,19 @@ becomes a variable. A later call to \code{db.pivot(dims=[...])}
 reorganizes the data into a structured VarFrame. String-valued columns
 are accepted only as dimension coordinates; loading one as a variable
 raises \code{DataError} (OQ-21).
+
+One name may not be both a dimension and a variable of the same
+VarFrame. Datapoint mode always creates the synthetic \code{datapoint}
+dimension, so a source carrying a column of that name is refused with
+\code{DataError} rather than loaded: a frame holding both resolved every
+reference to the dimension and never the variable, \code{db.to\_csv}
+emitted a duplicate header the loader then refused to read back, and
+\code{db.to\_pandas} lost one of the two columns to a dict-key overwrite
+(\code{R3-ITA-008}). The rule is enforced at VarFrame construction,
+beside the correlation invariant, so no operation can build such a frame
+either, and it therefore governs \code{db.pivot} and every operation as
+well as this entry point. The cost is stated rather than hidden: no
+rename operation exists to recover with, and that gap is OQ-41.
 \end{reqbox}
 
 \begin{reqbox}{REQ-02}{\stable}
@@ -337,6 +350,19 @@ identically (same coordinates, same units); the values along \code{along}
 must be unique across inputs (no overlap, raises
 \code{ConcatOverlapError}). Cardinalities along \code{along} may differ
 across inputs.
+
+The inputs must also agree on the axis system of every vector group they
+carry. \code{concat} records ONE source axis for the merged frame, and
+REQ-107 makes that recorded axis the thing that keeps a repeated
+rotation an identity, so a body-axis input joined to an already-rotated
+wind-axis input came out claiming one axis for every row and the next
+\code{db.rotate} transformed the rotated rows a second time
+(\code{CHK1-003}). A disagreement therefore raises \code{AxesError}, as
+does one group declared over different components across the inputs. The
+comparison is driven by the UNION of the declared group names, and an
+input that never declared a group counts as the canonical body axis for
+it, so the commonest shape of all, where nobody called
+\code{db.declare\_vector}, is covered rather than passed over.
 \end{reqbox}
 
 \begin{reqbox}{REQ-25}{\stable}
@@ -384,6 +410,15 @@ Filled values are tagged \code{+1} in the HistoryFrame. For
 signature consistency with the M1 kernel operations, \code{method}
 is being moved to keyword-only: passing it positionally is deprecated
 and warns from v0.2.0 (M1 Phase B1 decision).
+
+The three methods do not share one uncertainty rule. \code{"linear"}
+and \code{"nearest"} propagate through their fill weights, both
+components, per REQ-98. \code{"polyfit"} produces no weights at all: it
+evaluates the fitted polynomial directly, so there is nothing for the
+propagation to consume, and filling with uncertainty present and
+\code{method="polyfit"} raises \code{UncertaintyError} rather than
+guessing a rule. It is therefore one of the five provisional operations
+of REQ-98, pending OQ-18.
 \end{reqbox}
 
 \begin{reqbox}{REQ-27}{\stable}
@@ -667,8 +702,18 @@ it is UPDATED by \code{db.rotate}: after a rotation each transformed
 group's recorded axis is the target, which is what makes a second
 rotation to the same target an identity rather than a second
 transform. A group detected by the naming convention is registered on
-first rotation, so the recorded axis survives a save. The
-surface uses ``axis'' for a coordinate system throughout, distinct
+first rotation, so the recorded axis survives a save.
+
+Because the recorded axis is what makes a repeated rotation an identity,
+an operation that MERGES frames may not merge disagreeing axes:
+\code{itc.concat} refuses inputs whose vector groups sit in different
+axis systems, or which declare one group over different components,
+raising \code{AxesError} (REQ-24, \code{CHK1-003}). An input that never
+declared the group counts as the canonical body axis for that
+comparison, which is the same default the omitted \code{axis=} takes
+above.
+
+The surface uses ``axis'' for a coordinate system throughout, distinct
 from the \code{Frame=} container selector of \code{db.select}
 (REQ-20).
 \end{reqbox}
@@ -680,9 +725,42 @@ from the \code{Frame=} container selector of \code{db.select}
 \textbf{Assign uncertainties.}\\
 \code{db.set\_uncertainty(\{var: value, ...\})} assigns standard
 uncertainties (GUM clause~2.3.1) to measured variables. Values may be
-absolute (float) or relative (string ending in \code{"\%"}). This call
-creates the UncFrame on first use and updates it on subsequent calls.
-Uncertainty is per-variable; keys not matching any variable raise
+absolute (float) or relative (string ending in \code{"\%"}), and must be
+FINITE: a declared magnitude that is not a finite number raises
+\code{UncertaintyError}, and so does one that is not a number at all,
+rather than escaping as a bare \code{ValueError} or \code{TypeError}
+outside the REQ-81 hierarchy (\code{R3-ITA-007}, \code{ITACA-031}).
+
+Finiteness is a property of the quantity rather than a convenience, and
+GUM clause~5.1.2~\citep{gum2008} excludes the two non-finite cases by two
+different sentences. It defines the combined standard uncertainty as the
+POSITIVE SQUARE ROOT of the combined variance, which excludes NaN,
+because NaN is not the positive square root of anything; that sentence
+does not exclude $+\infty$, which is its own positive square root. What
+excludes an infinite value is the definitional sentence of the same
+subclause, that $u_c(y)$ is an estimated standard deviation
+characterizing the dispersion of the values that could reasonably be
+attributed to the measurand: no dispersion of attributable values is
+characterized by an infinity. Neither exclusion is inferred from the
+first-order expansion of clause~5.1, which requires finiteness of the
+input $u(x_i)$ nowhere; the only domain restriction in that subclause is
+5.1.6, $|y| \neq 0$, and it governs RELATIVE uncertainty, a different
+quantity. A non-finite declaration admitted here would propagate into
+every quantity derived from the variable.
+
+The rule is scoped to the DECLARED magnitude, and that limit is stated
+rather than implied. A relative specification resolves against the data,
+so a valid \code{"5\%"} against a variable carrying NaN still yields a
+non-finite standard uncertainty. The structural home of the check is the
+UncFrame, beside the negativity rule and on the assembled array; it is
+blocked on OQ-40, because that array carries NaN deliberately for the
+cells \code{db.compute(where=)} and \code{db.fill} did not touch, so one
+array currently means both ``missing'' and ``not a number'' and the two
+must be made distinguishable before a finiteness rule can be applied
+there.
+
+This call creates the UncFrame on first use and updates it on subsequent
+calls. Uncertainty is per-variable; keys not matching any variable raise
 \code{UncertaintyKeyError}.
 \end{reqbox}
 
@@ -761,17 +839,35 @@ specified input variability. No separate sensitivity module is required
 \textbf{Uncertainty propagation through every operation.}\\
 Every operation declares its effect on the UncFrame (DD-18).
 Table~\ref{tab:unc-ops} is normative. The weight-based rows (subset,
-interpolate, fill, and the reductions) are linear in the variable
-values, so propagation through the operation weights is exact; the
-Jacobian rows (\code{rotate}, \code{translate\_moments},
-\code{combine}, \code{compute}) linearize a nonlinear map, and the
-provisional rows (\code{smooth}, \code{diff}, \code{fitmodel},
-\code{fitvalue}) raise until their rule is frozen. No operation
-silently drops or silently carries an UncFrame. The \code{smooth},
-\code{diff}, and \code{fitmodel} rows remain provisional until OQ-18
-and OQ-24 are resolved during v0.2.0 implementation; an operation
-whose weight rule is not yet frozen raises when uncertainty is
-present rather than guessing. The M0 rows were validated against the
+\code{interpolate}, the reductions, and \code{fill} with
+\code{method="linear"} or \code{method="nearest"}) are linear in the
+variable values, so propagation through the operation weights is exact;
+the Jacobian rows (\code{rotate}, \code{translate\_moments},
+\code{combine}, \code{compute}) linearize a nonlinear map. No operation
+silently drops or silently carries an UncFrame.
+
+FIVE operations are provisional, and this is the one place the list is
+given rather than restated: \code{smooth}, \code{diff},
+\code{fitmodel}, \code{fitvalue}, \code{fill(method="polyfit")}. Each
+RAISES when uncertainty is present rather
+than guessing, and each stays provisional until OQ-18 and OQ-24 are
+resolved. The count is stated because it was previously carried in four
+places at three different values while five operations refused, which
+is the enumeration defect \code{ITC-20260729-1450} closes.
+
+\code{fill(method="polyfit")} belongs to that family for a reason worth
+recording, because a weaker one was written down first and is wrong. It
+is NOT that the moving polynomial fit has data-dependent weights:
+measured, its superposition departs by $1.3 \times 10^{-13}$, and applied
+consistently that argument would draw \code{interpolate} into the family
+as well. It is that the polyfit path has NO WEIGHT PATH AT ALL. The
+\code{"linear"} and \code{"nearest"} methods emit a list of (neighbor,
+weight) pairs that the propagation loop then consumes, while the polyfit
+branch evaluates the fitted polynomial directly and emits no pairs, so
+the loop has nothing to propagate through and skips those entries.
+Propagating would mean inventing a weight rule the fit never produced,
+which is precisely what OQ-18 has not yet frozen (REQ-26). The M0 rows
+were validated against the
 implementation on 2026-07-21; the M1 weight-based rows
 (\code{interpolate} and the reductions) were validated at the M1
 Phase B1 checkpoint, with the mixed-sign systematic behavior of the
@@ -790,14 +886,21 @@ OQ-18.
 \code{select}, \code{at}, \code{squeeze}, \code{concat}, \code{expand},
 \code{pivot} & Components are subset, concatenated, or broadcast
 unchanged.\\
-\code{interpolate}, \code{fill} & Propagated through the
-interpolation or fit weights, per point, both components.\\
+\code{interpolate}, \code{fill} (\code{method="linear"} or
+\code{"nearest"}) & Propagated through the interpolation or fit
+weights, per point, both components.\\
 \code{average}, \code{integrate}, \code{statistics} & Propagated through
 the reduction weights: random component with independence between points
 (the $1/\sqrt{N}$ gain), systematic component as fully correlated (no
 gain).\\
-\code{smooth}, \code{diff} & Propagated through the kernel or moving-fit
-weights, same component rules as reductions.\\
+\code{smooth}, \code{diff} & Kernel and moving-fit weight rule not yet
+frozen (OQ-18); both raise when uncertainty is present. This row
+formerly stated that they propagate through those weights, which the
+implementation has never done.\\
+\code{fill} (\code{method="polyfit"}) & Same family and the same open
+question (OQ-18): the polyfit path produces no weights for the
+propagation to consume, so it raises when uncertainty is present. The
+other two fill methods propagate, per their row above (REQ-26).\\
 \code{fitmodel}, \code{fitvalue} & Coefficient-space rule not yet
 frozen (OQ-24); both raise when uncertainty is present until
 validated. \code{fitvalue}'s forward evaluation is exact and linear,
@@ -824,7 +927,8 @@ compiled to the \itc{} operator tree (DD-20). The engine supports:
     \code{acos}, \code{atan}, \code{atan2};
   \item miscellaneous: \code{sqrt}, \code{abs}, \code{log}, \code{log10},
     \code{exp};
-  \item constants: \code{pi}, \code{e}.
+  \item constants: \code{pi}, \code{e}, supplied by the language and
+    therefore unusable as variable names (below).
 \end{itemize}
 Each operator implements \code{evaluate()}, \code{d\_da()}, and (where
 applicable) \code{d\_db()}, and is independently testable. Property-based
@@ -838,6 +942,26 @@ while History recorded the expression WITH the keyword, showing an
 intent the execution did not honor. Which keywords the language should
 eventually accept is OQ-37; until it is answered, refusing is the only
 behavior that cannot produce a wrong number.
+
+A built-in constant may not shadow a measured channel. The constant
+table was tested before the frame's own names, so an expression
+evaluated on a VarFrame carrying a variable named \code{e} read Euler's
+number and neither the result nor History said so: \code{CDi = CL ** 2 /
+(pi * AR * e)} with \code{e = 0.5} returned \code{0.01463746} against
+the correct \code{0.07957747}, and \code{e} is the Oswald span
+efficiency factor, the likeliest name collision in this library's own
+target domain. A name that is BOTH a built-in constant and a variable
+the frame carries therefore raises \code{DataError} at \code{db.compute},
+naming the name (DD-42, \code{CHK1-001}); REQ-45 makes
+\code{Processor.validate} refuse the same collision on the \code{.itceq}
+path. Neither name is exempt, because the defect is that a MEASURED
+channel becomes unreadable, and that is true of any name the language
+also supplies. The refusal is symmetric with DD-39, which already
+refuses the same collision for an \code{.itceq} \code{[constants]} name
+against a measured channel: the source of the number differs and the
+defect does not. Its cost is stated rather than hidden, since a channel
+so named cannot be referenced in any expression and no recorded rename
+operation exists to get out with (OQ-41).
 \end{reqbox}
 
 \section{Processors: \code{itc.processor()}}
@@ -862,13 +986,28 @@ class Processor(Protocol):
 \end{lstlisting}
 The canonical lifecycle is \code{validate}, then \code{info}, then
 the call itself; a report is requested through the call (REQ-51).
-\code{validate} refuses two things: a variable the file needs that the
-frame does not carry, and a name the file declares in \code{[constants]}
-that the frame also carries as a measured variable. The second is
-refused here rather than when the file is read, because the parser never
-sees a frame, and the same file is legal against a campaign that does
-not log that channel (DD-39, OQ-31). The call runs \code{validate}
-first, so both refusals govern application as well.
+\code{validate} refuses three things: a variable the file needs that the
+frame does not carry, which includes a name its \code{[uncertainties]}
+section declares and the file does not produce; a name the file declares
+in \code{[constants]} that the frame also carries as a measured
+variable; and a name the file reads as a built-in expression constant of
+REQ-44 (\code{pi}, \code{e}) that the frame also carries as a measured
+variable. The second and third are refused here rather than when the
+file is read, because the parser never sees a frame, and the same file
+is legal against a campaign that does not log that channel (DD-39,
+DD-42, OQ-31).
+
+The third closes the path the second left open. Dependency resolution
+subtracts the built-in constants unconditionally, so such a name never
+reached the required-variable set and \code{validate} certified a frame
+whose equations could not read the channel it carried
+(\code{CHK1-001}). Both collision checks are whole-file, covering
+\code{[equations]} and \code{[corrections]} alike, since the call
+evaluates both and a refusal arriving mid-application would land after
+earlier equations had already been written. They are ordered
+constants-first, so a file hitting both is told about the declaration
+its own author controls. The call runs \code{validate} first, so all
+three refusals govern application as well.
 \end{reqbox}
 
 \begin{reqbox}{REQ-46}{\stable}

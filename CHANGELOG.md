@@ -6,6 +6,39 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
+### Read this first: five operations refuse uncertainty on purpose
+
+This is a deliberate design position, not a defect, and it is stated at
+the top of these notes because it is the first thing a user propagating
+uncertainty through this release will hit.
+
+Five operations **raise** when the VarFrame carries an UncFrame, rather
+than returning a number:
+
+* `db.smooth` (any method)
+* `db.diff`, and the `db.d[dim]` sugar
+* `db.fitmodel`
+* `db.fitvalue`
+* `db.fill(method="polyfit")`
+
+Each refuses because its uncertainty rule is **not yet frozen**, and
+returning a value would mean guessing one. The first four have no frozen
+kernel-weight or coefficient-space rule; `fill(method="polyfit")` has no
+weight path at all, since that method evaluates the fitted polynomial
+directly and emits no weights for the propagation to consume. REQ-98
+carries all five as its provisional rows and is normative.
+
+**What lifts this:** OQ-18 (kernel and moving-fit weights) and OQ-24
+(coefficient space). Both are open, and both are numerical-analyst
+decisions rather than implementation work. Until they are answered, the
+refusal stands.
+
+**What to do now:** run these operations *before* assigning uncertainty,
+or use a method that does propagate (`fill(method="linear")` or
+`fill(method="nearest")`). Every other operation in this release either
+propagates through its weights or through its Jacobian; none silently
+drops or silently carries an UncFrame.
+
 ### Changed
 
 The CHK-1 release checkpoint turned five previously accepted inputs into
@@ -64,6 +97,19 @@ own data was affected.
   uncertainty. The structural fix belongs in `UncFrame` and is blocked
   on OQ-40, because that array carries NaN deliberately for cells
   `compute(where=)` and `fill` did not touch.
+
+* **The SRS now describes the refusals this release ships** (SRS
+  document 0.2.2, `ITC-20260729-1450`, which blocked the tag). All five
+  refusals above landed against requirement text that contradicted them:
+  REQ-01 said every column becomes a variable, REQ-24 and REQ-107
+  described no `AxesError`, REQ-39 said a value may be any float, REQ-44
+  named `pi` and `e` as constants without saying what happens when the
+  frame carries one, and REQ-45 said `validate` refuses two things where
+  it now refuses three. Six stable requirements are amended, plus REQ-92
+  and REQ-98/REQ-26 as separate items below. Nothing in the library
+  changed: the code was correct and the specification was wrong, which
+  is the direction the SRS's own note says is not supposed to happen and
+  the reason this was a tag blocker.
 
 ### Fixed
 
@@ -261,9 +307,9 @@ own data was affected.
   in-range/out-of-range tags). Every operation is immutable, records
   History, and declares its UncFrame effect (DD-18): reductions and
   interpolation propagate both components through their weights
-  (REQ-98), while `smooth`, `diff`, `fitmodel`, and `fitvalue` raise
-  on uncertainty until OQ-18 and OQ-24 freeze their kernel-weight and
-  coefficient-space rules. New error leaves `ConcatOverlapError`,
+  (REQ-98), while the five provisional operations named at the top of
+  these notes raise on uncertainty until OQ-18 and OQ-24 freeze their
+  kernel-weight and coefficient-space rules. New error leaves `ConcatOverlapError`,
   `AxisTranslationError`, and the shared `FitDegreeError` (the
   too-few-points-for-degree invariant across diff, smooth,
   interpolate, and fitmodel). The REQ-105 sentinel is adopted in the
@@ -357,7 +403,7 @@ own data was affected.
   The behavior was always correct and is unchanged; the description of
   why was not. `propagation.py` likewise called REQ-98 and REQ-99 a
   draft gate awaiting validation, when both were promoted to stable in
-  SRS document 0.1.1, and it now names all four provisional rows rather
+  SRS document 0.1.1, and it now names every provisional row rather
   than two. Four `SRS 4.6` citations that pointed at the `.itceq`
   section now point at Axes (4.5) and the HistoryFrame (4.3), and one
   `SRS 4.4` in `_degree.py` now cites REQ-30.
@@ -404,12 +450,20 @@ own data was affected.
 
 * **A pre-1.0 carve-out in REQ-92** (SemVer clause 4). The requirement
   said flatly that a breaking change increments MAJOR, with no clause
-  for major version zero, so this release with its three documented
-  breaks was non-conforming against its own specification. The
-  requirement was what was wrong, not the release. Every breaking
-  change is still marked BREAKING here with its migration, which is the
-  obligation that replaces the version bump while the major version is
-  zero.
+  for major version zero, so this release with its documented breaks
+  was non-conforming against its own specification. The requirement was
+  what was wrong, not the release. Every breaking change is still
+  marked BREAKING here with its migration, which is the obligation that
+  replaces the version bump while the major version is zero.
+
+  REQ-92 used to enumerate the breaks itself, and named three. Nine
+  carry the marker in this file, measured 2026-07-29, because the
+  CHK-1 checkpoint added five more refusals after the requirement was
+  written and the version-resolution break was never counted. The
+  enumeration has been REMOVED from REQ-92 rather than corrected: this
+  file is where the requirement already mandates the list, and a
+  duplicate inventory in a normative document goes stale independently
+  of the one it duplicates. SRS document 0.2.2 records the amendment.
 
 * **REQ-105 and REQ-106 surfaces are marked PROVISIONAL**
   (`itc.no_default`, `itc.register_accessor`). Both ship in 0.2.0

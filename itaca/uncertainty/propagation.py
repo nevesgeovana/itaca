@@ -11,7 +11,8 @@ correlation r(a, b) applies identically to both components. That choice
 was approved at the M0 Phase 4 checkpoint (2026-07-21), the same
 checkpoint at which REQ-98 and REQ-99 were promoted to stable in SRS
 document 0.1.1. The provisional rows of REQ-98 are smooth, diff,
-fitmodel and fitvalue, pending OQ-18 and OQ-24.
+fitmodel, fitvalue and fill(method="polyfit"), pending OQ-18 and
+OQ-24; REQ-98 is the one place that list is enumerated.
 """
 
 from __future__ import annotations

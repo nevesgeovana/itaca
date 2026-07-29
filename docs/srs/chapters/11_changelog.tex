@@ -12,6 +12,67 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.2, 2026-07-29, CHK-1 Refusal Amendment}
+
+Issued to close \code{ITC-20260729-1450}, which blocked the v0.2.0 tag.
+The CHK-1 release checkpoint added five public refusals to surfaces
+whose requirement text did not describe them, which is the defect class
+the 0.2.1 revision above named in its own words and did not finish
+closing. The code shipped correct; the text was wrong. No requirement
+scope is added or withdrawn here.
+
+\paragraph{Changed (the five CHK-1 refusals).} REQ-01 states that one
+name may not be both a dimension and a variable, so a source column
+named \code{datapoint} is refused at load and at VarFrame construction
+(\code{R3-ITA-008}). REQ-24 and REQ-107 both state that
+\code{itc.concat} raises \code{AxesError} when the inputs express a
+vector group in different axis systems, or declare one group over
+different components, with an undeclared input counting as the
+canonical body axis (\code{CHK1-003}). REQ-39 states that a declared
+uncertainty magnitude must be finite, with the limit of that check
+(declared magnitudes only, OQ-40) stated rather than implied
+(\code{R3-ITA-007}, \code{ITACA-031}). REQ-44 states that a built-in
+expression constant may not shadow a measured channel, and REQ-45
+raises \code{validate} from two refusals to three with the same
+collision on the \code{.itceq} path (DD-42, \code{CHK1-001}, OQ-41).
+
+\paragraph{Changed (REQ-92, a false enumeration).} REQ-92 claimed that
+\code{0.2.0} ships three breaking changes. Nine carry the BREAKING
+marker in \code{CHANGELOG.md}, measured 2026-07-29. The remedy is not a
+corrected count inside the requirement: the enumeration is removed, and
+REQ-92 now points at \code{CHANGELOG.md}, which the requirement's own
+next paragraph already mandates as the place every breaking change is
+marked with its migration. A second inventory in a normative document
+goes stale independently of the one it duplicates, and this one did.
+
+\paragraph{Changed (REQ-98 and REQ-26, one count in place of three).}
+REQ-98 named its provisional operations in two places at two different
+values, four and three, while the normative
+Table~\ref{tab:unc-ops} still stated that \code{smooth} and \code{diff}
+propagate through their weights, which the implementation has never
+done. The list is now given once, at FIVE:
+\code{smooth}, \code{diff}, \code{fitmodel}, \code{fitvalue}, and
+\code{fill} with \code{method="polyfit"}. The table gains the
+\code{fill} polyfit row, its \code{smooth}/\code{diff} row is corrected
+to raise, and its \code{interpolate}/\code{fill} row is scoped to the
+two fill methods that do propagate. REQ-26 carries the same split.
+The stated ground for \code{fill(method="polyfit")} joining the family
+is that the polyfit path produces no weights at all, NOT that its
+weights are data dependent: that earlier reasoning was measured false
+(superposition departs by $1.3 \times 10^{-13}$) and, applied
+consistently, would have drawn \code{interpolate} in as well.
+
+\paragraph{Changed (GUM citation).} REQ-39 and the
+Chapter~\ref{ch:standards} GUM mapping cite clause~5.1.2 for the
+finiteness rule, by its two operative sentences: the positive square
+root excludes NaN, and the definition of $u_c(y)$ as an estimated
+standard deviation characterizing a dispersion of attributable values
+excludes an infinity. The requirement records that neither exclusion is
+inferred from the first-order expansion of clause~5.1, which requires
+finiteness of the input $u(x_i)$ nowhere, and that the only domain
+restriction in 5.1 is 5.1.6, $|y| \neq 0$, which governs relative
+uncertainty.
+
 \section*{Document 0.2.1, 2026-07-28, Independent-Review Amendment}
 
 \paragraph{Changed.} REQ-103 is

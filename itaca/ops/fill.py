@@ -1,12 +1,16 @@
 """db.fill: gap filling along a dimension (REQ-26).
 
-Filled values are tagged ``+1`` (SRS 4.3). Uncertainty propagates
-through the interpolation weights per REQ-98: systematic through the
-weight sum (fully correlated), random through the RSS of weights.
-The moving-polyfit weight rule is not frozen yet (the provisional
-smooth/diff/fitmodel family of REQ-98, OQ-18): filling with
-uncertainty present and ``method="polyfit"`` raises rather than
-guessing (DD-18).
+Filled values are tagged ``+1`` (SRS 4.3). With ``method="linear"`` or
+``method="nearest"``, uncertainty propagates through the interpolation
+weights per REQ-98: systematic through the weight sum (fully
+correlated), random through the RSS of weights.
+
+``method="polyfit"`` produces no weights at all: it evaluates the
+fitted polynomial directly and emits no (neighbor, weight) pairs, so
+the propagation loop has nothing to consume and skips those entries.
+It is therefore one of the five provisional operations of REQ-98,
+pending OQ-18, and filling with uncertainty present raises rather than
+guessing a rule (DD-18).
 """
 
 from __future__ import annotations

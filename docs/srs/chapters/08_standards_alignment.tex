@@ -24,7 +24,7 @@ the GUM~\citep{gum2008} clauses.
 \toprule
 \textbf{\itc{} feature} & \textbf{GUM clause} & \textbf{Notes}\\
 \midrule
-\code{set\_uncertainty}                 & 2.3.1, 4.2  & Standard uncertainty $u(x_i)$ as Type B input.\\
+\code{set\_uncertainty}                 & 2.3.1, 4.2, 5.1.2  & Standard uncertainty $u(x_i)$ as Type B input. The declared magnitude must be finite (REQ-39): 5.1.2 defines the combined standard uncertainty as a positive square root, which excludes NaN, and as an estimated standard deviation characterizing a dispersion of attributable values, which excludes an infinity.\\
 AST propagation engine                  & 5.1, 5.2    & Law of Propagation of Uncertainty (LPU) with first-order Taylor and chain rule on the AST.\\
 \code{set\_correlation}                 & 5.2         & Cross-correlation terms $r(x_i, x_j)\,u(x_i)\,u(x_j)\,\partial f/\partial x_i \,\partial f/\partial x_j$ included in the propagation when the correlation matrix is non-zero.\\
 Per-variable uncertainty (UncFrame)     & 4.1, 4.2    & Standard uncertainty per measurand, not per dataset.\\
