@@ -25,7 +25,7 @@ the GUM~\citep{gum2008} clauses.
 \textbf{\itc{} feature} & \textbf{GUM clause} & \textbf{Notes}\\
 \midrule
 \code{set\_uncertainty}                 & 2.3.1, 4.2  & Standard uncertainty $u(x_i)$ as Type B input.\\
-RPN propagation engine                  & 5.1, 5.2    & Law of Propagation of Uncertainty (LPU) with first-order Taylor and chain rule on the AST.\\
+AST propagation engine                  & 5.1, 5.2    & Law of Propagation of Uncertainty (LPU) with first-order Taylor and chain rule on the AST.\\
 \code{set\_correlation}                 & 5.2         & Cross-correlation terms $r(x_i, x_j)\,u(x_i)\,u(x_j)\,\partial f/\partial x_i \,\partial f/\partial x_j$ included in the propagation when the correlation matrix is non-zero.\\
 Per-variable uncertainty (UncFrame)     & 4.1, 4.2    & Standard uncertainty per measurand, not per dataset.\\
 Reporting in \code{db.summary}          & 7.1-7.2    & Reports $u$, not expanded uncertainty $U = k\,u$. Coverage factor $k$ is reported only when explicitly requested.\\
@@ -110,15 +110,24 @@ History entry         & Activity       & An operation transforming an entity.\\
 \end{tabularx}
 \end{table}
 
-\itc{} v0.1.0 supports native serialization of provenance graphs to
+Native serialization of provenance graphs to
 PROV-N and PROV-JSON via \code{db.export\_provenance(path,
-format="prov-json")} (or \code{format="prov-n"}), enabling
+format="prov-json")} (or \code{format="prov-n"}) is an M2 deliverable
+(v0.3.0; see Chapter~\ref{ch:roadmap}), enabling
 interoperability with provenance-aware data catalogs without forcing
-PROV serialization in every export path.
+PROV serialization in every export path. The mapping above is the model
+it will serialize; it is NOT implemented in v0.1.0 or v0.2.0. An earlier
+revision of this chapter stated that v0.1.0 supported it, which was
+false: no \code{export\_provenance} symbol exists in the released
+package (\code{ITACA-012}).
 
 \section{Code and Documentation: PEP 8, NumPy Docstring}
 
 \itc{} code follows PEP~8~\citep{pep8}. Public-API docstrings follow the
-NumPy docstring convention with mandatory Parameters, Returns, Raises,
-and Examples sections, enforced by linting rules and reviewed in pull
-requests.
+NumPy docstring convention. Ruff's pydocstyle rules enforce PRESENCE
+and STYLE; SECTION COMPLETENESS on the declared public surface is
+enforced by \code{tests/test_docstring_sections.py} (REQ-79), not by
+linting. An earlier revision claimed linting enforced the sections,
+which it does not: ruff checks that a docstring exists and is
+well-formed, never that it carries Parameters or Examples
+(\code{ITACA-016}).

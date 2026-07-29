@@ -122,7 +122,7 @@ class TestNumpyGuard:
 
 
 class TestDebug:
-    def test_debug_report(
+    def test_debug_report(  # REQ-34: the structured pre-application report
         self, db: VarFrame, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with_unc = db.set_uncertainty({"CT": 0.1})

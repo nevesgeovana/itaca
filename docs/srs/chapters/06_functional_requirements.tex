@@ -475,13 +475,13 @@ coherent (DD-18).
 \textbf{Compute: string equation derivation.}\\
 \code{db.compute("VAR = expression", debug=False, where=None, fill=np.nan,
 method="symbolic", comment=None)} derives a new variable from a string
-equation, parsed as RPN, evaluated vectorially over the entire VarFrame,
+equation, parsed as AST, evaluated vectorially over the entire VarFrame,
 and stored as a new variable.
 
 When at least one variable in the right-hand side has an assigned
 uncertainty, the propagation rule of Equation~\eqref{eq:lpu} is applied
 automatically using partial derivatives obtained symbolically via chain
-rule on the RPN expression tree. Correlation terms are included when a
+rule on the AST expression tree. Correlation terms are included when a
 correlation matrix has been declared via \code{db.set\_correlation(...)}.
 
 The default \code{method="symbolic"} uses the GUM LPU described above.
@@ -493,7 +493,7 @@ containing discrete branches.
 \begin{reqbox}{REQ-34}{\stable}
 \textbf{Compute: debug mode.}\\
 \code{db.compute("VAR = expr", debug=True)} prints a structured debug
-report before applying the equation: parsed RPN token list, identified
+report before applying the equation: parsed AST token list, identified
 variables and constants, sample numerical evaluation at one representative
 point with all intermediate values, and (when an UncFrame is present) the
 partial derivatives, the correlation contributions, and the resulting
@@ -529,7 +529,7 @@ When at least one variable in the expression has assigned uncertainty:
 \begin{itemize}[noitemsep,topsep=2pt]
   \item differentiable NumPy functions (\code{np.sin}, \code{np.cos},
     \code{np.sqrt}, \code{np.log}, \code{np.exp}) are silently normalized
-    to their RPN equivalents and propagated correctly;
+    to their AST equivalents and propagated correctly;
   \item non-differentiable NumPy functions (\code{np.round}, \code{np.clip},
     \code{np.where}) raise \code{UncertaintyCompatibilityError} with the
     suggestion to either compute the derived variable before assigning
@@ -692,10 +692,10 @@ referenced but not present in the VarFrame raise
 \end{reqbox}
 
 \begin{reqbox}{REQ-41}{\stable}
-\textbf{Symbolic propagation via RPN chain rule.}\\
+\textbf{Symbolic propagation via AST chain rule.}\\
 The default propagation engine implements Equation~\eqref{eq:lpu}
 (GUM clause~5, Law of Propagation of Uncertainty) using partial
-derivatives computed symbolically via chain rule on the RPN expression
+derivatives computed symbolically via chain rule on the AST expression
 tree. The engine handles arbitrary continuous nonlinearities; the
 linearization assumption is the GUM standard one and is documented in the
 debug output (REQ-34).

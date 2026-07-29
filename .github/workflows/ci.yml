@@ -46,15 +46,15 @@ jobs:
         include:
           - python-version: "3.11"
             deps: latest
-            install: git fetch --tags --unshallow 2>/dev/null || git fetch --tags 2>/dev/null || true; pip install -e ".[dev,pandas]"
+            install: git fetch --tags --unshallow 2>/dev/null || git fetch --tags 2>/dev/null || true; pip install -e ".[dev]"
           # NumPy 1.26 has no Python 3.13 wheels, so the minimum floor is
           # exercised on the oldest supported interpreter only.
           - python-version: "3.11"
             deps: minimum
-            install: git fetch --tags --unshallow 2>/dev/null || git fetch --tags 2>/dev/null || true; pip install -e ".[dev,pandas]" && pip install "numpy==1.26.*" "pandas==2.1.*"
+            install: git fetch --tags --unshallow 2>/dev/null || git fetch --tags 2>/dev/null || true; pip install -e ".[dev]" && pip install "numpy==1.26.*" "pandas==2.1.*"
           - python-version: "3.13"
             deps: latest
-            install: git fetch --tags --unshallow 2>/dev/null || git fetch --tags 2>/dev/null || true; pip install -e ".[dev,pandas]"
+            install: git fetch --tags --unshallow 2>/dev/null || git fetch --tags 2>/dev/null || true; pip install -e ".[dev]"
     uses: ./.github/workflows/release_gate.yml
     with:
       publish: false

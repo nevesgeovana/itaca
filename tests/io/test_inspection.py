@@ -52,6 +52,7 @@ class TestInspect:
 
 class TestSummary:
     def test_returns_and_prints(self, datapoint_db, capsys) -> None:  # type: ignore[no-untyped-def]
+        # REQ-89: summary reports the in-memory footprint.
         summary = datapoint_db.summary()
         out = capsys.readouterr().out
         assert "production" in out
@@ -78,6 +79,7 @@ class TestDiagnostics:
         assert report.missing["CT"] == 1
         assert report.n_missing == 1
         assert "CT" in report.partial_vars
+        # REQ-90 names the sparse strategy these diagnostics point at.
         assert 0.0 < report.coverage < 1.0
         assert report.non_finite["CT"] == 0
 

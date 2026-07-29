@@ -12,15 +12,21 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
+      # always_run, because `types: [python]` alone makes pre-commit skip
+      # the hook when a commit touches no .py file. A documentation-only
+      # or pyproject-only commit therefore ran NEITHER gate, which is
+      # exactly the commit most likely to change what the gates check
+      # (ITACA-015). pass_filenames stays false: both commands define
+      # their own scope.
       - id: mypy
         name: mypy --strict (public API)
         entry: mypy
         language: system
-        types: [python]
+        always_run: true
         pass_filenames: false
       - id: pytest-fast
         name: pytest -x (fast, no coverage; CI enforces the gate)
         entry: pytest -x -q --no-cov
         language: system
-        types: [python]
+        always_run: true
         pass_filenames: false

@@ -18,8 +18,8 @@ abstract: >-
   Python library for rigorous engineering data management, analysis, and
   computation in aerospace applications: multidimensional datasets with
   mandatory provenance, two-component GUM uncertainty propagation with
-  covariance, origin tags, reusable processors, and publication-quality
-  plotting.
+  covariance, and origin tags. Reusable processors and plotting are
+  roadmapped rather than released in this version.
 keywords:
   - aerospace
   - wind tunnel

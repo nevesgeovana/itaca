@@ -246,6 +246,63 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Fixed
 
+* **The README has an installation section and a runnable quickstart**
+  (`ITACA-018`). It had neither, and no `pip install` line anywhere. The
+  quickstart is executed by hand against the library and prints the
+  values shown.
+
+* **Public documentation no longer advertises unreleased capability**
+  (`ITACA-018`). The README and `CITATION.cff` presented
+  publication-quality plotting in the present tense while `itaca/plot`
+  does not exist, and the citation record for v0.1.0 also advertised
+  reusable processors, which are M1. The README stops hard-coding the
+  SRS document version, which had drifted to naming 0.1.1 while the
+  document was 0.2.0. The SRS itself said "RPN expression tree" in 15
+  places across 7 chapters against the canonical stdlib `ast`; the
+  acronym entry went with them.
+
+* **A normative document no longer claims an absent capability**
+  (`ITACA-012`). `08_standards_alignment.tex` stated that v0.1.0
+  supports PROV-N and PROV-JSON via `db.export_provenance`. No such
+  symbol exists, the M0 plan says v0.3.0 and the roadmap places it in
+  M2, so a normative document made a false claim about a PUBLISHED
+  release. It is now marked as the M2 deliverable it is, and
+  `tests/test_requirement_trace.py` pins that the claim and the symbol
+  cannot drift apart again in either direction.
+
+* **REQ-79 is enforced where it is claimed** (`ITACA-016`). The same
+  chapter said linting enforced the NumPy docstring sections. It does
+  not: ruff checks presence and style, never section completeness.
+  Measured with a loose reading of public, 162 of 223 surfaces had no
+  Examples and 137 had no Parameters, and the suite was green. A
+  section checker now runs over the DECLARED public surface, the
+  normative text says exactly that, and the six real gaps it found on
+  that surface are filled.
+
+* **A REQ to code to test trace runs in CI** (`ITACA-007`, partial). No
+  matrix existed. The trace is discovered rather than enumerated, a
+  requirement the library cites must be cited by a test, and the run
+  NAMES the requirements nothing reaches instead of being silent about
+  them. Separating `spec_status` from `implementation_status` in the
+  reqbox macro is registered, not done here.
+
+* **The documented install command actually collects the suite**
+  (`ITACA-015`). The contributing guide documents `pip install -e
+  ".[dev]"` and says the extra installs everything the tests need; a
+  test imports pandas at module scope, so the documented command failed
+  at collection while CI hid it by installing `.[dev,pandas]`. pandas
+  joins the dev extra and both workflow callers now use the documented
+  command. The two pre-commit gates gain `always_run`, because
+  `types: [python]` made pre-commit skip them on a documentation-only or
+  configuration-only commit, which is the commit most likely to change
+  what the gates check.
+
+* **The decision log states when an entry becomes frozen**
+  (`ITACA-017`). The append-only rule read as absolute while DD-30
+  records an in-place edit of DD-28 after publication. Frozen now means
+  frozen from publication, with supersession as the only instrument
+  after it.
+
 * **The state hash covers every field that decides behavior**
   (`ITACA-003`, DD-40, REQ-103 rewritten, REQ-107 stabilized). A frame
   whose angle dimension was labelled `deg` and one labelled `rad`, with

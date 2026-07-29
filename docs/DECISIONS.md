@@ -13,6 +13,15 @@ Every entry is a frozen record. New decisions are appended; old decisions
 are never edited in place. If a decision is overturned, a new entry
 supersedes it and references the old one.
 
+**When an entry becomes frozen, stated because the rule above read as
+absolute and DD-30 records an exception to it.** An entry is frozen from
+PUBLICATION, meaning the commit that ships it. Correcting an entry
+before that commit is ordinary drafting and needs no ceremony. After it,
+the only instrument is a superseding entry, and an in-place edit is a
+defect regardless of how small it looks: DD-30 records that DD-28 was
+edited in place after publication, which is what made the unqualified
+wording above misleading rather than merely terse (`ITACA-017`).
+
 ---
 
 ## DD-01: Split Provenance from History

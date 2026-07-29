@@ -189,17 +189,37 @@ class VarFrame:
 
     @property
     def shape(self) -> tuple[int, ...]:
-        """Shape dictated by the dimension order (SRS 4.1.1)."""
+        """Shape dictated by the dimension order (SRS 4.1.1).
+
+        Returns
+        -------
+        tuple of int
+            The cardinality of each dimension, in declaration order.
+        """
         return tuple(d.cardinality for d in self.dims.values())
 
     @property
     def mode(self) -> str:
-        """Operating mode from Provenance (REQ-08)."""
+        """Operating mode from Provenance (REQ-08).
+
+        Returns
+        -------
+        str
+            ``"production"`` or ``"draft"``.
+        """
         return self.provenance.mode
 
     @property
     def state_hash(self) -> str:
-        """Canonical hash of the current state (REQ-103)."""
+        """Canonical hash of the current state (REQ-103).
+
+        Returns
+        -------
+        str
+            64-character SHA-256 digest. Two frames in the same semantic
+            state share it; a differing digest proves nothing about
+            semantic difference (DD-40).
+        """
         operations = tuple((e.operation, e.comment) for e in self.history)
         return compute_state_hash(
             dims=self.dims,
@@ -1800,6 +1820,12 @@ class VarFrame:
         ----------
         threshold : int, optional
             Unique-value bound for dimension candidacy, 20 by default.
+
+        Returns
+        -------
+        None
+            The report is printed; nothing is returned and the frame is
+            unchanged (REQ-18).
         """
         from itaca.io.inspector import inspect as _inspect
 

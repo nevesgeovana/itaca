@@ -57,6 +57,11 @@ def set_user(name: str | None) -> None:
         New session user identity. ``None`` restores the default
         derived from ``getpass.getuser()`` and ``socket.gethostname()``.
 
+    Returns
+    -------
+    None
+        The identity is process-global session state, not a value.
+
     Raises
     ------
     ProvenanceError
@@ -86,6 +91,11 @@ def set_mode(mode: str) -> None:
     ----------
     mode : str
         ``"production"`` (default) or ``"draft"``.
+
+    Returns
+    -------
+    None
+        The mode is process-global session state, not a value.
 
     Raises
     ------

@@ -38,7 +38,7 @@ Table~\ref{tab:required-edge-cases}, organized by family for audit ease.
 Load        & Empty VarFrame; single source file; dict-mode coordinate-tuple length mismatch; pandas DataFrame with non-string column names; NumPy array with mismatched \code{names}.\\
 Pivot       & Datapoint mode with no subsequent pivot; \code{pivot()} on already-structured VarFrame; \code{auto\_detect=True} on ambiguous candidates; duplicate coordinates on every requested dimension raise \code{PivotDuplicateError}.\\
 Diagnostics & 100\,\%-coverage VarFrame; all-NaN slice; single-point dimension.\\
-Compute     & Invalid RPN expression (syntax error, undefined variable); cyclic \code{.itceq} equations caught at parse time; non-differentiable NumPy with uncertainty guard (per-variable); \code{where} with \code{fill=None} on non-existent variable; \code{compute} with both symbolic and Monte Carlo methods on the same expression.\\
+Compute     & Invalid AST expression (syntax error, undefined variable); cyclic \code{.itceq} equations caught at parse time; non-differentiable NumPy with uncertainty guard (per-variable); \code{where} with \code{fill=None} on non-existent variable; \code{compute} with both symbolic and Monte Carlo methods on the same expression.\\
 Ops         & \code{diff} with \code{window <= deg}; \code{interpolate} with non-monotonic axis-translation target; \code{interpolate} with \code{override=False} on existing coordinate; \code{expand} with duplicate existing dimension name; \code{itc.concat} with overlapping \code{along} values; \code{fitvalue} evaluation outside the original fit range producing \code{-1} tags; \code{combine} with mismatched grids; numerical operation on non-numeric dimension.\\
 Compare     & Grid mismatch in \code{compare} without reference; multiple named inputs with overlapping deltas.\\
 Integrate   & \code{np.nan} inside the integration domain with \code{skipna=False} (result NaN) and \code{skipna=True} (populated cells only, History records the fraction).\\
@@ -56,7 +56,7 @@ Axes        & \code{rotate} with unregistered axis; vector group cannot be resol
 \textbf{Property-based tests for math kernels.}\\
 Property-based tests using Hypothesis~\citep{hypothesis} are required for:
 \begin{itemize}[noitemsep,topsep=2pt]
-  \item all RPN operators (verifying analytical partial-derivative
+  \item all AST operators (verifying analytical partial-derivative
     identities on randomized inputs);
   \item the propagation engine (verifying additivity of variances under
     independent inputs, correctness under known correlated inputs, and
@@ -159,7 +159,7 @@ Phase B3b checkpoint. Bounds are expressed as PEP 440 specifiers.}
 \toprule
 \textbf{Dependency} & \textbf{Role} & \textbf{Used for} & \textbf{Range}\\
 \midrule
-\code{numpy}        & required  & Core arrays, RPN, propagation, ops          & \code{>=1.26,<3.0}\\
+\code{numpy}        & required  & Core arrays, AST, propagation, ops          & \code{>=1.26,<3.0}\\
 \code{python}       & required  & Language baseline                            & \code{>=3.11,<3.14}\\
 \code{matplotlib}   & optional  & Default plotting backend                     & \code{>=3.8,<4.0}\\
 \code{plotly}       & optional  & Interactive plotting backend                 & \code{>=5.20,<6.0}\\

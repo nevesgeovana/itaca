@@ -61,6 +61,13 @@ dev = [
     # PyYAML it exits 2 having verified NOTHING, rather than degrading to
     # a text scan, so a missing parser would read as an unarmed guard.
     "pyyaml>=6.0,<7.0",
+    # The contributing guide documents `pip install -e ".[dev]"` and says
+    # the extra installs everything the tests need. It did not: a test
+    # imports pandas at module scope, so the DOCUMENTED command failed at
+    # collection while CI hid it by installing `.[dev,pandas]`
+    # (ITACA-015). The separate `pandas` extra above stays, for runtime
+    # consumers who want the bridge without the toolchain.
+    "pandas>=2.1,<3.0",
 ]
 
 [tool.setuptools.packages.find]

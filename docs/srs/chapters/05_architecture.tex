@@ -56,7 +56,7 @@ itaca/
 |   +-- concat.py              # itc.concat() -- join VarFrames along a dim
 |   +-- interpolate.py         # interpolate() -- densify or translate axis
 |   +-- fill.py                # fill() -- gap fill via window or global
-|   +-- compute.py             # compute() -- string equation derivation (RPN)
+|   +-- compute.py             # compute() -- string equation derivation (AST)
 |   +-- average.py             # average() -- collapse dim by mean
 |   +-- integrate.py           # integrate() -- Cartesian and polar
 |   +-- smooth.py              # smooth() -- savgol, spline, moving_avg
@@ -169,7 +169,7 @@ standalone dataclass usable across multiple VarFrames.
 The processing layer is built on the \code{Processor} typing protocol; each
 built-in processor (\code{WTPropeller}, \code{CFDDisk}, \code{AeroPolar},
 \code{EquationProcessor}, etc.) implements the protocol without subclassing a
-common base. RPN operators (\code{Arith}, \code{Trig}, \code{Misc}) are
+common base. AST operators (\code{Arith}, \code{Trig}, \code{Misc}) are
 isolated, individually testable, and expose \code{evaluate}, \code{d\_da},
 and \code{d\_db} methods for chain-rule differentiation.
 

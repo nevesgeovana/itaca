@@ -237,6 +237,7 @@ def test_a_quoted_idempotent_is_refused_rather_than_ignored(tmp_path: Path) -> N
 
 
 def test_non_utf8_bytes_are_refused(tmp_path: Path) -> None:
+    """REQ-86: .itceq files are UTF-8 text, and a non-UTF-8 byte is refused."""
     path = tmp_path / "latin.itceq"
     path.write_bytes(b'[meta]\nname = "caf\xe9"\n')
     with pytest.raises(ItceqParseError, match="not valid UTF-8"):
