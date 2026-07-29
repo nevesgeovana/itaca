@@ -15,6 +15,12 @@ from an explicit ``None``; branch with ``value is no_default``; and
 raise wherever the sentinel arrives as a value and is not the declared
 default, so it can never act as data. The raise is enforced per
 adopting signature (M1 Phase B1 onward), not by this module.
+
+PROVISIONAL (REQ-105 is a draft requirement). This surface ships in 0.2.0 because
+the M1 operations needed it, and its requirement has not been validated
+by the author, so the signature may still change. Publishing a release
+is normally what freezes a public API; this one is published with the
+provisional status stated instead, rather than frozen by accident.
 """
 
 from enum import Enum

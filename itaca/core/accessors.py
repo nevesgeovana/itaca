@@ -12,6 +12,10 @@ swallows a real defect silently.
 External packages (for example pyflightstream's exporter, DD-23) attach
 solver-run views this way without ITACA importing the driver. The
 registry supports snapshot and restore for tests.
+
+PROVISIONAL (REQ-106 is a draft requirement). Same standing as REQ-105: shipped in
+0.2.0 because M1 needed it, requirement not yet validated by the
+author, signature may still change.
 """
 
 from __future__ import annotations

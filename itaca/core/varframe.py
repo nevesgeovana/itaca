@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -38,6 +38,10 @@ from itaca.core.uncframe import UncFrame
 from itaca.core.variable import Variable
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    from itaca.io.diagnostics import DiagnosticsReport
+    from itaca.io.summary import Summary
     from itaca.ops.diff import DiffIndexer
 
 _UNSET: object = object()
@@ -524,8 +528,8 @@ class VarFrame:
         self,
         dim_name: str,
         values: object,
+        *args: int,
         axis: int | None = None,
-        *,
         history: bool = False,
         comment: str | None = None,
     ) -> VarFrame:
@@ -573,6 +577,28 @@ class VarFrame:
         >>> swept.shape
         (2, 2)
         """
+        # REQ-85 deprecation window, the shape fill established: a
+        # positional option still works and says so, and the shim is
+        # removed in v0.3.0. Breaking it outright would be a silent
+        # semantic change for anyone who wrote the positional form,
+        # since `axis` is an int and would land in a later parameter.
+        if args:
+            if len(args) > 1 or axis is not None:
+                raise DataError(
+                    f"expand positional arguments {args}",
+                    "expand takes at most the dimension name, its values, "
+                    "and (deprecated) the axis positionally",
+                    "pass axis= as a keyword (REQ-85)",
+                )
+            warnings.warn(
+                "passing 'axis' to expand positionally is deprecated and "
+                "will become keyword-only in v0.3.0; pass axis= as a "
+                "keyword (REQ-85)",
+                FutureWarning,
+                stacklevel=2,
+            )
+            axis = args[0]
+
         from itaca.ops.expand import expand as _expand
 
         return _expand(self, dim_name, values, axis, history=history, comment=comment)
@@ -580,10 +606,10 @@ class VarFrame:
     def interpolate(
         self,
         mapping: dict[str, object] | None = None,
+        *args: object,
         method: str = "linear",
         deg: int | None = None,
         override: bool = False,
-        *,
         axisTranslation: dict[str, str] | None = None,  # noqa: N803  (SRS REQ-25)
         history: bool = False,
         comment: str | None = None,
@@ -648,6 +674,28 @@ class VarFrame:
         >>> dense.vars["CT"].values.tolist()
         [1.0, 3.0]
         """
+        # REQ-85 deprecation window; see expand above.
+        if args:
+            names = ("method", "deg", "override")
+            if len(args) > len(names):
+                raise DataError(
+                    f"interpolate positional arguments {args}",
+                    "interpolate takes at most the mapping and "
+                    "(deprecated) method, deg and override positionally",
+                    "pass method=, deg= and override= as keywords (REQ-85)",
+                )
+            warnings.warn(
+                f"passing {list(names[: len(args)])} to interpolate "
+                "positionally is deprecated and will become keyword-only "
+                "in v0.3.0; pass them as keywords (REQ-85)",
+                FutureWarning,
+                stacklevel=2,
+            )
+            supplied = dict(zip(names, args, strict=False))
+            method = cast("str", supplied.get("method", method))
+            deg = cast("int | None", supplied.get("deg", deg))
+            override = cast("bool", supplied.get("override", override))
+
         from itaca.ops.interpolate import interpolate as _interpolate
 
         return _interpolate(
@@ -1507,6 +1555,53 @@ class VarFrame:
 
         return _set(self, spec, component=component, history=history, comment=comment)
 
+    def drop_correlation(
+        self,
+        names: Sequence[str] | None = None,
+        *,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Remove declared correlation pairs (REQ-40).
+
+        The complement of :meth:`set_correlation`, which MERGES and can
+        therefore only ever add or overwrite a pair. Without this, a
+        declaration could not be withdrawn at all, and three ``rotate``
+        refusals prescribed "drop the declaration before rotating" as a
+        fix with no way to do it.
+
+        Parameters
+        ----------
+        names : sequence of str, optional
+            Drop every pair naming any of these variables. Omitted, the
+            whole declaration is dropped.
+        history : bool, optional
+            In draft mode, record the operation only when True.
+        comment : str or None, optional
+            Free-text note stored with the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new frame; the original is unchanged (REQ-18). A frame
+            that declared nothing is returned as is.
+
+        Raises
+        ------
+        CorrelationKeyError
+            ``names`` references a variable the frame does not carry.
+
+        Examples
+        --------
+        >>> db = db.set_correlation({("FX", "FY"): 0.5})  # doctest: +SKIP
+        >>> db = db.drop_correlation(["FX"])              # doctest: +SKIP
+        >>> db.correlation is None                        # doctest: +SKIP
+        True
+        """
+        from itaca.uncertainty.assign import drop_correlation as _drop
+
+        return _drop(self, names, history=history, comment=comment)
+
     def set_correlation(
         self,
         spec: Mapping[tuple[str, str], float],
@@ -1674,7 +1769,7 @@ class VarFrame:
         *,
         split_by: str | None = None,
         allow_draft: bool = False,
-    ) -> object:
+    ) -> Path | list[Path]:
         """Export to flat CSV with a provenance header (REQ-70 to REQ-72).
 
         Parameters
@@ -1697,7 +1792,7 @@ class VarFrame:
 
         return _to_csv(self, path, split_by=split_by, allow_draft=allow_draft)
 
-    def to_json(self, path: str | Path, *, allow_draft: bool = False) -> object:
+    def to_json(self, path: str | Path, *, allow_draft: bool = False) -> Path:
         """Export to JSON with provenance and history keys (REQ-70, REQ-71).
 
         Parameters
@@ -1716,7 +1811,7 @@ class VarFrame:
 
         return _to_json(self, path, allow_draft=allow_draft)
 
-    def to_pandas(self, *, allow_draft: bool = False) -> object:
+    def to_pandas(self, *, allow_draft: bool = False) -> Any:
         """Export to a flat pandas DataFrame (REQ-70; lazy dependency).
 
         Parameters
@@ -1744,7 +1839,10 @@ class VarFrame:
         return_dims: bool = False,
         copy: bool = False,
         allow_draft: bool = False,
-    ) -> object:
+    ) -> (
+        dict[str, NDArray[Any]]
+        | tuple[dict[str, NDArray[Any]], dict[str, NDArray[Any]]]
+    ):
         """Export the variable arrays (REQ-70; read-only views, REQ-102).
 
         Parameters
@@ -1764,11 +1862,15 @@ class VarFrame:
         """
         from itaca.io.export import to_numpy as _to_numpy
 
-        return _to_numpy(
-            self, return_dims=return_dims, copy=copy, allow_draft=allow_draft
+        return cast(
+            "dict[str, NDArray[Any]] | "
+            "tuple[dict[str, NDArray[Any]], dict[str, NDArray[Any]]]",
+            _to_numpy(
+                self, return_dims=return_dims, copy=copy, allow_draft=allow_draft
+            ),
         )
 
-    def save(self, path: str | Path, *, allow_draft: bool = False) -> object:
+    def save(self, path: str | Path, *, allow_draft: bool = False) -> Path:
         """Write the VarFrame to a .itc archive (REQ-70, REQ-11).
 
         The archive preserves all metadata, Provenance, History,
@@ -1831,7 +1933,7 @@ class VarFrame:
 
         _inspect(self, threshold=threshold)
 
-    def summary(self) -> object:
+    def summary(self) -> Summary:
         """Print and return the one-screen summary (REQ-16).
 
         Returns
@@ -1844,7 +1946,7 @@ class VarFrame:
 
         return _summary(self)
 
-    def diagnostics(self, log: object = None) -> object:
+    def diagnostics(self, log: str | Path | None = None) -> DiagnosticsReport:
         """Print, optionally log, and return diagnostics (REQ-17).
 
         Parameters
@@ -1859,9 +1961,9 @@ class VarFrame:
         """
         from itaca.io.diagnostics import diagnostics as _diagnostics
 
-        return _diagnostics(self, log=log)  # type: ignore[arg-type]
+        return _diagnostics(self, log=log)
 
-    def manifest(self, path: object) -> object:
+    def manifest(self, path: str | Path) -> Path:
         """Export the source-file manifest as CSV or JSON (REQ-15).
 
         Parameters
@@ -1876,7 +1978,7 @@ class VarFrame:
         """
         from itaca.io.manifest import manifest as _manifest
 
-        return _manifest(self, path)  # type: ignore[arg-type]
+        return _manifest(self, path)
 
     def __str__(self) -> str:
         marker = "DRAFT " if self.mode == "draft" else ""

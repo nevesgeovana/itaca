@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -126,6 +126,45 @@ def set_correlation(
         step=PipelineStep(
             call="set_correlation",
             kwargs={"spec": [[a, b, r] for (a, b), r in declared.pairs.items()]},
+            comment=comment,
+        ),
+    )
+
+
+def drop_correlation(
+    db: VarFrame,
+    names: Sequence[str] | None = None,
+    *,
+    history: bool = False,
+    comment: str | None = None,
+) -> VarFrame:
+    """Remove declared correlation pairs (REQ-40).
+
+    See ``VarFrame.drop_correlation`` for the parameter description.
+    """
+    if db.correlation is None:
+        return db
+    if names is None:
+        remaining = None
+        detail = "all"
+    else:
+        missing = sorted(set(names) - set(db.vars))
+        if missing:
+            raise CorrelationKeyError(
+                f"variable(s) {missing}",
+                "drop_correlation references variables that are absent",
+                f"available variables: {list(db.vars)}",
+            )
+        remaining = db.correlation.without(set(names))
+        detail = f"names={sorted(names)}"
+    return db._derive(
+        operation=f"drop_correlation({detail})",
+        comment=comment,
+        history=history,
+        correlation=remaining,
+        step=PipelineStep(
+            call="drop_correlation",
+            kwargs={"names": (None if names is None else sorted(names))},
             comment=comment,
         ),
     )

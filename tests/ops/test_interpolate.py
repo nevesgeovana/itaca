@@ -14,6 +14,7 @@ HistoryFrame gets +1 inside the convex hull of the original axis and
 """
 
 import dataclasses
+import warnings
 
 import numpy as np
 import pytest
@@ -297,12 +298,12 @@ class TestNegativePolynomialDegree:
             dims=["alpha"]
         )
         with pytest.raises(DataError) as excinfo:
-            db.interpolate({"alpha": [0.5, 1.5, 2.5]}, "polyfit", -1)
+            db.interpolate({"alpha": [0.5, 1.5, 2.5]}, method="polyfit", deg=-1)
         assert "nonnegative polynomial degree" in str(excinfo.value)
 
         # And the degree the caller should have passed still works, so
         # the guard is not simply refusing polyfit.
-        out = db.interpolate({"alpha": [0.5, 1.5, 2.5]}, "polyfit", 1)
+        out = db.interpolate({"alpha": [0.5, 1.5, 2.5]}, method="polyfit", deg=1)
         assert out.vars["y"].values == pytest.approx([2.0, 4.0, 6.0])
 
     @pytest.mark.parametrize(
@@ -334,3 +335,68 @@ class TestNegativePolynomialDegree:
         # DataError, not FitDegreeError: that leaf means "too few points
         # for this degree", which depends on the data. This does not.
         assert not isinstance(excinfo.value, FitDegreeError)
+
+
+class TestKeywordOnlyOptions:
+    """REV-001 ITACA-032, the deprecation half.
+
+    `expand` and `interpolate` accepted their options positionally
+    against REQ-85. They are keyword-only now, behind the same window
+    `fill` established: a positional call still works and says so, and
+    the shim is removed in v0.3.0. Breaking it outright would be worse
+    than the finding, because `axis` is an int and a positional call
+    would silently land it in a different parameter.
+    """
+
+    @staticmethod
+    def _ramp() -> VarFrame:
+        x = np.arange(4.0)
+        return itc.load(
+            np.column_stack([x, 1.0 + 2.0 * x]), names=["alpha", "y"]
+        ).pivot(dims=["alpha"])
+
+    def test_itaca_032_positional_interpolate_options_warn(self) -> None:
+        """The old call still works, and names what to change."""
+        with pytest.warns(FutureWarning, match="keyword-only in v0.3.0"):
+            out = self._ramp().interpolate({"alpha": [0.5]}, "polyfit", 1)
+        assert out.vars["y"].values[0] == pytest.approx(2.0)
+
+    def test_itaca_032_positional_expand_axis_warns(self) -> None:
+        """Same window on expand's `axis`."""
+        with pytest.warns(FutureWarning, match="keyword-only in v0.3.0"):
+            out = self._ramp().expand("rpm", [1.0, 2.0], 0)
+        assert list(out.dims) == ["rpm", "alpha"]
+
+    def test_itaca_032_the_keyword_form_warns_about_nothing(self) -> None:
+        """The supported form is silent.
+
+        Which is what makes the warning mean something: a deprecation
+        that fires on the recommended call teaches people to ignore it.
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            self._ramp().interpolate({"alpha": [0.5]}, method="polyfit", deg=1)
+            self._ramp().expand("rpm", [1.0, 2.0], axis=0)
+
+    def test_itaca_032_public_returns_are_not_object(self) -> None:
+        """No public method may annotate its return as bare `object`.
+
+        Measured before the fix: eight did, so a caller under
+        `mypy --strict` got nothing back they could use. A guard rather
+        than an example, because the defect is a class and returns once
+        someone adds the ninth method.
+        """
+        import inspect
+
+        offenders = [
+            name
+            for name, obj in vars(VarFrame).items()
+            if not name.startswith("_")
+            and inspect.isfunction(obj)
+            and inspect.signature(obj).return_annotation in ("object", object)
+        ]
+        assert not offenders, (
+            f"public method(s) {offenders} annotate their return as bare "
+            "`object`, so mypy --strict gives the caller nothing usable "
+            "(REQ-78, ITACA-032)."
+        )

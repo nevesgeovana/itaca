@@ -25,7 +25,12 @@ from hypothesis import strategies as st
 import itaca as itc
 from itaca.core.axes import Axis
 from itaca.core.correlation import CorrelationMatrix
-from itaca.core.errors import AxisNotFoundError, DataError, VectorGroupError
+from itaca.core.errors import (
+    AxisNotFoundError,
+    DataError,
+    UncertaintyError,
+    VectorGroupError,
+)
 from itaca.core.uncframe import UncFrame
 from itaca.core.varframe import VarFrame
 
@@ -838,3 +843,152 @@ class TestAngleOnlyUncertainty:
         assert out.correlation.get("FX", "FZ") == pytest.approx(1.0)
         assert ("FX", "FY") not in out.correlation.pairs
         assert ("FY", "FZ") not in out.correlation.pairs
+
+
+class TestUnrepresentableCoefficientRefusals:
+    """REV-001 ITACA-025: the store holds ONE coefficient per pair.
+
+    The write-back can produce a coefficient that is not representable
+    three ways, and each raises. The QA pass found all three untested,
+    on the path REQ-101 exists for: a per-point alpha sweep with a
+    declared correlation is the canonical wind tunnel case.
+
+    The asymmetry these pin is deliberate. A DECLARED coefficient that
+    has become false corrupts every later propagation, so it raises. A
+    coefficient the rotation CREATED is recorded as not stored, because
+    refusing to invent one must not break the flagship case.
+    """
+
+    @staticmethod
+    def _varying_frame() -> VarFrame:
+        """Two cells whose uncertainties differ, so the coefficient does."""
+        alpha = np.arange(2.0)
+        arr = np.column_stack([alpha, [1.0, 0.0], [0.0, 2.0], [0.0, 0.0]])
+        db = itc.load(arr, names=["alpha", "FX", "FY", "FZ"]).pivot(dims=["alpha"])
+        unc = UncFrame(
+            systematic={
+                "FX": np.array([0.1, 0.3]),
+                "FY": np.array([0.2, 0.2]),
+                "FZ": np.array([0.3, 0.1]),
+            },
+            random={},
+        )
+        return dataclasses.replace(db, uncertainty=unc)
+
+    @staticmethod
+    def _rig() -> Axis:
+        c = np.cos(np.pi / 4.0)
+        return Axis(
+            name="rig",
+            rotation_matrix=np.array([[c, -c, 0.0], [c, c, 0.0], [0.0, 0.0, 1.0]]),
+        )
+
+    def test_itaca_025_a_cell_varying_declared_coefficient_is_refused(self) -> None:
+        """One scalar cannot describe a coefficient that varies per point.
+
+        The DECLARATION is load-bearing in this test: without it both
+        cells would simply be recorded, and nothing would be refused.
+        """
+        base = self._varying_frame().set_correlation({("FX", "FY"): 0.5})
+        with pytest.raises(UncertaintyError) as excinfo:
+            (
+                base.register_axis(self._rig())
+                .declare_vector("force", ["FX", "FY", "FZ"])
+                .rotate("rig")
+            )
+        message = str(excinfo.value)
+        assert "one coefficient per pair" in message
+        assert "'FX', 'FY'" in message
+        # The fix must name an action that exists.
+        assert "db.at" in message or "db.select" in message
+
+    def test_itaca_025_a_created_coefficient_is_recorded_not_refused(self) -> None:
+        """The same rotation with NO declaration must still succeed.
+
+        This is the flagship REQ-101 case, and the asymmetry exists so
+        that refusing to invent a coefficient never breaks it. The pair
+        the rotation created is disclosed in the History instead.
+        """
+        out = (
+            self._varying_frame()
+            .register_axis(self._rig())
+            .declare_vector("force", ["FX", "FY", "FZ"])
+            .rotate("rig")
+        )
+        operation = out.history[-1].operation
+        assert "correlation_not_stored=" in operation
+        assert "FX" in operation and "FY" in operation
+
+    def test_itaca_025_components_disagreeing_on_a_declared_pair_are_refused(
+        self,
+    ) -> None:
+        """One coefficient is shared by both components (OQ-23).
+
+        With different systematic and random uncertainties the two
+        transformed covariances imply different coefficients, and the
+        store cannot hold both.
+        """
+        alpha = np.arange(1.0)
+        arr = np.column_stack([alpha, [1.0], [0.0], [0.0]])
+        db = itc.load(arr, names=["alpha", "FX", "FY", "FZ"]).pivot(dims=["alpha"])
+        unc = UncFrame(
+            systematic={
+                "FX": np.array([0.1]),
+                "FY": np.array([0.2]),
+                "FZ": np.array([0.3]),
+            },
+            random={
+                "FX": np.array([0.3]),
+                "FY": np.array([0.2]),
+                "FZ": np.array([0.1]),
+            },
+        )
+        base = dataclasses.replace(db, uncertainty=unc).set_correlation(
+            {("FX", "FY"): 0.5}
+        )
+        with pytest.raises(UncertaintyError, match="OQ-23") as excinfo:
+            (
+                base.register_axis(self._rig())
+                .declare_vector("force", ["FX", "FY", "FZ"])
+                .rotate("rig")
+            )
+        assert "shared by both" in str(excinfo.value)
+
+    def test_itaca_025_a_cross_group_declared_pair_is_refused(self) -> None:
+        """rotate transforms the within-group block only (OQ-34).
+
+        A pair with one foot inside the group and one outside would be
+        left holding its pre-rotation coefficient, which is the same
+        defect in a different place.
+        """
+        alpha = np.arange(2.0)
+        arr = np.column_stack([alpha, [1.0, 0.0], [0.0, 2.0], [0.0, 0.0], [5.0, 6.0]])
+        db = itc.load(arr, names=["alpha", "FX", "FY", "FZ", "q"]).pivot(dims=["alpha"])
+        db = db.set_uncertainty({"FX": 0.1, "FY": 0.2, "FZ": 0.3, "q": 0.4})
+        db = db.set_correlation({("FX", "q"): 0.4})
+        with pytest.raises(UncertaintyError, match="OQ-34") as excinfo:
+            (
+                db.register_axis(self._rig())
+                .declare_vector("force", ["FX", "FY", "FZ"])
+                .rotate("rig")
+            )
+        assert "outside its group" in str(excinfo.value)
+        # The fix names a verb that now exists.
+        assert "drop the pair" in str(excinfo.value)
+
+    def test_itaca_025_drop_correlation_makes_the_refusals_escapable(self) -> None:
+        """The refusals prescribe dropping, so dropping must be possible.
+
+        Before `db.drop_correlation`, every one of these messages named
+        an action with no implementation: `set_correlation` merges and
+        can only add or overwrite. This is the test that ties the
+        refusal to its remedy.
+        """
+        base = self._varying_frame().set_correlation({("FX", "FY"): 0.5})
+        out = (
+            base.drop_correlation(["FX"])
+            .register_axis(self._rig())
+            .declare_vector("force", ["FX", "FY", "FZ"])
+            .rotate("rig")
+        )
+        assert "correlation_not_stored=" in out.history[-1].operation

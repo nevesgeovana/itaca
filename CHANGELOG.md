@@ -246,6 +246,49 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Fixed
 
+* **Precise public return types, and keyword-only options with a
+  deprecation window** (`ITACA-032`, REQ-78, REQ-85). Eight public
+  `VarFrame` methods were annotated `-> object`, so a caller under
+  `mypy --strict` got nothing back they could use; they now declare
+  what they return. `expand`'s `axis` and `interpolate`'s `method`,
+  `deg` and `override` become keyword-only behind the window `fill`
+  established: a positional call still works, emits a `FutureWarning`
+  naming the parameter, and the shim is removed in v0.3.0. Breaking it
+  outright would have been worse than the finding, since `axis` is an
+  int and a positional call would have landed it in a different
+  parameter silently.
+
+  This finding was CLAIMED CLOSED in the lane's plan entry while it was
+  untouched, and the role review caught it. The claim is corrected
+  where it was made: a false closure is worse than an open finding,
+  because it makes the finding invisible to the next reviewer.
+
+* **`db.drop_correlation(names=None)`** (new public method).
+  `set_correlation` merges and can therefore only add or overwrite a
+  pair, so a declaration could not be withdrawn at all. Three `rotate`
+  refusals prescribed "drop the declaration before rotating" as their
+  fix, naming an action with no implementation. This lane had added the
+  capability internally and left it unreachable from a frame. It
+  records itself in History and is replayable like any other operation.
+
+* **A pre-1.0 carve-out in REQ-92** (SemVer clause 4). The requirement
+  said flatly that a breaking change increments MAJOR, with no clause
+  for major version zero, so this release with its three documented
+  breaks was non-conforming against its own specification. The
+  requirement was what was wrong, not the release. Every breaking
+  change is still marked BREAKING here with its migration, which is the
+  obligation that replaces the version bump while the major version is
+  zero.
+
+* **REQ-105 and REQ-106 surfaces are marked PROVISIONAL**
+  (`itc.no_default`, `itc.register_accessor`). Both ship in 0.2.0
+  because the M1 operations needed them, while their requirements are
+  still `draft` and unvalidated by the author. Publishing a release is
+  normally what freezes a public API; these are published with their
+  provisional status stated in the module instead, so the freeze is a
+  decision rather than an accident. Promotion to stable needs the
+  author's recorded validation.
+
 * **The README has an installation section and a runnable quickstart**
   (`ITACA-018`). It had neither, and no `pip install` line anywhere. The
   quickstart is executed by hand against the library and prints the

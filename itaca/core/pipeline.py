@@ -72,6 +72,7 @@ REPLAYABLE_CALLS = frozenset(
         "register_axis",
         "rotate",
         "select",
+        "drop_correlation",
         "set_correlation",
         "set_uncertainty",
         "smooth",
