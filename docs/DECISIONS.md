@@ -1,4 +1,4 @@
-﻿# ITACA Architectural Decisions Log
+# ITACA Architectural Decisions Log
 
 This file captures the **architectural decisions** that shaped ITACA v0.1.0.
 It is the long-form companion to the design-decision boxes (DD-01 to DD-22)

@@ -1,4 +1,4 @@
-﻿"""CHK-1: the defects measured OPEN at the 0.2.0 release checkpoint.
+"""CHK-1: the defects measured OPEN at the 0.2.0 release checkpoint.
 
 Every test here was reproduced by a probe during the CHK-1 release
 checkpoint against `730649f`, and each is named for the finding it comes
@@ -585,7 +585,11 @@ def test_r3_ita_010_the_trace_does_not_count_its_own_inventory_as_evidence() -> 
     it is deliberately not restated here, because a number with two
     homes is what the sibling defect ``ITACA-012`` is made of.
     """
-    from tests.test_requirement_trace import build_trace
+    # Bare name, not `tests.`: this suite has no package __init__, and
+    # pytest's prepend import mode puts `tests/` on sys.path, which is
+    # the same reason `from conftest import child_env` works. The dotted
+    # form resolved on one machine and raised ModuleNotFoundError in CI.
+    from test_requirement_trace import build_trace
 
     contaminated = {
         identifier

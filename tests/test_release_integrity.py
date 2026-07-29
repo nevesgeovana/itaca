@@ -149,32 +149,55 @@ def test_the_release_gate_checker_had_something_to_check() -> None:
     assert "scanned 0 workflow file(s)" not in done.stdout, done.stdout
 
 
-def test_no_workflow_file_carries_a_byte_order_mark() -> None:
-    """A workflow must start with its first character, not with a BOM.
+def test_no_tracked_file_carries_a_byte_order_mark() -> None:
+    """No tracked file may start with `EF BB BF`, anywhere in the tree.
 
-    Measured, and the reason this test exists: the commit that fixed
-    `R3-ITA-001` also introduced `EF BB BF` at the head of `release.yml`,
-    written by a Windows shell whose `utf8` encoding emits one. Nothing
-    saw it. PyYAML decodes a BOM-prefixed document happily, so the
-    permissions guard below stayed green while the one file on the
-    tag-only path had been corrupted at the byte level, on a path whose
-    closure evidence is a canary run rather than a parse.
+    Twice measured, and the second measurement is why this is scoped to
+    the tree rather than to workflows. First: the commit that fixed
+    `R3-ITA-001` put a BOM at the head of `release.yml`, written by a
+    Windows shell whose `utf8` encoding emits one, and PyYAML decodes it
+    happily so the permissions guard stayed green over a corrupted file.
+    A guard was added, scoped to `.github/workflows`.
 
-    Read as bytes deliberately. Every text-mode reader in this suite
-    would strip the BOM before any assertion could see it, which is
-    precisely how it survived.
+    Second, one commit later: the same shell put a BOM into
+    `tests/test_chk1_open_defects.py`. `ruff format --check` refused it
+    in CI on all three legs while the local run reported 131 files
+    already formatted, because the local check had already been run
+    before the BOM was written. The guard did not see it, because it had
+    been scoped to where the first instance happened instead of to the
+    class. That is this repository's registered incident class, so the
+    scope is the whole tracked tree now.
+
+    Asked of git rather than of the filesystem, so build output and one
+    machine's untracked files cannot decide the verdict, and read as
+    BYTES, since every text-mode reader strips the mark before an
+    assertion could see it.
     """
+    listing = subprocess.run(
+        ["git", "ls-files"],
+        capture_output=True,
+        text=True,
+        cwd=str(_ROOT),
+        check=False,
+    )
+    if listing.returncode != 0:  # pragma: no cover - not a checkout
+        pytest.skip("not a git checkout; the tracked-file list is unavailable")
     offenders = []
     checked = 0
-    for path in sorted(_WORKFLOWS.glob("*.yml")):
+    for name in listing.stdout.split():
+        path = _ROOT / name
+        if not path.is_file():
+            continue
         checked += 1
         if path.read_bytes().startswith(b"\xef\xbb\xbf"):
-            offenders.append(path.name)
-    assert checked >= 2, f"only {checked} workflow file(s) inspected"
+            offenders.append(name)
+    # A walk that returned almost nothing would pass vacuously.
+    assert checked >= 100, f"only {checked} tracked file(s) inspected"
     assert not offenders, (
-        f"workflow file(s) {offenders} begin with a UTF-8 byte order mark. "
-        "Some YAML consumers treat it as content; write these files as "
-        "UTF-8 without a BOM."
+        f"tracked file(s) {offenders} begin with a UTF-8 byte order mark. "
+        "Tools disagree about it: ruff format refuses one, PyYAML accepts "
+        "it silently. Write the file as UTF-8 without a BOM; on PowerShell "
+        "5.1 that means avoiding `-Encoding utf8`, which emits one."
     )
 
 
