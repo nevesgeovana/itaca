@@ -220,3 +220,96 @@ class TestLossyExportsWarn:
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             db.to_numpy()
+
+
+class TestMetadataIsSettableAndRecorded:
+    """The API-designer blocker: a refusal named an action that did not exist.
+
+    `rotate` refuses a condition-dependent rotation with "set the
+    Dimension or Variable unit to 'deg' or 'rad'". There was no
+    `set_unit`, no `units=` on `itc.load` or `db.pivot`, and neither
+    `Dimension` nor `Variable` is exported, so the only route was
+    `dataclasses.replace` on a frozen object through a private module
+    path. The library's own `rotate` docstring taught exactly that, and
+    it bypasses `_derive`: no History entry, no re-derived state hash.
+
+    DD-40 made the unit part of the hash, and REQ-101 makes it decide
+    physics, so it is the one field that most needs a traceable setter.
+    """
+
+    @staticmethod
+    def _angle_frame() -> VarFrame:
+        arr = np.column_stack([[0.0, 90.0], [1.0, 1.0], [0.0, 0.0], [0.0, 0.0]])
+        return itc.load(arr, names=["alpha", "FX", "FY", "FZ"]).pivot(dims=["alpha"])
+
+    def test_the_rotate_refusal_names_a_reachable_action(self) -> None:
+        """Refuse, set the unit through the public API, succeed.
+
+        This is the whole finding in one test: the message says to set
+        a unit, and the test does it the way a user can.
+        """
+        db = self._angle_frame()
+        with pytest.raises(DataError, match="without a unit"):
+            db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("stability")
+
+        out = (
+            db.set_metadata({"alpha": {"unit": "deg"}})
+            .declare_vector("force", ["FX", "FY", "FZ"])
+            .rotate("stability")
+        )
+        # Ry(90 deg) @ (1,0,0) = (0, 0, -1).
+        assert out.vars["FZ"].values[1] == pytest.approx(-1.0)
+
+    def test_set_metadata_is_recorded_and_moves_the_hash(self) -> None:
+        """It goes through `_derive`, which is the point of adding it.
+
+        `dataclasses.replace` changed the unit and left History and the
+        state hash describing the frame before the change, so the unit
+        that decides the physics was invisible to provenance.
+        """
+        db = self._angle_frame()
+        out = db.set_metadata({"alpha": {"unit": "deg"}})
+        assert out.dims["alpha"].unit == "deg"
+        assert "set_metadata" in out.history[-1].operation
+        assert out.state_hash != db.state_hash
+        assert db.dims["alpha"].unit is None  # the original is untouched
+
+    def test_set_metadata_refuses_a_field_the_target_does_not_carry(self) -> None:
+        """A Dimension has no long name, and saying so beats ignoring it."""
+        db = self._angle_frame()
+        with pytest.raises(DataError, match="long_name"):
+            db.set_metadata({"alpha": {"long_name": "angle of attack"}})
+        with pytest.raises(DataError, match="neither a dimension nor a variable"):
+            db.set_metadata({"ghost": {"unit": "deg"}})
+
+    def test_set_metadata_reaches_variables_too(self) -> None:
+        """Including `long_name`, which only a variable carries."""
+        out = self._angle_frame().set_metadata(
+            {"FX": {"unit": "N", "long_name": "axial force"}}
+        )
+        assert out.vars["FX"].unit == "N"
+        assert out.vars["FX"].long_name == "axial force"
+
+
+class TestCorrelationIsWithdrawable:
+    """The other API-designer blocker: three refusals prescribed dropping
+    a declaration, and `set_correlation` merges and can only add."""
+
+    def test_drop_correlation_removes_pairs_naming_a_variable(self) -> None:
+        arr = np.column_stack([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+        db = itc.load(arr, names=["FX", "FY", "q"])
+        db = db.set_correlation({("FX", "FY"): 0.5, ("FX", "q"): 0.3})
+        out = db.drop_correlation(["q"])
+        assert sorted(out.correlation.pairs) == [("FX", "FY")]
+        assert "drop_correlation" in out.history[-1].operation
+        # The original is untouched (REQ-18).
+        assert sorted(db.correlation.pairs) == [("FX", "FY"), ("FX", "q")]
+
+    def test_drop_correlation_with_no_names_drops_everything(self) -> None:
+        arr = np.column_stack([[1.0, 2.0], [3.0, 4.0]])
+        db = itc.load(arr, names=["FX", "FY"]).set_correlation({("FX", "FY"): 0.5})
+        assert db.drop_correlation().correlation is None
+
+    def test_drop_correlation_on_a_frame_that_declared_none_is_a_no_op(self) -> None:
+        db = itc.load(np.column_stack([[1.0, 2.0]]), names=["FX"])
+        assert db.drop_correlation().correlation is None

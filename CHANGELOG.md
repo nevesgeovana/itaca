@@ -263,6 +263,18 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   where it was made: a false closure is worse than an open finding,
   because it makes the finding invisible to the next reviewer.
 
+* **`db.set_metadata({name: {field: value}})`** (new public method).
+  `rotate` refuses a condition-dependent rotation with "set the
+  Dimension or Variable unit", and there was no way to do it: no
+  `set_unit`, no `units=` on `itc.load` or `db.pivot`, and neither
+  `Dimension` nor `Variable` exported. The only route was
+  `dataclasses.replace` on a frozen object through a private module
+  path, which this library's own `rotate` docstring taught, and which
+  bypasses `_derive`: no History entry, no re-derived state hash. Since
+  DD-40 the unit is part of the hash and REQ-101 makes it decide
+  physics, so it was the one field that most needed a traceable setter
+  and had none. The `rotate` docstring now teaches this instead.
+
 * **`db.drop_correlation(names=None)`** (new public method).
   `set_correlation` merges and can therefore only add or overwrite a
   pair, so a declaration could not be withdrawn at all. Three `rotate`

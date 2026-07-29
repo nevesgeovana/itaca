@@ -74,6 +74,7 @@ REPLAYABLE_CALLS = frozenset(
         "select",
         "drop_correlation",
         "set_correlation",
+        "set_metadata",
         "set_uncertainty",
         "smooth",
         "squeeze",

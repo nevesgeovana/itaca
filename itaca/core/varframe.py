@@ -1399,19 +1399,12 @@ class VarFrame:
 
         >>> import numpy as np
         >>> import itaca as itc
-        >>> from itaca.core.dimension import Dimension
-        >>> import dataclasses
         >>> rows = [[90.0, 0.0, 1.0, 0.0, 0.0]]
         >>> db = itc.load(
         ...     np.array(rows), names=["alpha", "beta", "FX", "FY", "FZ"]
         ... ).pivot(dims=["alpha", "beta"])
-        >>> deg = {"unit": "deg"}
-        >>> db = dataclasses.replace(
-        ...     db,
-        ...     dims={
-        ...         "alpha": Dimension(name="alpha", coords=np.array([90.0]), **deg),
-        ...         "beta": Dimension(name="beta", coords=np.array([0.0]), **deg),
-        ...     },
+        >>> db = db.set_metadata(
+        ...     {"alpha": {"unit": "deg"}, "beta": {"unit": "deg"}}
         ... )
         >>> out = db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("wind")
         >>> float(round(out.vars["FZ"].values[0, 0], 6))
@@ -1554,6 +1547,60 @@ class VarFrame:
         from itaca.uncertainty.assign import set_uncertainty as _set
 
         return _set(self, spec, component=component, history=history, comment=comment)
+
+    def set_metadata(
+        self,
+        spec: Mapping[str, Mapping[str, str | None]],
+        *,
+        history: bool = False,
+        comment: str | None = None,
+    ) -> VarFrame:
+        """Set unit, description or long name (REQ-101, REQ-103).
+
+        The recorded way to give a Dimension or Variable its metadata.
+        Before this existed, the only route was ``dataclasses.replace``
+        on a frozen object through a private module path, which the
+        library's own ``rotate`` docstring taught: that bypasses
+        ``_derive`` entirely, so no History entry is written and no
+        state hash is re-derived. Since DD-40 the unit is part of the
+        hash AND is read by ``rotate`` to convert an angle, so it is
+        the one field that most needs a traceable setter.
+
+        Parameters
+        ----------
+        spec : mapping of str to mapping
+            ``{name: {field: value}}``. A dimension carries ``unit`` and
+            ``description``; a variable also carries ``long_name``. A
+            value of ``None`` clears the field.
+        history : bool, optional
+            In draft mode, record the operation only when True.
+        comment : str or None, optional
+            Free-text note stored with the History entry (REQ-19).
+
+        Returns
+        -------
+        VarFrame
+            A new frame; the original is unchanged (REQ-18).
+
+        Raises
+        ------
+        DataError
+            A name matches neither a dimension nor a variable, or a
+            field is not one the target carries.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import itaca as itc
+        >>> arr = np.column_stack([[0.0, 90.0], [1.0, 1.0]])
+        >>> db = itc.load(arr, names=["alpha", "FX"]).pivot(dims=["alpha"])
+        >>> db = db.set_metadata({"alpha": {"unit": "deg"}})
+        >>> db.dims["alpha"].unit
+        'deg'
+        """
+        from itaca.uncertainty.assign import set_metadata as _set_metadata
+
+        return _set_metadata(self, spec, history=history, comment=comment)
 
     def drop_correlation(
         self,

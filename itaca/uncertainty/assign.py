@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -11,6 +12,7 @@ from numpy.typing import NDArray
 from itaca.core.correlation import CorrelationMatrix
 from itaca.core.errors import (
     CorrelationKeyError,
+    DataError,
     UncertaintyError,
     UncertaintyKeyError,
 )
@@ -165,6 +167,60 @@ def drop_correlation(
         step=PipelineStep(
             call="drop_correlation",
             kwargs={"names": (None if names is None else sorted(names))},
+            comment=comment,
+        ),
+    )
+
+
+def set_metadata(
+    db: VarFrame,
+    spec: Mapping[str, Mapping[str, str | None]],
+    *,
+    history: bool = False,
+    comment: str | None = None,
+) -> VarFrame:
+    """Set unit, description or long name on dimensions and variables.
+
+    See ``VarFrame.set_metadata`` for the parameter description.
+    """
+    dim_fields = {"unit", "description"}
+    var_fields = {"unit", "description", "long_name"}
+    new_dims = dict(db.dims)
+    new_vars = dict(db.vars)
+    for name, fields in spec.items():
+        in_dims, in_vars = name in db.dims, name in db.vars
+        if not in_dims and not in_vars:
+            raise DataError(
+                f"name '{name}'",
+                "set_metadata references neither a dimension nor a variable",
+                f"available dimensions {list(db.dims)}, variables {list(db.vars)}",
+            )
+        allowed = dim_fields if in_dims else var_fields
+        unknown = sorted(set(fields) - allowed)
+        if unknown:
+            raise DataError(
+                f"metadata field(s) {unknown} for '{name}'",
+                "set_metadata received a field the target does not carry",
+                f"a {'dimension' if in_dims else 'variable'} carries "
+                f"{sorted(allowed)} (REQ-101, REQ-103)",
+            )
+        # replace() is typed against each field's own annotation, so a
+        # str-valued mapping cannot be splatted under --strict; the
+        # allowed-field check above is what makes this sound.
+        if in_dims:
+            new_dims[name] = replace(new_dims[name], **dict(fields))  # type: ignore[arg-type]
+        else:
+            new_vars[name] = replace(new_vars[name], **dict(fields))  # type: ignore[arg-type]
+    detail = {name: dict(fields) for name, fields in sorted(spec.items())}
+    return db._derive(
+        operation=f"set_metadata({detail})",
+        comment=comment,
+        history=history,
+        dims=new_dims,
+        variables=new_vars,
+        step=PipelineStep(
+            call="set_metadata",
+            kwargs={"spec": {n: dict(f) for n, f in spec.items()}},
             comment=comment,
         ),
     )
