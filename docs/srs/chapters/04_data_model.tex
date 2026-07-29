@@ -280,10 +280,19 @@ between two VarFrame objects can be diffed by comparing their histories.
 \label{sec:state-hash}
 
 The reproducibility principle (P-03) is only testable if the state hash has
-a defined scope. The \code{state\_hash} of a VarFrame covers: dimension
-names and coordinate arrays; variable names and value arrays; the ordered
-operation sequence with normalized arguments and comments; and the
-uncertainty, correlation, and origin-tag arrays when present. It excludes
+a defined scope, and REQ-103 defines it as a semantic guarantee: two
+VarFrames in the same semantic state have the same hash, where same
+semantic state means agreeing dtypes, shapes and bit patterns together
+with agreeing metadata. The \code{state\_hash} of a VarFrame therefore
+covers: dimension
+names, coordinate arrays and dimension metadata; variable names, value
+arrays and variable metadata; the ordered
+operation sequence with normalized arguments and comments; the
+uncertainty, correlation, and origin-tag arrays when present; and the
+axis registry. Unit is covered even though
+Section~\ref{sec:dimension} calls it metadata, because \code{rotate}
+interprets it (REQ-101): a field an operation acts on is part of the
+state, whatever it is called elsewhere. It excludes
 every volatile field: timestamps, user identity, source file paths, and the
 \itc{} version, all of which live in Provenance (source content is covered
 separately by \code{source\_hash}). Two runs that load the same bytes and

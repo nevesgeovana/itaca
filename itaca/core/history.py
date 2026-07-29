@@ -276,12 +276,45 @@ class History:
 
 def _update_with_array(digest: Any, array: NDArray[Any]) -> None:
     contiguous = np.ascontiguousarray(array)
+    # Byte order is normalized to NATIVE, memory layout to C order.
+    # Neither is observable through the read-only public surface
+    # (REQ-102), so a big-endian and a little-endian array holding the
+    # same values are the same semantic state and must not hash
+    # differently. Normalizing to native rather than to a fixed
+    # canonical order is what leaves every existing hash unchanged, and
+    # it keeps the digest platform-dependent, which REQ-103 already
+    # concedes by promising equality only on the same platform.
+    if contiguous.dtype.byteorder not in ("=", "|"):
+        contiguous = contiguous.astype(contiguous.dtype.newbyteorder("="))
     digest.update(str(contiguous.dtype).encode())
     digest.update(_SEP)
     digest.update(str(contiguous.shape).encode())
     digest.update(_SEP)
     digest.update(contiguous.tobytes())
     digest.update(_SEP)
+
+
+def _update_with_metadata(
+    digest: Any, kind: bytes, name: str, fields: Sequence[tuple[str, str | None]]
+) -> None:
+    """Emit tokens for the metadata fields that are actually set.
+
+    A field left as ``None`` emits NOTHING, which is what keeps a frame
+    that declares no metadata hashing exactly as it did before metadata
+    entered the scope (REQ-103). It is the same absent-field rule the
+    axis registry already used: an empty registry contributes no tokens.
+    """
+    for field, value in fields:
+        if value is None:
+            continue
+        digest.update(kind)
+        digest.update(_SEP)
+        digest.update(name.encode())
+        digest.update(_SEP)
+        digest.update(field.encode())
+        digest.update(_SEP)
+        digest.update(value.encode())
+        digest.update(_SEP)
 
 
 def compute_state_hash(
@@ -346,12 +379,29 @@ def compute_state_hash(
         digest.update(name.encode())
         digest.update(_SEP)
         _update_with_array(digest, dim.coords)
+        _update_with_metadata(
+            digest,
+            b"dimmeta",
+            name,
+            (("unit", dim.unit), ("description", dim.description)),
+        )
     for name in sorted(variables):
+        variable = variables[name]
         digest.update(b"var")
         digest.update(_SEP)
         digest.update(name.encode())
         digest.update(_SEP)
-        _update_with_array(digest, variables[name].values)
+        _update_with_array(digest, variable.values)
+        _update_with_metadata(
+            digest,
+            b"varmeta",
+            name,
+            (
+                ("unit", variable.unit),
+                ("description", variable.description),
+                ("long_name", variable.long_name),
+            ),
+        )
     for operation, comment in operations:
         digest.update(b"op")
         digest.update(_SEP)

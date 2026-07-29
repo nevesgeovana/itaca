@@ -27,7 +27,7 @@ implemented and test-covered: loading in all modes, inspection and
 diagnostics, structural operations, two-component GUM uncertainty
 propagation with covariance, string-equation derivation, explicit
 combination, exports, and the `.itc` native format with state-hash
-revalidation. The SRS (document 0.1.1) is versioned in `docs/srs/`.
+revalidation. The SRS (document 0.2.1) is versioned in `docs/srs/`.
 Releases follow the incremental roadmap in the SRS Chapter 10: each
 milestone ships on PyPI with a Zenodo DOI. See `examples/` for a
 complete synthetic walkthrough.

@@ -246,6 +246,32 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ### Fixed
 
+* **The state hash covers every field that decides behavior**
+  (`ITACA-003`, DD-40, REQ-103 rewritten, REQ-107 stabilized). A frame
+  whose angle dimension was labelled `deg` and one labelled `rad`, with
+  identical arrays, produced the SAME `state_hash` while `rotate` read
+  the unit and computed `FZ = -1.0` against `-0.894`. Two states with
+  the same identity produced different physics.
+
+  REQ-103 now states a guarantee rather than a field list: two VarFrames
+  in the same semantic state have the same hash. The hash covers
+  dimension and variable metadata (unit, description, long name) and the
+  axis registry, which the code already hashed while the requirement
+  omitted it. Same semantic state is defined representationally, with
+  memory layout and byte order normalized because neither is observable,
+  and with signed zeros, one-ULP differences, dtypes and NaN payloads
+  deliberately left distinct. Hash equality implies semantic identity;
+  hash inequality proves nothing about semantic difference.
+
+  **Breaking for existing `.itc` archives.** An archive written before
+  0.2.0 whose dims or variables carry a unit, description or long name
+  now fails `itc.open` with `HashMismatchError`, because the recorded
+  digest predates the scope. The archive is intact; the remedy is to
+  re-export from the source data, or to open it with 0.1.x and re-export.
+  The error message says so and cites DD-40. An archive with no metadata
+  at all is unaffected, because an absent field contributes no token:
+  verified against the shipped example, whose digest does not move.
+
 * **A `.itceq` constant may not shadow a measured channel** (`ITACA-002`,
   DD-39, OQ-31 resolved). A `[constants]` entry is substituted into
   every read before an expression evaluates, so a file declaring

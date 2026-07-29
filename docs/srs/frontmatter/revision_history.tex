@@ -9,6 +9,35 @@
 \toprule
 \textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Summary}\\
 \midrule
+\midrule
+0.2.1 & 2026-07-28 & Geovana Neves &
+Independent-review amendment (REV-001, reproduced as \code{ITA-0}).
+REQ-103 is restated as a SEMANTIC GUARANTEE rather than an enumeration
+of named fields: two VarFrames in the same semantic state have the same
+hash, and the field list follows from that definition instead of
+constituting it. The scope gains dimension and variable metadata (unit,
+description, long name) and names the axis registry, closing a drift
+that ran in BOTH directions inside one requirement, since the registry
+was already hashed by the code while the reqbox omitted it and units
+were outside the hash while \code{rotate} read them (\code{ITACA-003}:
+a \code{deg} frame and a \code{rad} frame hashed identically and
+produced \code{FZ} of $-1.0$ against $-0.894$). Same semantic state is
+defined at the floating-point boundary in DD-40. REQ-107 moves from
+draft to stable in the same revision, so a stable guarantee stops
+taking an input whose token format a draft requirement defines, and it
+is amended to record that \code{db.rotate} UPDATES a group's axis.
+REQ-36's guard is stated as per-subtree rather than per-expression
+(\code{ITACA-022}), and REQ-45 records that \code{validate} refuses a
+\code{[constants]} name the frame carries as a measured variable
+(\code{ITACA-002}, DD-39).
+
+This is a document-version BUMP rather than a same-baseline refinement,
+unlike the amendments folded into 0.2.0 above, for one reason: it is
+the first amendment that invalidates artifacts a published release
+wrote. An \code{.itc} archive from v0.1.0 carrying units no longer
+verifies, and a reader needs to be able to name which document version
+changed the rule.\\
+
 0.2.0 & 2026-07-23 & Geovana Neves &
 M1 re-baseline (ultraplan Batch A): the Chapter 10 M1 deliverables
 split into a v0.2.0 computation table and a v0.2.1 presentation and

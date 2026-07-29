@@ -216,14 +216,55 @@ verify that in-place mutation attempts raise.
 
 \begin{reqbox}{REQ-103}{\stable}
 \textbf{State-hash scope and reproducibility contract.}\\
-The \code{state\_hash} covers dimension names and coordinates, variable
-names and values, the ordered operation sequence with normalized arguments
-and comments, and the uncertainty, correlation, and origin-tag arrays when
-present. It excludes timestamps, user identity, source paths, and the
-\itc{} version (Section~\ref{sec:state-hash}). Loading the same bytes and
-applying the same operations on the same platform and NumPy version yields
-identical hashes; this is a tested invariant. Cross-platform comparison
-uses \code{pproc.compare} with tolerances, never hash equality.
+The \code{state\_hash} is a \emph{semantic guarantee}, not an
+enumeration of named fields: two VarFrames in the same semantic state
+have the same hash. It is therefore defined by what semantic state
+MEANS, and the enumeration below follows from that definition rather
+than constituting it.
+
+\textbf{Same semantic state} means, field for field, that the dtypes,
+shapes and IEEE-754 bit patterns of every array agree and that every
+covered metadata field agrees. Two normalizations apply, because
+neither is observable through the read-only public surface (REQ-102):
+memory layout is normalized to C order, and byte order to the native
+order of the running platform. Four differences are deliberately NOT
+normalized: \code{-0.0} differs from \code{0.0} (it is observable,
+\code{1.0/x} yields $-\infty$ against $+\infty$); a one-unit-in-the-last-place
+difference is a difference (detecting exactly that is why the archive
+guard exists); \code{float32} differs from \code{float64} (it changes
+the precision of every later operation); and NaN payloads differ (no
+path reads a payload, but normalizing would cost a scan and a copy of
+every array on every hash to defend against a state no operation can
+produce).
+
+The consequence must be stated rather than left implicit: hash
+\emph{equality} implies semantic identity, and hash \emph{inequality}
+proves nothing about semantic difference. Tolerant comparison is
+\code{pproc.compare}, never hash equality.
+
+Given that definition, the hash covers dimension names, coordinate
+arrays and dimension metadata (unit, description); variable names,
+value arrays and variable metadata (unit, description, long name); the
+ordered operation sequence with normalized arguments and comments; the
+uncertainty, correlation and origin-tag arrays when present; and the
+axis registry, comprising each registered frame's definition and
+description and each vector group's components and source axis
+(REQ-107). A metadata field left unset contributes nothing to the
+digest, so a frame that declares none hashes exactly as it did before
+metadata entered the scope.
+
+Metadata is in scope because operations read it and act on it:
+\code{rotate} reads a unit to convert an angle to radians, so a frame
+labelled \code{deg} and a frame labelled \code{rad} produce different
+physics from identical arrays, and the archive persists and
+reconstructs every one of these fields. A guarantee that certified an
+archive while leaving what its variables claim to be outside the digest
+would certify the wrong thing (DD-40).
+
+It excludes timestamps, user identity, source paths, and the \itc{}
+version (Section~\ref{sec:state-hash}). Loading the same bytes and
+applying the same operations on the same platform and NumPy version
+yields identical hashes; this is a tested invariant.
 \end{reqbox}
 
 \begin{reqbox}{REQ-19}{\stable}
@@ -585,7 +626,7 @@ OQ-26. A constant \code{rotation\_matrix} must be a proper rotation
 providing both or neither raises \code{RotationMatrixError}.
 \end{reqbox}
 
-\begin{reqbox}{REQ-107}{\draft}
+\begin{reqbox}{REQ-107}{\stable}
 \textbf{Per-group source axes and multi-axis data.}\\
 Loaded data may already carry vector quantities in more than one
 coordinate axis system (for example rig-axis balance channels
@@ -598,7 +639,12 @@ target, composing through the canonical body axis, so groups in
 different source axes are handled correctly in a single call. A
 group whose source axis is not registered raises
 \code{AxisNotFoundError}. The source axis of every group is recorded
-in History and is part of the VarFrame state hash (REQ-103). The
+in History and is part of the VarFrame state hash (REQ-103), and
+it is UPDATED by \code{db.rotate}: after a rotation each transformed
+group's recorded axis is the target, which is what makes a second
+rotation to the same target an identity rather than a second
+transform. A group detected by the naming convention is registered on
+first rotation, so the recorded axis survives a save. The
 surface uses ``axis'' for a coordinate system throughout, distinct
 from the \code{Frame=} container selector of \code{db.select}
 (REQ-20).

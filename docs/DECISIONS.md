@@ -1222,3 +1222,102 @@ nothing.
 `force=` flag. Rejected for this release as premature: no measured need
 exists for it, and adding an escape hatch beside a refusal that has
 never shipped would design the escape before the rule has been used.
+
+## DD-40: The state hash is a semantic guarantee, defined representationally
+
+**Date:** 2026-07-28
+**Status:** confirmed
+**Closes:** ITACA-003
+
+REQ-103 states a guarantee rather than a field list: two VarFrames in
+the same semantic state have the same hash. The enumeration in the
+requirement follows from the definition instead of constituting it.
+
+**Why.** Measured as `ITACA-003`: a frame whose angle dimension is
+labelled `deg` and one labelled `rad`, with identical arrays, hashed
+identically while `rotate` read the unit and produced `FZ = -1.0`
+against `-0.894`. Two states with the same identity produced different
+physics. The contradiction sat inside the SRS itself, with Section 4
+calling unit a metadata field while REQ-101 required `rotate` to
+interpret it.
+
+Stating a field list was what allowed the drift, and it had drifted in
+BOTH directions at once inside one requirement: units were outside the
+hash and needed to be in, while the axis registry was already hashed by
+the code and omitted from the reqbox. A guarantee cannot drift that way,
+because the question stops being "is this field listed" and becomes
+"does this change the state".
+
+**What same semantic state means, at the floating-point boundary.** The
+definition is REPRESENTATIONAL: field for field, the dtypes, shapes and
+IEEE-754 bit patterns agree, and every covered metadata field agrees.
+
+Two normalizations, both of things unobservable through the read-only
+public surface (REQ-102): memory layout to C order (already done), and
+byte order to the platform's native order. Normalizing byte order to
+NATIVE rather than to a fixed canonical order is deliberate: it leaves
+every existing hash unchanged, and it keeps the digest
+platform-dependent, which REQ-103 already concedes.
+
+Four deliberate non-normalizations, each with its reason:
+
+- `-0.0` is not `0.0`. It is observable: `1.0 / x` yields negative
+  infinity against positive infinity through the public API.
+  Canonicalizing signed zeros would make the guarantee false rather
+  than merely strict.
+- A one-unit-in-the-last-place difference is a difference. Detecting
+  exactly that is why the archive guard exists, and a tolerant digest
+  is self-defeating: hashing is discontinuous, so every tolerance has
+  boundary pairs that are within tolerance and land in different
+  buckets, and the relation is not transitive. Tolerant comparison
+  already has a home in `pproc.compare`, which REQ-103 names.
+- `float32` is not `float64`. It changes the precision of every later
+  operation, the dtype `to_numpy` returns, and the archive bytes.
+- NaN payloads differ. This is the one honest asymmetry: no path reads
+  a payload, so under a strictly observational definition two frames
+  differing only in one would be indistinguishable. Normalizing was
+  rejected because it costs a scan and a copy of every array on every
+  hash, forever, to defend against a state no operation can produce.
+
+**The cost, stated because the requirement must say it.** Hash
+EQUALITY implies semantic identity. Hash INEQUALITY proves nothing about
+semantic difference.
+
+**The metadata boundary is WIDE:** every field the archive
+reconstructs, which adds `description` and `long_name` to the units the
+finding required, and `Axis.description`. The narrow alternative,
+"every field an operation reads", was rejected on two grounds. The
+archive persists and reconstructs description and long name, so under
+the narrow line an editor could change what a variable claims to be
+inside an archive the state hash certifies. And the narrow line
+requires the SRS to defend, field by field and forever, why long name
+sits outside a guarantee covering unit, while a field that becomes
+load-bearing later falls silently outside. The review found that
+argument in miniature: `pivot` promotes a Variable unit into the
+Dimension unit that `rotate` reads, so a field that looked like pure
+metadata is load-bearing one operation later.
+
+**An absent field contributes nothing to the digest.** A frame that
+declares no metadata hashes exactly as it did before metadata entered
+the scope, which is the same rule the axis registry already used. This
+is what bounds the compatibility break below rather than removing it.
+
+**Accepted cost: the `.itc` compatibility break.** An archive written
+before this change whose dims or variables carry a unit, description or
+long name recomputes to a different digest and fails `itc.open`. The
+author chose to accept and document the break rather than freeze a
+legacy digest for the old scope. The error message therefore carries
+the explanation, because the message is now the only thing standing
+between an intact old archive and a false corruption report: it names
+the scope change, cites this decision, and gives the remedy. An archive
+with no metadata is unaffected, verified against the shipped example.
+
+**Rejected alternative:** a frozen `_state_hash_legacy` pair that
+verifies pre-0.2.0 archives under the old scope. Rejected by the author
+as code that may never be edited again in exchange for a case a
+re-export solves.
+
+**Rejected alternative:** bump the `.itc` schema and verify old schemas
+under the old scope permanently. Rejected for keeping a weaker
+integrity guarantee alive for old files forever rather than marking
+them as predating the scope.

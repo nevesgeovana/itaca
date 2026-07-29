@@ -206,6 +206,18 @@ a variable the VarFrame supplies, not only one \code{[equations]}
 produced, which is the ordinary case of correcting a measured channel
 in place. Requirement scope is otherwise unchanged.
 
+\paragraph{Changed (independent-review amendment, 0.2.1).} REQ-103 is
+restated as a semantic guarantee: two VarFrames in the same semantic
+state have the same hash, with same semantic state defined
+representationally at the floating-point boundary (DD-40). Its scope
+gains dimension and variable metadata and names the axis registry. The
+practical consequence is that unit is inside the guarantee even though
+Section~\ref{sec:dimension} calls it metadata, because
+\code{rotate} interprets it. REQ-107 moves from draft to stable and
+records that \code{db.rotate} updates a group's axis. REQ-36's guard is
+stated as per-subtree. REQ-45 records the \code{[constants]} collision
+refusal (DD-39). Requirement scope is otherwise unchanged.
+
 \paragraph{Added (docs adoption).} Non-functional requirement REQ-108
 (published documentation site on GitHub Pages, ProperDocs with markdown
 SRS chapters and a build-time-generated API reference, mirroring the

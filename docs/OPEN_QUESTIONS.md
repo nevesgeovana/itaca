@@ -787,3 +787,57 @@ follow-up patch.
 planned in the same window.
 
 **SRS:** REQ-33, REQ-36, REQ-44, REQ-103.
+
+---
+
+## OQ-38: Should `Provenance.mode` be part of the state hash?
+
+**Raised:** 2026-07-28 (DD-40 review, REV-001 ITACA-003)
+**Status:** open
+**Question:** `mode` is read and acted on: it decides whether an
+operation is recorded in History at all, `concat` refuses mixed modes,
+and the draft-export guard turns on it. It is not volatile, and the
+`.itc` archive persists and reconstructs it. On the "reads and acts on"
+test that DD-40 uses for metadata, it belongs in the hash.
+
+It is excluded today only because the WHOLE `Provenance` record is
+excluded, and REQ-103's exclusion list names volatile fields
+specifically (timestamps, user identity, source paths, version) rather
+than the record.
+
+Note the narrow shape of the gap: `promote` and `demote` already enter
+the hash through the operation string, so the only unhashed case is the
+mode a frame was BORN in, and that is exactly the mode that decides
+whether a History exists to be hashed.
+
+**Deferred by the author, 2026-07-28:** not folded into DD-40, because
+including it widens the requirement into `Provenance`, a different
+boundary from the one that decision ruled on. Revisit as its own
+revision.
+
+**SRS:** REQ-08 to REQ-12, REQ-103; DD-40.
+
+---
+
+## OQ-39: `VarFrame.coords` is carried, read by nothing, and persisted by nothing
+
+**Raised:** 2026-07-28 (DD-40 review, REV-001 ITACA-003)
+**Status:** open
+**Question:** The `coords` field is propagated everywhere: `_derive`
+carries it through `dataclasses.replace` and `pivot` carries it
+explicitly. But no operation reads it (`integrate` takes its own
+`coords=` argument and never `db.coords`), and neither `save` nor
+`itc.open` writes or reconstructs it, so a coordinate-system tag set on
+a frame is silently LOST on save and reopen.
+
+That is a defect in its own right, and it is why the field was not
+added to the state hash while DD-40 was widening the scope: hashing a
+field nothing reads would be wrong, and it would paper over the
+persistence gap rather than fixing it.
+
+**Proposed handling:** the author decides between persisting `coords`
+in the `.itc` format and hashing it, giving it a reader, and removing
+the field. Whichever way, the silent loss on round trip is the part
+that must not survive.
+
+**SRS:** REQ-28, REQ-70, REQ-103.

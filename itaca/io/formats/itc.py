@@ -515,11 +515,26 @@ def open_itc(path: str | Path) -> VarFrame:
             "it from the source data (REQ-103)",
         )
     if db.state_hash != recorded_state:
+        # The second sentence of the fix exists because this check has a
+        # known false positive with one cause and one remedy. In 0.2.0
+        # the REQ-103 scope widened to cover unit, description and
+        # long_name (DD-40, closing ITACA-003, where a deg frame and a
+        # rad frame hashed identically while rotate read the unit and
+        # produced different physics). An archive written before that,
+        # whose dims or variables carry any of those fields, recomputes
+        # to a different digest while being perfectly intact. Saying
+        # only "modified or corrupted" would be false and unactionable
+        # for exactly the users who did nothing wrong. An archive with
+        # no metadata at all is unaffected, because an absent field
+        # emits no token.
         raise HashMismatchError(
             f"archive '{target}'",
             "itc.open found state-hash drift between the recorded and the "
             "recomputed state",
             "the file was modified or corrupted; re-export it from the "
-            "source data (REQ-103)",
+            "source data. If it was written by ITACA before 0.2.0 and "
+            "carries units, descriptions or long names, it is intact and "
+            "predates the REQ-103 scope change: open it with 0.1.x and "
+            "re-export, or re-export from the source data (REQ-103, DD-40)",
         )
     return db

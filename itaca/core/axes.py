@@ -501,6 +501,11 @@ class AxisRegistry:
                 tokens.append(f"axis|{name}|M|{axis.rotation_matrix.tobytes().hex()}")
             else:
                 tokens.append(f"axis|{name}|P|{axis.convention}|{axis.angles_from}")
+            # Absent-field rule, as for every other metadata field: a
+            # description left unset emits nothing, so a registry built
+            # before descriptions entered the scope keeps its tokens.
+            if axis.description is not None:
+                tokens.append(f"axis|{name}|D|{axis.description}")
         for name in sorted(self.vector_groups):
             comps = self.vector_groups[name]
             tokens.append(f"vg|{name}|{comps}|{self.group_axis(name)}")
