@@ -40,6 +40,20 @@ jobs:
   # which lives in a hash-pinned kit body and is registered upward.
   gate:
     name: gate (py${{ matrix.python-version }}, ${{ matrix.deps }} deps)
+    # Required even though this caller passes `publish: false`. A called
+    # workflow's jobs may not request more than the caller grants, and
+    # that is validated when the run STARTS, before any `if:` is
+    # evaluated, so the gate's `publish` job asking for `id-token: write`
+    # fails the whole workflow at startup rather than being skipped. The
+    # first push of this file died in one second for exactly that.
+    # Nothing is actually exposed: `publish` never runs here, and a fork
+    # pull request gets a read-only token regardless. The kit finding is
+    # registered upward: a gate a non-publishing caller cannot call
+    # without granting OIDC is asking every CI run to hold a credential
+    # it has no use for.
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
