@@ -143,8 +143,18 @@ MANIFEST: dict[str, Pin] = {
     "role_review_gate.py": Pin(
         "889b8647b704394b28b48a87b473cacdc02d0222ee458e754c47726c8f7e5585", "0.2.6"
     ),
+    # 0.2.9, the INC-20260729-2355 guard: the attestation refuses while
+    # TRACKED files carry uncommitted changes, and reports untracked paths
+    # instead of refusing on them. RECOMPUTED from the master body with
+    # `_kit_body`/`_normalize` from this file, not copied from the
+    # master's declared value, which is STALE: the master's header
+    # declares kit-version 0.2.9 beside the 0.2.6 body-sha256. That
+    # mismatch is a defect in the master's header and is routed to the
+    # coordination level; the body itself is the 0.2.9 guard and hashes
+    # as pinned here. The recompute-not-copy rule is the same one the
+    # 0.2.7 entries below already record.
     "write_attestation.py": Pin(
-        "f3a257570cbb0c560b8ff343a55aa72be66a0d38793647180e23a59f7c23b0dc", "0.2.6"
+        "9d62d8a32c7aba156deade505a05759e26e9d7c72f87bf0ac5632f4ce17afa28", "0.2.9"
     ),
     "release_gate.yml": Pin(
         "f8e0262a1f9ada6220afd9bee1bf488e030e827fd2b3dc4d90bea684a4607a10", "0.2.7"

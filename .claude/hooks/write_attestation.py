@@ -1,7 +1,7 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.6
+# kit-version: 0.2.9
 # artifact: write_attestation.py
-# body-sha256: f3a257570cbb0c560b8ff343a55aa72be66a0d38793647180e23a59f7c23b0dc
+# body-sha256: 9d62d8a32c7aba156deade505a05759e26e9d7c72f87bf0ac5632f4ce17afa28
 # canonical-source: itaca. No divergence between the copies.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # END KIT PROVENANCE (body verbatim below)
@@ -126,6 +126,45 @@ def main() -> int:
         print("not a git repository", file=sys.stderr)
         return 1
     root = Path(top)
+    # REFUSE WHILE TRACKED FILES CARRY UNCOMMITTED CHANGES. Kit 0.2.9, from
+    # INC-20260729-2355-itaca: a reviewer agent holding Bash restored tracked
+    # files with git while a lane held uncommitted review fixes, silently
+    # reverting two of nine files. The attestation written next would have been
+    # TRUE when written and FALSE about the tree it covered, which is the one
+    # failure this file cannot survive: it records that findings were fixed,
+    # over commits that no longer contain the fixes.
+    #
+    # UNTRACKED PATHS DO NOT REFUSE, and that boundary is deliberate rather than
+    # lenient. An untracked file is in no commit this attestation covers, so it
+    # cannot be a reviewed fix that went missing, which is the failure mode.
+    # Refusing on untracked would also make the guard unusable in any repository
+    # that legitimately carries scratch, and a guard routinely worked around is
+    # worse than none. They are reported so the operator sees what is excluded.
+    status = _git(root, "status", "--porcelain")
+    lines = [line for line in status.splitlines() if line.strip()]
+    tracked_dirty = [line for line in lines if not line.startswith("??")]
+    if tracked_dirty:
+        shown = "\n  ".join(tracked_dirty[:20])
+        more = "" if len(tracked_dirty) <= 20 else (
+            f"\n  ... and {len(tracked_dirty) - 20} more"
+        )
+        print(
+            f"refusing to write an attestation: {len(tracked_dirty)} tracked "
+            "path(s) carry uncommitted changes, so this record would cover "
+            "commits that do not contain them.\n  "
+            f"{shown}{more}\n"
+            "Commit or stash them, then attest. Untracked paths are exempt and "
+            "are not listed here.",
+            file=sys.stderr,
+        )
+        return 1
+    untracked = [line for line in lines if line.startswith("??")]
+    if untracked:
+        print(
+            f"note: {len(untracked)} untracked path(s) present. They are in no "
+            "commit this attestation covers and are deliberately not blocking.",
+            file=sys.stderr,
+        )
     # The commits this attestation covers: for every named ref, the ref
     # itself plus everything reachable from it that is not yet on any
     # remote, which is exactly what the next push would make newly
