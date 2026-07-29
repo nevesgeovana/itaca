@@ -1160,13 +1160,25 @@ uncertainty, correlation, and origin tags.
 
 \begin{reqbox}{REQ-71}{\stable}
 \textbf{Provenance and history in all exports.}\\
-Every export embeds metadata derived from Provenance and a human-readable
-summary of History in the output file:
+Every export TO A FILE embeds metadata derived from Provenance and a
+human-readable summary of History in the output:
 \begin{itemize}[noitemsep,topsep=2pt]
   \item CSV: header comment lines (\code{\# ITACA export: version: ...});
   \item JSON: top-level \code{"provenance"} and \code{"history"} keys;
   \item \code{.itc}: native JSON files inside the archive.
 \end{itemize}
+
+\code{db.to\_pandas()} and \code{db.to\_numpy()} are DELIBERATELY LOSSY
+interoperability escape hatches and are not covered by the rule above.
+They return a plain DataFrame and plain arrays, which have nowhere to
+carry the record, so the chain of custody ends at the call. A caller who
+needs it preserved exports to CSV, JSON or \itc{} instead.
+
+One half of the draft guard still applies to them, because it is a
+SAFETY property rather than a provenance one: forcing either export from
+a draft-mode VarFrame with \code{allow\_draft=True} emits a
+\code{DraftModeExportWarning} (REQ-11), since the draft banner the file
+formats embed has nowhere to live in the returned object.
 \end{reqbox}
 
 \begin{reqbox}{REQ-72}{\stable}

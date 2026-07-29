@@ -17,7 +17,12 @@ Analysis is downstream of management, never the other way around.
 \paragraph{P-02: Provenance and History are mandatory in production.}
 Every VarFrame knows where it came from (Provenance) and what was done to it
 (History). Both records travel with the data and are preserved in every
-export format. Production mode never suppresses either record.
+export format that can carry them, which is every export to a FILE.
+Production mode never suppresses either record. The two in-memory
+bridges, \code{db.to\_pandas()} and \code{db.to\_numpy()}, are declared
+lossy escape hatches (REQ-71): a plain DataFrame and plain arrays have
+nowhere to put the record, so the chain of custody ends there by design
+rather than by omission.
 
 \paragraph{P-03: Reproducibility by design.}
 Loading the same files with the same processor and the same equation file
