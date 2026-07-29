@@ -24,9 +24,10 @@ Three notes on the patterns, each of which cost a measurement:
   boundary falls between the given name and the characters that follow
   it in an email local part. The LEADING side is deliberately NOT
   widened: a leading ``\\w*`` would match the surname inside ordinary
-  words, and the measured need was the trailing side alone. A login of
-  the shape ``gneves@`` is therefore missed, and widening the token set
-  is the author's call rather than this file's.
+  words, and the measured need was the trailing side alone. A login
+  formed from an initial followed by the surname is therefore missed,
+  and widening the token set is the author's call rather than this
+  file's.
 * An email-SHAPED rule was measured and rejected. The package documents
   its default identity as ``user@hostname`` in three places and uses
   ``u@h`` in an example, so shape matching false-positives; and the

@@ -51,6 +51,10 @@ _private/
 
 # Role-review push-gate attestation (local session state, never versioned)
 .claude/.role_review_attestation.json
+# Machine-local permission list, and a path list nobody else can use:
+# it also made the house-style walk's verdict depend on one
+# developer's global git ignore rather than on this repository.
+.claude/settings.local.json
 
 # Cygwin/MSYS crash dumps, machine junk
 *.stackdump

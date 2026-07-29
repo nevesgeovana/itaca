@@ -102,11 +102,16 @@ class TestProperties:
         combined = float(result.uncertainty.systematic["f"][0])
         assert combined**2 == pytest.approx(ua**2 + ub**2, rel=1e-9)
 
+    # Both components, because OQ-23 says one declared coefficient
+    # governs both identically (SRS Section 4.2). Sweeping r on the
+    # systematic component alone left the random branch of the covariance
+    # term unexercised over the whole range.
+    @pytest.mark.parametrize("component", ["systematic", "random"])
     @given(_u, st.floats(min_value=-1.0, max_value=1.0))
-    def test_known_correlated_inputs(self, ua: float, r: float) -> None:
+    def test_known_correlated_inputs(self, component: str, ua: float, r: float) -> None:
         db = (
             _frame()
-            .set_uncertainty({"a": ua, "b": ua})
+            .set_uncertainty({"a": ua, "b": ua}, component=component)
             .set_correlation({("a", "b"): r})
         )
         result = db.compute("f = a + b")
@@ -115,9 +120,8 @@ class TestProperties:
         # abs tolerance: near r = -1 the variance suffers catastrophic
         # cancellation (ua^2 * (2 + 2r) -> 0), so machine-epsilon noise
         # of order eps * ua^2 enters before the square root.
-        assert float(result.uncertainty.systematic["f"][0]) == pytest.approx(
-            expected, rel=1e-7, abs=1e-6
-        )
+        propagated = getattr(result.uncertainty, component)["f"][0]
+        assert float(propagated) == pytest.approx(expected, rel=1e-7, abs=1e-6)
 
     @given(_u, st.floats(min_value=0.1, max_value=50.0))
     def test_dimensional_consistency_under_scaling(

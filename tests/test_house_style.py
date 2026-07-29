@@ -29,9 +29,11 @@ absolute paths.
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import identifiers
+import pytest
 
 DASHES = {chr(0x2014): "em dash", chr(0x2013): "en dash"}
 TEXT_SUFFIXES = {
@@ -69,6 +71,8 @@ _MUST_REACH = (
     "docs/DECISIONS.md",
     "examples/wt_campaign.py",
     ".claude/skills/audit/SKILL.md",
+    ".claude/kit/check_release_gate.py",
+    ".github/workflows/ci.yml",
     "CLAUDE.md",
     "README.md",
     "pyproject.toml",
@@ -81,19 +85,32 @@ def _repository_files() -> list[str] | None:
     The union of tracked files and untracked-but-not-ignored ones: the
     first is what the sdist is built from, and the second is a file
     written but not yet added, which a guard must still see. Returns
-    None outside a checkout, where the caller degrades to a filesystem
-    walk rather than skipping.
+    None when git cannot answer, where the caller degrades to a
+    filesystem walk rather than skipping.
+
+    Both failure shapes return None. A non-zero exit is what an unpacked
+    sdist gives, having no checkout; a missing executable RAISES, and an
+    unpacked sdist is exactly the place with no git at all, so catching
+    only the first would turn the degradation this docstring promises
+    into an error in the one case it was written for.
     """
     names: list[str] = []
     for extra in ([], ["--others", "--exclude-standard"]):
-        done = subprocess.run(
-            ["git", "ls-files", "-z", *extra],
-            capture_output=True,
-            cwd=str(_ROOT),
-        )
+        try:
+            done = subprocess.run(
+                ["git", "ls-files", "-z", *extra],
+                capture_output=True,
+                cwd=str(_ROOT),
+            )
+        except OSError:
+            return None
         if done.returncode != 0:
             return None
-        names += [name for name in done.stdout.decode().split("\0") if name]
+        names += [
+            name
+            for name in done.stdout.decode(errors="surrogateescape").split("\0")
+            if name
+        ]
     return names
 
 
@@ -278,6 +295,52 @@ def test_the_authorship_exemption_covers_the_files_it_names_and_no_others() -> N
     assert not identifiers.offenders([(r"docs\srs\main.tex", line)]), (
         "the exemption must survive a Windows separator"
     )
+
+
+def test_the_rule_module_spells_none_of_the_tokens_it_forbids() -> None:
+    """Independent of ``FORBIDDEN``, which is what makes it worth having.
+
+    The rule module needs no exemption only while it spells nothing, and
+    the pattern set cannot check that: the occurrence that prompted this
+    was a surname preceded by an initial, which is precisely the shape
+    the leading word boundary is documented as missing.
+    """
+    raw = Path(identifiers.__file__).read_bytes().lower()
+    for token in (_GIVEN, _FAMILY, _SPACED, _DOMAIN):
+        assert token.lower().encode() not in raw, (
+            "tests/identifiers.py spells a token it forbids, so it would "
+            "ship one in the sdist; it carries no exemption by design"
+        )
+
+
+def test_the_walk_degrades_when_git_cannot_answer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Outside a checkout, and with no git at all: both return None.
+
+    An unpacked sdist is both at once, and it is the case the fallback
+    exists for, so it is the case that must not raise.
+    """
+    monkeypatch.setattr(sys.modules[__name__], "_ROOT", tmp_path)
+    assert _repository_files() is None, "a directory with no checkout"
+    monkeypatch.setenv("PATH", "")
+    assert _repository_files() is None, "no git executable on PATH"
+
+
+def test_the_degraded_walk_still_reaches_the_tree_and_honors_the_exclusions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fallback is unreachable in any environment the suite builds.
+
+    Without this it could be deleted or inverted and stay green, and
+    EXCLUDED_PARTS would be configuration nothing can falsify, since the
+    git path never consults it.
+    """
+    monkeypatch.setattr(sys.modules[__name__], "_repository_files", lambda: None)
+    scanned = [name for name, _ in _walk()]
+    _assert_the_walk_reached_the_tree(scanned, "degraded")
+    for name in scanned:
+        assert not EXCLUDED_PARTS.intersection(name.split("/")), name
 
 
 def test_a_binary_payload_is_skipped_and_the_limit_is_deliberate() -> None:

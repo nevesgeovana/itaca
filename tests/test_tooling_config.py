@@ -255,9 +255,14 @@ def test_every_module_the_suite_spawns_is_declared_in_the_dev_extra() -> None:
     for path in sorted((ROOT / "tests").rglob("*.py")):
         for module in _SPAWNED_MODULE.findall(path.read_text(encoding="utf-8")):
             spawned.setdefault(module, path.relative_to(ROOT).as_posix())
-    assert len(spawned) >= 2, (
-        f"the spawn-site scan found {spawned}, which is too few to be a real "
-        "discovery; the pattern it matches has probably moved"
+    # Pinned as a SET, not a floor. The pattern recognizes one syntactic
+    # shape, so a tool spawned as a console script or through a variable
+    # is invisible to it while the floor stays satisfied by the two sites
+    # already here. A difference either way is a deliberate edit.
+    assert set(spawned) == {"mypy", "build"}, (
+        f"the spawn-site scan found {spawned}; if a tool was added, declare "
+        "it in the [dev] extra and add it here, and if one moved out of the "
+        "recognized shape, widen the pattern rather than the exemption"
     )
     missing = {
         module: site
