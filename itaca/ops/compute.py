@@ -14,7 +14,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.errors import DataError, UncertaintyError
-from itaca.core.varframe import VarFrame
+from itaca.core.varframe import _UNSET, VarFrame
 from itaca.core.variable import Variable
 from itaca.ops._content import content_of, rebuild
 from itaca.uncertainty.expression import (
@@ -147,18 +147,46 @@ def compute(
     }
     tags[name] = new_tag
     content.tags = tags
-    if unc_sys is not None or unc_rand is not None:
+    # REQ-91 and ITACA-024: the target's uncertainty is exactly what this
+    # expression implies. Clearing first and writing only what
+    # propagation returned means nothing survives from the assignment
+    # being replaced, and a component with no carrier is DELETED rather
+    # than written as a fabricated zero, so absence keeps meaning "not
+    # assigned" rather than "assigned to be exact".
+    if content.systematic is not None or content.random is not None:
         systematic = dict(content.systematic or {})
         random = dict(content.random or {})
+        systematic.pop(name, None)
+        random.pop(name, None)
         if unc_sys is not None:
             systematic[name] = np.broadcast_to(unc_sys, db.shape)
         if unc_rand is not None:
             random[name] = np.broadcast_to(unc_rand, db.shape)
-        content.systematic = systematic
-        content.random = random
+        # Back to None, not to an empty UncFrame, when the target was the
+        # only carrier: rebuild keys on `is not None`.
+        content.systematic = systematic or None
+        content.random = random or None
+    elif unc_sys is not None or unc_rand is not None:
+        content.systematic = (
+            {name: np.broadcast_to(unc_sys, db.shape)} if unc_sys is not None else None
+        )
+        content.random = (
+            {name: np.broadcast_to(unc_rand, db.shape)}
+            if unc_rand is not None
+            else None
+        )
+    # A pair naming an OVERWRITTEN target described the values that were
+    # replaced. A brand-new target has no pairs to drop, so unrelated
+    # declarations survive.
+    overwritten = name in db.vars and db.correlation is not None
+    new_correlation: object = (
+        db.correlation.without({name}) if overwritten else _UNSET  # type: ignore[union-attr]
+    )
     operation = (
         f"compute('{name} = {text}', method='{method}', where={where!r}, fill={fill!r})"
     )
+    if overwritten:
+        operation += ", correlation=dropped"
     replay: dict[str, Any] = {"equation": equation}
     if method != "symbolic":
         replay["method"] = method
@@ -174,6 +202,7 @@ def compute(
         operation=operation,
         comment=comment,
         history=history,
+        correlation=new_correlation,
         call="compute",
         replay_kwargs=replay,
     )

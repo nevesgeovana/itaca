@@ -21,7 +21,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.correlation import CorrelationMatrix
-from itaca.core.uncframe import UncFrame
+from itaca.core.uncframe import UncFrame, standard_uncertainty
 from itaca.uncertainty.expression import Node
 
 _Array = NDArray[Any]
@@ -69,14 +69,20 @@ def propagate(
         return None, None
     derivatives = {name: tree.derivative(env, name) for name in carriers}
     results: list[_Array | None] = []
-    for component in (uncertainty.systematic, uncertainty.random):
+    for label, component in (
+        ("systematic", uncertainty.systematic),
+        ("random", uncertainty.random),
+    ):
         present = [name for name in carriers if name in component]
         if not present:
             results.append(None)
             continue
         variance: _Array = np.asarray(0.0)
+        diagonal: _Array = np.asarray(0.0)
         for name in present:
-            variance = variance + np.square(derivatives[name] * component[name])
+            term = np.square(derivatives[name] * component[name])
+            diagonal = diagonal + term
+            variance = variance + term
         for name_a, name_b in combinations(present, 2):
             r = correlation.get(name_a, name_b) if correlation else 0.0
             if r:
@@ -88,5 +94,13 @@ def propagate(
                     * component[name_a]
                     * component[name_b]
                 )
-        results.append(np.asarray(np.sqrt(np.maximum(variance, 0.0))))
+        results.append(
+            standard_uncertainty(
+                np.asarray(variance),
+                np.asarray(diagonal),
+                terms=len(present) + len(present) * (len(present) - 1) // 2,
+                obj=f"{label} uncertainty of the derived quantity",
+                operation="GUM clause-5 propagation with covariance",
+            )
+        )
     return results[0], results[1]

@@ -20,10 +20,7 @@ from hypothesis import strategies as st
 
 import itaca as itc
 from itaca.core.axes import stability_axis, wind_axis
-from itaca.core.correlation import CorrelationMatrix
-from itaca.core.dimension import Dimension
 from itaca.core.errors import UncertaintyError
-from itaca.core.uncframe import UncFrame
 from itaca.ops._movingfit import moving_fit_line
 from itaca.ops._reduction import reduce_random, reduce_systematic
 
@@ -259,18 +256,29 @@ class TestOQ26RotationIndependence:
     def test_declared_angle_correlation_raises(self):
         # REQ-40 fail-loud: a declared correlation touching a frame angle
         # is rejected rather than silently dropped (OQ-26 guard).
-        rows = [[0.5, 1.0, 0.0, 0.0]]
-        db = itc.load(np.array(rows), names=["alpha", "FX", "FY", "FZ"]).pivot(
-            dims=["alpha"]
+        #
+        # The angle source is a VARIABLE here, not a Dimension. That is
+        # the only shape this guard can still see, and the only one it
+        # ever needed to: set_correlation names variables (assign.py
+        # checks db.vars), and since ITACA-025c the VarFrame constructor
+        # refuses a pair naming anything that is not a present variable,
+        # so the Dimension form this test used to build is now
+        # unconstructible rather than merely unreachable. The frame is
+        # therefore built through the public API instead of by
+        # dataclasses.replace, which is a stronger test of the same
+        # guard.
+        rows = [[0.0, 0.5, 1.0, 0.0, 0.0]]
+        db = itc.load(np.array(rows), names=["idx", "alpha", "FX", "FY", "FZ"]).pivot(
+            dims=["idx"]
         )
         db = dataclasses.replace(
             db,
-            dims={"alpha": Dimension(name="alpha", coords=np.array([0.5]), unit="rad")},
-            uncertainty=UncFrame(
-                systematic={c: np.array([0.1]) for c in ("FX", "FY", "FZ")},
-                random={},
-            ),
-            correlation=CorrelationMatrix(pairs={("alpha", "FX"): 0.3}),
+            vars={
+                **db.vars,
+                "alpha": dataclasses.replace(db.vars["alpha"], unit="rad"),
+            },
         )
+        db = db.set_uncertainty({c: 0.1 for c in ("FX", "FY", "FZ")})
+        db = db.set_correlation({("alpha", "FX"): 0.3})
         with pytest.raises(UncertaintyError, match="OQ-26"):
             db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("stability")

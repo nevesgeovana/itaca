@@ -15,6 +15,8 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from itaca.core.uncframe import standard_uncertainty
+
 _Array = NDArray[Any]
 
 
@@ -95,24 +97,45 @@ def combine_components(
     u_a: _Array | None,
     u_b: _Array | None,
     cross_correlation: float,
+    name: str,
 ) -> _Array | None:
     """Combine one uncertainty component through the exact Jacobian.
 
     A missing component on either side counts as zero; the cross-input
     correlation enters only when both sides carry the component.
+
+    ``name`` is required rather than optional: REQ-81 asks every error
+    for the object involved, and "combined uncertainty" alone names no
+    object. This is the one propagation site whose correlation arrives
+    as a bare float rather than through a validated
+    :class:`~itaca.core.correlation.CorrelationMatrix`, so it is also
+    the one that can still reach a materially negative variance.
     """
     if u_a is None and u_b is None:
         return None
     d_a = operation.d_da(values_a, values_b)
     d_b = operation.d_db(values_a, values_b)
     variance: _Array = np.asarray(0.0)
+    diagonal: _Array = np.asarray(0.0)
     if u_a is not None:
-        variance = variance + np.square(d_a * u_a)
+        term = np.square(d_a * u_a)
+        diagonal = diagonal + term
+        variance = variance + term
     if u_b is not None:
-        variance = variance + np.square(d_b * u_b)
+        term = np.square(d_b * u_b)
+        diagonal = diagonal + term
+        variance = variance + term
     if u_a is not None and u_b is not None and cross_correlation:
         variance = variance + (2.0 * d_a * d_b * cross_correlation * u_a * u_b)
-    return np.asarray(np.sqrt(np.maximum(variance, 0.0)))
+    return standard_uncertainty(
+        variance,
+        diagonal,
+        terms=3,
+        obj=f"combined uncertainty of '{name}'",
+        operation=(
+            f"combine(op='{operation.name}', cross_correlation={cross_correlation!r})"
+        ),
+    )
 
 
 def worst_case_tags(tags_a: _Array, tags_b: _Array) -> _Array:

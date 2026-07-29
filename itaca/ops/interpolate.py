@@ -320,6 +320,17 @@ def interpolate(
             content, from_dim, to_var, targets, method, deg, override
         )
         note = ", axis_uncertainty=dropped" if dropped else ""
+        # to_var becomes a dimension and leaves vars, so its declared
+        # pairs no longer name a variable of this frame. Pairs that do
+        # not touch it survive.
+        new_correlation = (
+            db.correlation.without({to_var}) if db.correlation is not None else None
+        )
+        if db.correlation is not None and (
+            new_correlation is None
+            or dict(new_correlation.pairs) != dict(db.correlation.pairs)
+        ):
+            note += ", axis_correlation=dropped"
         operation = (
             f"interpolate(axisTranslation={{'from': '{from_dim}', "
             f"'to': '{to_var}'}}, method='{method}', deg={deg}, "
@@ -331,6 +342,7 @@ def interpolate(
             operation=operation,
             comment=comment,
             history=history,
+            correlation=new_correlation,
             call="interpolate",
             # The method spells the selector axisTranslation (REQ-25).
             # The explicit target grid must be recorded too: without it

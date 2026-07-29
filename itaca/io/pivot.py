@@ -262,7 +262,19 @@ def pivot(
             }
         )
     record = db.mode == "production" or history
+    # The pivoted columns become dimensions and leave vars, so their
+    # declared pairs no longer name variables of this frame. The result
+    # must be used at BOTH the hash call and the construction below, or
+    # the recorded hash describes a frame that is not the one returned.
+    new_correlation = (
+        db.correlation.restrict(set(variables)) if db.correlation is not None else None
+    )
     operation = f"pivot(dims={requested})"
+    if db.correlation is not None and (
+        new_correlation is None
+        or dict(new_correlation.pairs) != dict(db.correlation.pairs)
+    ):
+        operation += ", correlation=dropped"
     new_history = db.history
     if record:
         operations = (
@@ -274,7 +286,7 @@ def pivot(
             variables=variables,
             operations=operations,
             uncertainty=uncertainty,
-            correlation=db.correlation,
+            correlation=new_correlation,
             tags=tags,
             axes=db.axes,
         )
@@ -289,6 +301,6 @@ def pivot(
         uncertainty=uncertainty,
         tags=tags,
         coords=db.coords,
-        correlation=db.correlation,
+        correlation=new_correlation,
         axes=db.axes,
     )

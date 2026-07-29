@@ -20,8 +20,10 @@ import numpy as np
 import pytest
 
 from itaca.core.coords import Cartesian
+from itaca.core.correlation import CorrelationMatrix
 from itaca.core.dimension import Dimension
 from itaca.core.errors import (
+    CorrelationKeyError,
     DataError,
     ProvenanceError,
     UncertaintyError,
@@ -207,3 +209,46 @@ class TestStateHash:
             uncertainty=UncFrame(systematic={"CT": np.full((3, 2), 0.01)}),
         )
         assert with_unc.state_hash != frame.state_hash
+
+
+class TestCorrelationConstructorInvariant:
+    """REV-001 ITACA-025c: the UncFrame had this invariant and the
+    CorrelationMatrix did not, so the identical defect failed loud on
+    one mirror and was silent on the other."""
+
+    def test_itaca_025_constructor_refuses_pair_naming_absent_variable(
+        self, frame: VarFrame
+    ) -> None:
+        """A pair may not name something the frame does not carry.
+
+        This is what makes a forgotten per-operation policy impossible
+        rather than merely unlikely: an operation that drops or renames
+        a variable and does not drop its pairs now fails here, at the
+        first construction, including an operation added later.
+        """
+        with pytest.raises(CorrelationKeyError) as excinfo:
+            dataclasses.replace(
+                frame,
+                correlation=CorrelationMatrix(pairs={("CT", "ghost"): 0.5}),
+            )
+        message = str(excinfo.value)
+        assert "'CT', 'ghost'" in message
+        assert "'ghost'" in message
+        assert "['CT'" in message  # the available variables are listed
+
+    def test_itaca_025_constructor_accepts_pair_over_present_variables(
+        self, frame: VarFrame, prov: Provenance
+    ) -> None:
+        """The happy path still constructs.
+
+        The `frame` fixture carries only CT, so a second variable is
+        added here rather than widening a fixture every other test in
+        this module depends on.
+        """
+        second = Variable(name="CP", values=np.ones((3, 2)))
+        widened = dataclasses.replace(frame, vars={**frame.vars, "CP": second})
+        out = dataclasses.replace(
+            widened, correlation=CorrelationMatrix(pairs={("CT", "CP"): 0.5})
+        )
+        assert out.correlation is not None
+        assert out.correlation.get("CT", "CP") == 0.5

@@ -20,7 +20,7 @@ from itaca.core.dimension import Dimension
 from itaca.core.historyframe import HistoryFrame
 from itaca.core.pipeline import PipelineStep, _to_jsonable
 from itaca.core.uncframe import UncFrame
-from itaca.core.varframe import VarFrame
+from itaca.core.varframe import _UNSET, VarFrame
 from itaca.core.variable import Variable
 
 
@@ -105,6 +105,7 @@ def rebuild(
     history: bool,
     call: str | None = None,
     replay_kwargs: Mapping[str, Any] | None = None,
+    correlation: object = _UNSET,
 ) -> VarFrame:
     """Wrap content back into frames and derive the new VarFrame.
 
@@ -113,6 +114,16 @@ def rebuild(
     so ``history.to_pipeline`` can reconstruct the call (REQ-54).
     Operations that omit ``call`` (a multi-input ``concat``) are
     non-replayable by construction.
+
+    The declared correlation is PRESERVED by default, which is correct
+    only for an operation that leaves both the variable names and the
+    values alone. An operation that drops, renames or recomputes a
+    variable must pass its own ``correlation``, because a coefficient
+    keyed on a name that now holds a different quantity is a false
+    statement about the frame. Forgetting to is not silent: the
+    :class:`~itaca.core.varframe.VarFrame` constructor refuses a pair
+    naming an absent variable, so a missing policy fails loud at the
+    first operation that drops a name.
     """
     variables = {
         name: replace(content.meta[name], values=values)
@@ -145,5 +156,6 @@ def rebuild(
         variables=variables,
         uncertainty=uncertainty,
         tags=tags,
+        correlation=correlation,
         step=step,
     )

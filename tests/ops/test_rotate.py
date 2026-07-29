@@ -426,31 +426,29 @@ class TestSharedAngle:
 
 class TestAngleCorrelationGuard:
     def test_declared_angle_correlation_rejected(self) -> None:
-        from itaca.core.correlation import CorrelationMatrix
+        """A declared correlation touching a frame angle is refused (OQ-26).
 
-        rows = [[0.5, 1.0, 0.0, 0.0]]
-        db = itc.load(np.array(rows), names=["alpha", "FX", "FY", "FZ"]).pivot(
-            dims=["alpha"]
+        The angle source is a VARIABLE, which is the only shape this
+        guard can still see and the only one it ever needed to. Since
+        ITACA-025c the VarFrame constructor refuses a correlation pair
+        naming anything that is not a present variable, so the Dimension
+        form this test used to build by dataclasses.replace is now
+        unconstructible. Building through the public API tests the same
+        guard against the state a caller can actually reach.
+        """
+        rows = [[0.0, 0.5, 1.0, 0.0, 0.0]]
+        db = itc.load(np.array(rows), names=["idx", "alpha", "FX", "FY", "FZ"]).pivot(
+            dims=["idx"]
         )
-        from itaca.core.dimension import Dimension
-
         db = dataclasses.replace(
             db,
-            dims={"alpha": Dimension(name="alpha", coords=np.array([0.5]), unit="rad")},
             vars={
                 **db.vars,
-                "beta": dataclasses.replace(db.vars["FX"], name="beta"),
+                "alpha": dataclasses.replace(db.vars["alpha"], unit="rad"),
             },
-            uncertainty=UncFrame(
-                systematic={
-                    "FX": np.array([0.1]),
-                    "FY": np.array([0.1]),
-                    "FZ": np.array([0.1]),
-                },
-                random={},
-            ),
-            correlation=CorrelationMatrix(pairs={("alpha", "FX"): 0.3}),
         )
+        db = db.set_uncertainty({c: 0.1 for c in ("FX", "FY", "FZ")})
+        db = db.set_correlation({("alpha", "FX"): 0.3})
         with pytest.raises(Exception, match="OQ-26"):
             db.declare_vector("force", ["FX", "FY", "FZ"]).rotate("stability")
 
@@ -573,3 +571,49 @@ class TestBookkeeping:
         staged = db.register_axis(rig).declare_vector("force", ["FX", "FY", "FZ"])
         staged.rotate("rig")
         assert np.allclose(staged.vars["FX"].values, [1.0, 0.0])
+
+
+class TestRotateCorrelationLifecycle:
+    """REV-001 ITACA-025e: rotate computed the full rotated covariance,
+    kept its diagonal, and left the stale pre-rotation coefficient in
+    the store. With u = (0.1, 0.2, 0.3) and rho(FX, FY) = 0.5, a 90
+    degree frame gives cov(FX, FY) = -0.01, so the true coefficient is
+    -0.5 and the stored one had the wrong SIGN."""
+
+    def test_itaca_025e_rotate_drops_intra_group_pairs_and_keeps_others(self) -> None:
+        """Pairs among rotated components go; unrelated pairs survive.
+
+        The coefficient after a rotation is the off-diagonal of R C R^T,
+        which varies per grid cell, and the store holds one scalar per
+        pair. It is not representable, so it is dropped rather than
+        approximated or carried (OQ-23).
+
+        The propagated uncertainty is unaffected by the drop, because
+        _corr_matrix consults the INPUT matrix during propagation and
+        the drop is applied at rebuild.
+        """
+        alpha = np.arange(2.0)
+        arr = np.column_stack(
+            [alpha, [1.0, 0.0], [0.0, 2.0], [0.0, 0.0], [5.0, 6.0], [7.0, 8.0]]
+        )
+        base = itc.load(arr, names=["alpha", "FX", "FY", "FZ", "p", "q"]).pivot(
+            dims=["alpha"]
+        )
+        base = base.set_uncertainty({"FX": 0.1, "FY": 0.2, "FZ": 0.3})
+        base = base.set_correlation({("FX", "FY"): 0.5, ("p", "q"): 0.3})
+
+        c = np.cos(np.pi / 4.0)
+        rig = Axis(
+            name="rig",
+            rotation_matrix=np.array([[c, -c, 0.0], [c, c, 0.0], [0.0, 0.0, 1.0]]),
+        )
+        out = (
+            base.register_axis(rig)
+            .declare_vector("force", ["FX", "FY", "FZ"])
+            .rotate("rig")
+        )
+
+        assert out.correlation is not None
+        assert ("FX", "FY") not in out.correlation.pairs
+        assert out.correlation.get("p", "q") == 0.3
+        assert "correlation=dropped" in out.history[-1].operation

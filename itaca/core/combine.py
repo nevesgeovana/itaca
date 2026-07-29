@@ -18,7 +18,11 @@ from itaca.core.arithmetic import (
     operations,
     worst_case_tags,
 )
-from itaca.core.errors import DataError, OperatingModeMixError
+from itaca.core.errors import (
+    CorrelationMatrixError,
+    DataError,
+    OperatingModeMixError,
+)
 from itaca.core.varframe import VarFrame
 
 
@@ -89,6 +93,12 @@ def combine(
             "combine received an unknown operation",
             f"use one of {sorted([*operations((1.0, 1.0))])} (REQ-37)",
         )
+    if not -1.0 <= cross_correlation <= 1.0:
+        raise CorrelationMatrixError(
+            f"cross_correlation={cross_correlation!r}",
+            "combine received a correlation coefficient outside [-1, 1]",
+            "correlation coefficients satisfy |r| <= 1 (REQ-40)",
+        )
     operation_impl = table[op]
     content = content_of(db)
     systematic: dict[str, NDArray[Any]] = {}
@@ -107,6 +117,7 @@ def combine(
                 _component_of(db, label, name),
                 _component_of(other, label, name),
                 cross_correlation,
+                name,
             )
             if combined is not None:
                 store[name] = combined
@@ -124,4 +135,13 @@ def combine(
         f"combine(op='{op}', with={other.state_hash[:12]}, "
         f"cross_correlation={cross_correlation})"
     )
-    return rebuild(db, content, operation=operation, comment=comment, history=history)
+    if db.correlation is not None or other.correlation is not None:
+        operation += ", correlation=dropped"
+    return rebuild(
+        db,
+        content,
+        operation=operation,
+        comment=comment,
+        history=history,
+        correlation=None,
+    )

@@ -182,9 +182,17 @@ def integrate(
     content.random = {var: _finish(unc["random"])} if "random" in unc else None
     content.tags = {var: _finish(tags)} if tags is not None else None
 
+    # Only `var` survives, and a self-pair is illegal, so restricting to
+    # it always yields None. The call is kept rather than hard-coded so
+    # the policy is legible and survives a multi-variable integrate.
+    new_correlation = (
+        db.correlation.restrict({var}) if db.correlation is not None else None
+    )
     detail = f"var='{var}', over={over}, coords={coords!r}, skipna={skipna}"
     if skipna:
         detail += f", populated={domain_finite}/{domain_total}"
+    if db.correlation is not None:
+        detail += ", correlation=dropped"
     operation = f"integrate({detail})"
     return rebuild(
         db,
@@ -192,6 +200,7 @@ def integrate(
         operation=operation,
         comment=comment,
         history=history,
+        correlation=new_correlation,
         call="integrate",
         replay_kwargs={
             "var": var,

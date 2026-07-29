@@ -7,6 +7,11 @@ nothing is stored on the source frame). Uncertainty present raises
 until OQ-18 freezes the moving-fit weight rule (the provisional
 smooth/diff row of REQ-98). Output tags carry the worst case over
 each moving window (OQ-10).
+
+Declared correlations are dropped, not renamed onto the derivative
+channels: the coefficient between two derivatives is not the
+coefficient between their values, and no code here derives it. The
+drop is recorded in the operation string (REQ-18).
 """
 
 from __future__ import annotations
@@ -134,15 +139,17 @@ def diff(
     content.values = new_values
     content.meta = new_meta
     content.tags = new_tags if has_tags else None
-    operation = (
-        f"diff(along='{along}', window={window}, deg={deg}, nan_edges={nan_edges})"
-    )
+    detail = f"along='{along}', window={window}, deg={deg}, nan_edges={nan_edges}"
+    if db.correlation is not None:
+        detail += ", correlation=dropped"
+    operation = f"diff({detail})"
     return rebuild(
         db,
         content,
         operation=operation,
         comment=comment,
         history=history,
+        correlation=None,
         call="diff",
         replay_kwargs={
             "along": along,

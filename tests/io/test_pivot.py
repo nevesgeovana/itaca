@@ -86,3 +86,27 @@ class TestPivot:
         assert len(silent.history) == 1  # only the load entry
         recorded = db.pivot(dims=["mach"], history=True)
         assert len(recorded.history) == 2
+
+
+def test_itaca_025d_pivot_drops_pairs_naming_pivoted_columns() -> None:
+    """REV-001 ITACA-025d: a pivoted column leaves vars and its pairs stayed.
+
+    The assertion on the recorded hash is load-bearing: pivot computes
+    the state hash and constructs the frame at two separate call sites,
+    and changing only one of them records a hash for a frame that is
+    not the one returned.
+    """
+    arr = np.column_stack(
+        [[0.0, 1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0], [2.0, 3.0, 4.0, 5.0]]
+    )
+    db = itc.load(arr, names=["alpha", "CT", "CP"])
+    db = db.set_correlation({("alpha", "CT"): 0.3, ("CT", "CP"): 0.6})
+
+    out = db.pivot(dims=["alpha"])
+
+    assert out.correlation is not None
+    assert out.correlation.get("CT", "CP") == 0.6
+    assert ("CT", "alpha") not in out.correlation.pairs
+    assert ("alpha", "CT") not in out.correlation.pairs
+    assert "correlation=dropped" in out.history[-1].operation
+    assert out.state_hash == out.history[-1].state_hash

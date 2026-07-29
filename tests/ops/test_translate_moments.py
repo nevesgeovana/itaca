@@ -248,3 +248,36 @@ class TestBookkeeping:
         staged = _declared(db)
         staged.translate_moments(to_point=[0.1, 0.0, 0.0])
         assert staged.vars["MX"].values[0] == pytest.approx(0.0)
+
+
+def test_itaca_025e_translate_moments_drops_moment_pairs_only() -> None:
+    """REV-001 ITACA-025e: only the moments are rewritten.
+
+    translate_moments recomputes M' = M + r x F and leaves the force
+    components untouched, so a blanket drop would discard a still-valid
+    declaration. A pair naming a moment no longer describes what that
+    name holds; a pair between two forces still does.
+    """
+    arr = np.column_stack(
+        [
+            [0.0, 1.0],
+            [1.0, 2.0],
+            [3.0, 4.0],
+            [5.0, 6.0],
+            [0.1, 0.2],
+            [0.3, 0.4],
+            [0.5, 0.6],
+        ]
+    )
+    db = itc.load(arr, names=["i", "FX", "FY", "FZ", "MX", "MY", "MZ"]).pivot(
+        dims=["i"]
+    )
+    db = db.set_uncertainty({name: 0.1 for name in ("FX", "FY", "FZ", "MZ")})
+    db = db.set_correlation({("FY", "MZ"): 0.4, ("FX", "FY"): 0.2})
+
+    out = db.translate_moments(to_point=[1.0, 0.0, 0.0], from_point=[0.0, 0.0, 0.0])
+
+    assert out.correlation is not None
+    assert ("FY", "MZ") not in out.correlation.pairs
+    assert out.correlation.get("FX", "FY") == 0.2
+    assert "correlation=dropped" in out.history[-1].operation

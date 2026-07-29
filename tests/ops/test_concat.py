@@ -183,3 +183,44 @@ class TestConcatMirrors:
         result = itc.concat([filled, high], along="alpha")
         assert result.tags is not None
         assert list(result.tags.tags["CT"]) == [0, 1, 0, 0, 0]
+
+
+class TestCorrelationAgreement:
+    """REV-001 ITACA-025d: concat rebuilt on frames[0], so ONE input's
+    declaration stood in for all of them and the rest were discarded
+    without a word. concat is a genuine preserve (no value changes), so
+    the fix is agreement, not dropping."""
+
+    @staticmethod
+    def _leg(start: float) -> VarFrame:
+        arr = np.column_stack([[start, start + 1.0], [1.0, 2.0], [3.0, 4.0]])
+        return itc.load(arr, names=["i", "CT", "CP"]).pivot(dims=["i"])
+
+    def test_itaca_025d_concat_refuses_mismatched_correlation(self) -> None:
+        """One input declaring a pair and another not is refused."""
+        left = self._leg(0.0).set_correlation({("CT", "CP"): 0.4})
+        right = self._leg(2.0)
+        with pytest.raises(UncertaintyError) as excinfo:
+            itc.concat([left, right], along="i")
+        message = str(excinfo.value)
+        assert "CT" in message and "CP" in message
+        assert "drop them before concatenating" in message
+
+    def test_itaca_025d_concat_refuses_same_pair_with_different_values(self) -> None:
+        """Identical KEYS with different coefficients must also raise.
+
+        This is the case a key-set comparison would miss, which is why
+        the check compares the pair dicts.
+        """
+        left = self._leg(0.0).set_correlation({("CT", "CP"): 0.4})
+        right = self._leg(2.0).set_correlation({("CT", "CP"): 0.5})
+        with pytest.raises(UncertaintyError, match="different correlation"):
+            itc.concat([left, right], along="i")
+
+    def test_itaca_025d_concat_preserves_an_agreed_declaration(self) -> None:
+        """Agreeing inputs concatenate and the coefficient survives."""
+        left = self._leg(0.0).set_correlation({("CT", "CP"): 0.4})
+        right = self._leg(2.0).set_correlation({("CT", "CP"): 0.4})
+        out = itc.concat([left, right], along="i")
+        assert out.correlation is not None
+        assert out.correlation.get("CT", "CP") == 0.4

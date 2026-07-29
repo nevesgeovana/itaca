@@ -11,6 +11,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 import itaca as itc
+from itaca.core.errors import UncertaintyError
+from itaca.core.uncframe import standard_uncertainty
 from itaca.core.varframe import VarFrame
 
 _u = st.floats(min_value=0.01, max_value=10.0)
@@ -105,3 +107,70 @@ class TestProperties:
         assert float(result.uncertainty.systematic["f"][0]) == pytest.approx(
             scale * ua, rel=1e-9
         )
+
+
+class TestNegativeVarianceMateriality:
+    """REV-001 ITACA-001b: a rounding residual and an impossible
+    covariance are different things, and clamping both reported an
+    invalid covariance structure as certainty."""
+
+    def test_itaca_001_material_negative_variance_raises_and_rounding_residual_clamps(
+        self,
+    ) -> None:
+        """Unit-test the helper directly.
+
+        After the ITACA-001a fix the -0.9 triple can no longer reach
+        propagate at all, because CorrelationMatrix refuses it at
+        declaration time. The variance it used to produce is therefore
+        exercised here against the helper rather than through the
+        public path that can no longer construct it.
+        """
+        with pytest.raises(UncertaintyError) as excinfo:
+            standard_uncertainty(
+                np.array([-2.4]),
+                np.array([3.0]),
+                terms=6,
+                obj="systematic uncertainty of 's'",
+                operation="GUM clause-5 propagation with covariance",
+            )
+        message = str(excinfo.value)
+        assert "-2.4" in message
+        assert "systematic uncertainty of 's'" in message
+        assert "positive semidefinite" in message
+
+        # A rounding-scale residual is still clamped, which is what the
+        # clamp was legitimately for.
+        residual = standard_uncertainty(
+            np.array([-1e-17]),
+            np.array([2.0]),
+            terms=3,
+            obj="u",
+            operation="op",
+        )
+        assert residual[0] == 0.0
+
+        # NaN passes through, reproducing the previous np.maximum
+        # behavior for cells that select masked out.
+        blank = standard_uncertainty(
+            np.array([np.nan]),
+            np.array([np.nan]),
+            terms=3,
+            obj="u",
+            operation="op",
+        )
+        assert np.isnan(blank[0])
+
+    def test_itaca_001_perfect_anticorrelation_still_clamps_not_raises(self) -> None:
+        """r = -1 with equal u is exact cancellation, not a defect.
+
+        Note that test_difference_anticorrelated above is NOT this
+        case: with u_a = 3 and u_b = 4 the sum is 9 + 16 - 24 = 1. The
+        cancellation needs u_a == u_b, which only this test and the
+        Hypothesis property below draw. This pins the materiality
+        threshold against a regression that would make it too tight.
+        """
+        db = _frame().set_uncertainty({"a": 3.0, "b": 3.0})
+        db = db.set_correlation({("a", "b"): -1.0})
+        result = db.compute("f = a + b")
+        assert result.uncertainty is not None
+        assert result.uncertainty.systematic["f"][0] == pytest.approx(0.0, abs=1e-9)

@@ -150,3 +150,25 @@ class TestIntegrateUncertainty:
         assert result.uncertainty.random["CT"][0] == pytest.approx(
             0.1 * np.sqrt(0.25 + 1.0 + 1.0 + 0.25)
         )
+
+
+def test_itaca_025_integrate_drops_pairs_of_dropped_variables() -> None:
+    """REV-001 ITACA-025a: integrate keeps one variable and kept every pair.
+
+    Measured before the fix: after integrating only `a`, the frame
+    carried vars ['a'] and still held corr(a, b) and corr(b, c), both
+    naming variables the frame no longer had. The result was a legal
+    object that violated its own invariant.
+    """
+    arr = np.column_stack(
+        [[0.0, 1.0, 2.0], [1.0, 2.0, 3.0], [2.0, 3.0, 4.0], [3.0, 4.0, 5.0]]
+    )
+    db = itc.load(arr, names=["i", "a", "b", "c"]).pivot(dims=["i"])
+    db = db.set_uncertainty({"a": 0.1, "b": 0.2, "c": 0.3})
+    db = db.set_correlation({("a", "b"): 0.5, ("b", "c"): 0.2})
+
+    out = db.integrate("a", over="i")
+
+    assert list(out.vars) == ["a"]
+    assert out.correlation is None
+    assert "correlation=dropped" in out.history[-1].operation

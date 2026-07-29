@@ -201,3 +201,29 @@ class TestFitvalue:
         )
         with pytest.raises(UncertaintyError, match="OQ-24"):
             db.fitvalue(coef_dims=["alpha_coef"], at={"alpha": [2.0]})
+
+
+def test_itaca_025g_fitmodel_and_fitvalue_drop_correlation() -> None:
+    """REV-001 ITACA-025g: both keep the names and replace what they hold.
+
+    After fitmodel the arrays are polynomial coefficients; after
+    fitvalue they are values evaluated from coefficients. Because the
+    variable names do not change, a declared pair keyed on a name would
+    silently retarget onto a different quantity, which is exactly the
+    failure this finding group is about. Reachable with no uncertainty,
+    which both operations refuse (OQ-24).
+    """
+    arr = np.column_stack(
+        [[0.0, 1.0, 2.0, 3.0], [1.0, 3.0, 5.0, 7.0], [2.0, 4.0, 6.0, 8.0]]
+    )
+    db = itc.load(arr, names=["x", "a", "b"]).pivot(dims=["x"])
+    db = db.set_correlation({("a", "b"): 0.4})
+
+    coeffs = db.fitmodel(along="x", deg=1)
+    assert coeffs.correlation is None
+    assert "correlation=dropped" in coeffs.history[-1].operation
+
+    redeclared = coeffs.set_correlation({("a", "b"): 0.4})
+    values = redeclared.fitvalue(coef_dims=["x_coef"], at={"x": [0.5, 1.5]})
+    assert values.correlation is None
+    assert "correlation=dropped" in values.history[-1].operation

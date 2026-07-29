@@ -110,3 +110,56 @@ class TestCoordSystem:
         assert isinstance(Polar(), CoordSystem)
         assert Cartesian().name == "cartesian"
         assert Polar().name == "polar"
+
+
+class TestNonPSDCorrelation:
+    """REV-001 ITACA-001a: the pairwise bound is not the whole contract."""
+
+    def test_itaca_001_non_psd_correlation_is_refused(self) -> None:
+        """Three variables at r = -0.9 each are refused as a set.
+
+        Measured before the fix: every pair satisfies |r| <= 1 and the
+        set was accepted, while the assembled matrix has eigenvalue
+        -0.8 and the variance of a + b + c comes out at -2.4, which the
+        propagation clamp then reported as certainty.
+        """
+        with pytest.raises(CorrelationMatrixError) as excinfo:
+            CorrelationMatrix(
+                pairs={("a", "b"): -0.9, ("a", "c"): -0.9, ("b", "c"): -0.9}
+            )
+        message = str(excinfo.value)
+        assert "positive semidefinite" in message
+        assert "-0.8" in message
+        for name in ("a", "b", "c"):
+            assert f"'{name}'" in message
+        # It is the assembled matrix that fired, not the pairwise bound:
+        # every individual coefficient here is inside [-1, 1].
+        assert "|r|" not in message
+
+    @pytest.mark.parametrize(
+        "pairs",
+        [
+            # The exact PSD boundary: 1.5*I - 0.5*J has smallest
+            # eigenvalue 0, and eigvalsh returns about -2e-16 for it.
+            {("a", "b"): -0.5, ("a", "c"): -0.5, ("b", "c"): -0.5},
+            {("a", "b"): -1.0},
+            {("a", "b"): 1.0},
+            # Two independent 2x2 blocks, spectrum {0.1, 1.9} twice.
+            {("a", "b"): 0.9, ("c", "d"): -0.9},
+        ],
+    )
+    def test_itaca_001_psd_boundary_and_two_variable_cases_accepted(
+        self, pairs: dict[tuple[str, str], float]
+    ) -> None:
+        """The tolerance is not over-tight: legitimate extremes construct."""
+        assert CorrelationMatrix(pairs=pairs).pairs
+
+    def test_itaca_025_restrict_and_without_are_principal_submatrices(self) -> None:
+        """The two policy helpers keep only what they say and never raise."""
+        corr = CorrelationMatrix(pairs={("a", "b"): 0.5, ("b", "c"): 0.2})
+        assert sorted(corr.restrict({"a", "b"}).pairs) == [("a", "b")]
+        assert sorted(corr.without({"a"}).pairs) == [("b", "c")]
+        # None, not an empty matrix: that is the documented spelling of
+        # independence and hashes identically (REQ-103).
+        assert corr.restrict({"a"}) is None
+        assert corr.without({"a", "b", "c"}) is None

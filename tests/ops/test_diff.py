@@ -168,3 +168,26 @@ class TestDiffUncertainty:
         )
         with pytest.raises(UncertaintyError):
             dataclasses.replace(parabola, uncertainty=unc).diff(along="alpha")
+
+
+def test_itaca_025_diff_drops_correlation_on_rename() -> None:
+    """REV-001 ITACA-025b: every variable is renamed and the pairs were kept.
+
+    Reachable without uncertainty, which diff refuses (REQ-98, OQ-18),
+    because a correlation may be declared on a frame that carries none.
+    The coefficient between two derivatives is not the coefficient
+    between their values, so the pairs are dropped rather than renamed
+    onto the new channels, which would fabricate a number nobody
+    derived.
+    """
+    arr = np.column_stack(
+        [[0.0, 1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0], [2.0, 4.0, 6.0, 8.0]]
+    )
+    db = itc.load(arr, names=["i", "a", "b"]).pivot(dims=["i"])
+    db = db.set_correlation({("a", "b"): 0.4})
+
+    out = db.diff(along="i")
+
+    assert sorted(out.vars) == ["da_di", "db_di"]
+    assert out.correlation is None
+    assert "correlation=dropped" in out.history[-1].operation

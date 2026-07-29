@@ -39,6 +39,83 @@ def _normalize(
     return MappingProxyType(normalized)
 
 
+def standard_uncertainty(
+    variance: NDArray[Any],
+    scale: NDArray[Any],
+    *,
+    terms: int,
+    obj: str,
+    operation: str,
+) -> NDArray[Any]:
+    """Take the square root of a variance, refusing a material negative.
+
+    A propagated variance can come out slightly negative from
+    floating-point cancellation, which is a rounding artifact and is
+    clamped to zero. It can also come out materially negative, which
+    means the covariance structure that produced it was not positive
+    semidefinite. Those two cases are not the same thing, and clamping
+    both reports an impossible covariance as certainty (REQ-40,
+    REQ-41). The threshold separating them scales with the size of the
+    terms that were summed, so it tracks the arithmetic rather than
+    guessing an absolute epsilon.
+
+    Parameters
+    ----------
+    variance : numpy.ndarray
+        The propagated variance, which may be negative.
+    scale : numpy.ndarray
+        The independence-form variance, that is the sum of the squared
+        individual terms with no cross terms. Always non-negative, in
+        variance units, and zero only when every term is zero.
+    terms : int
+        Number of summed terms, diagonal plus cross. Sets how much
+        cancellation error the sum could have accumulated.
+    obj : str
+        The object involved, for the error message (REQ-81).
+    operation : str
+        The operation attempted, for the error message (REQ-81).
+
+    Returns
+    -------
+    numpy.ndarray
+        The standard uncertainty, with rounding-scale negatives taken
+        as zero. NaN cells pass through unchanged, which reproduces
+        the previous ``np.maximum`` behavior: NaN arrives from NaN
+        data and NaN uncertainty arrays, for instance the cells
+        ``select`` masks out.
+
+    Raises
+    ------
+    UncertaintyError
+        A variance is negative by more than the rounding scale.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> standard_uncertainty(
+    ...     np.array([4.0]), np.array([4.0]), terms=1, obj="u", operation="op"
+    ... )
+    array([2.])
+    """
+    tolerance = terms * float(np.finfo(float).eps) * np.abs(scale)
+    material = variance < -tolerance
+    if np.any(material):
+        flat = np.ravel(variance)
+        worst = int(np.nanargmin(np.where(material, variance, np.inf)))
+        broadcast_scale = np.ravel(np.broadcast_to(scale, np.shape(variance)))
+        raise UncertaintyError(
+            obj,
+            f"{operation} produced variance {float(flat[worst]):.6g} against a "
+            f"term scale of {float(broadcast_scale[worst]):.6g}, so the "
+            f"standard uncertainty is not a real number",
+            "check the declared correlations and any cross_correlation for a "
+            "covariance that is not positive semidefinite; a rounding-scale "
+            "negative residual is clamped, a material one is not "
+            "(REQ-40, REQ-41)",
+        )
+    return np.asarray(np.sqrt(np.where(variance < 0.0, 0.0, variance)))
+
+
 @dataclass(frozen=True, eq=False)
 class UncFrame:
     """Two-component standard-uncertainty mirror of a VarFrame.

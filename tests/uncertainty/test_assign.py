@@ -95,3 +95,51 @@ class TestSetCorrelation:
         result = db.set_correlation({("FZ", "V"): 0.3})
         assert result.history.last is not None
         assert result.history.last.operation.startswith("set_correlation(")
+
+
+class TestCorrelationDeclarationValidity:
+    """REV-001 ITACA-001a and ITACA-028, both reached through the public
+    API: canonicalizing before validating hid two different defects."""
+
+    def test_itaca_001_set_correlation_refuses_non_psd_merge(self) -> None:
+        """The check applies to the ACCUMULATED store, not to one call.
+
+        No single call here declares anything out of range; the third
+        one completes a triple whose assembled matrix has eigenvalue
+        1 + 2r = -0.2. Coefficients are -0.6 rather than -0.9 on
+        purpose: at -0.9 the SECOND call would already be refused
+        (determinant 1 - 0.81 - 0.81 < 0), which would not test the
+        merge at all.
+        """
+        arr = np.column_stack([[10.0, 20.0], [1.0, 2.0], [3.0, 4.0]])
+        db = itc.load(arr, names=["a", "b", "c"])
+        db = db.set_correlation({("a", "b"): -0.6})
+        db = db.set_correlation({("a", "c"): -0.6})
+        with pytest.raises(CorrelationMatrixError, match="positive semidefinite"):
+            db.set_correlation({("b", "c"): -0.6})
+
+    def test_itaca_028_conflicting_orientations_in_one_call_rejected(
+        self, db: VarFrame
+    ) -> None:
+        """Two orientations of one pair in one call is a contradiction.
+
+        Measured before the fix: the spec was canonicalized into a dict
+        before the conflict detector ever saw it, so the two keys
+        collapsed to one and 0.9 won by dictionary order. The detector
+        existed and was unreachable from this entry point.
+        """
+        with pytest.raises(CorrelationMatrixError) as excinfo:
+            db.set_correlation({("FZ", "V"): 0.1, ("V", "FZ"): 0.9})
+        message = str(excinfo.value)
+        assert "conflicting declarations" in message
+        assert "0.1" in message
+        assert "0.9" in message
+
+    def test_itaca_028_consistent_duplicate_orientations_still_collapse(
+        self, db: VarFrame
+    ) -> None:
+        """Agreeing duplicates are not a conflict; they are one pair."""
+        out = db.set_correlation({("FZ", "V"): 0.4, ("V", "FZ"): 0.4})
+        assert out.correlation is not None
+        assert sorted(out.correlation.pairs) == [("FZ", "V")]
+        assert out.correlation.get("V", "FZ") == 0.4

@@ -18,6 +18,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.errors import DataError, VectorGroupError
+from itaca.core.uncframe import standard_uncertainty
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import content_of, rebuild
 
@@ -145,20 +146,42 @@ def translate_moments(
         cov = (u[..., :, None] * u[..., None, :]) * corr
         cov_m = np.einsum("ki,...ij,lj->...kl", jac, cov, jac)
         var = np.einsum("...kk->...k", cov_m)
+        diagonal = np.einsum("ki,...i->...k", jac**2, u**2)
         for i, comp in enumerate(moment_comps):
-            component[comp] = np.sqrt(np.maximum(var[..., i], 0.0))
+            component[comp] = standard_uncertainty(
+                var[..., i],
+                diagonal[..., i],
+                terms=36,
+                obj=f"{label} uncertainty of '{comp}'",
+                operation="translate_moments rigid transfer",
+            )
 
+    # Only the moment components are rewritten; the force components are
+    # untouched, so a blanket drop would discard a still-valid
+    # declaration. Pairs naming a moment no longer describe what that
+    # name holds.
+    new_correlation = (
+        db.correlation.without(set(moment_comps))
+        if db.correlation is not None
+        else None
+    )
     axis_note = f", axis='{axis}'" if axis is not None else ""
     operation = (
         f"translate_moments(to_point={list(to_pt)}, "
         f"from_point={list(from_pt)}{axis_note})"
     )
+    if db.correlation is not None and (
+        new_correlation is None
+        or dict(new_correlation.pairs) != dict(db.correlation.pairs)
+    ):
+        operation += ", correlation=dropped"
     return rebuild(
         db,
         content,
         operation=operation,
         comment=comment,
         history=history,
+        correlation=new_correlation,
         call="translate_moments",
         replay_kwargs={
             "to_point": to_point,

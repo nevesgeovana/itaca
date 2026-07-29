@@ -94,6 +94,33 @@ def _validate_inputs(frames: Sequence[VarFrame], along: str) -> None:
                 "concat cannot mix inputs with and without uncertainty on a variable",
                 "assign the component on every input or on none (DD-18)",
             )
+    # concat only stacks points along `along`; no value changes, so a
+    # declared coefficient survives exactly. What must not survive is
+    # ONE input's declaration standing in for all of them, which is what
+    # rebuilding on frames[0] silently did. Compare the pair dicts, never
+    # the CorrelationMatrix objects, which are eq=False and so compare by
+    # identity.
+    stores = [
+        dict(frame.correlation.pairs) if frame.correlation is not None else {}
+        for frame in frames
+    ]
+    if any(store != stores[0] for store in stores[1:]):
+        key_sets = [set(store) for store in stores]
+        common = key_sets[0].intersection(*key_sets[1:])
+        union = key_sets[0].union(*key_sets[1:])
+        symmetric = sorted(union - common)
+        differing = sorted(
+            pair
+            for pair in common
+            if any(store[pair] != stores[0][pair] for store in stores[1:])
+        )
+        raise UncertaintyError(
+            f"declared correlation pairs differ across inputs: "
+            f"{symmetric or differing}",
+            "concat cannot mix inputs with different correlation declarations",
+            "declare the same pairs with the same coefficients on every "
+            "input, or drop them before concatenating (REQ-40, DD-18)",
+        )
 
 
 def concat(

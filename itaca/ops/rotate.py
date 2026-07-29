@@ -26,6 +26,7 @@ from numpy.typing import NDArray
 
 from itaca.core.axes import Axis
 from itaca.core.errors import DataError, UncertaintyError, VectorGroupError
+from itaca.core.uncframe import standard_uncertainty
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import content_of, rebuild
 from itaca.utils.units import convert
@@ -218,7 +219,9 @@ def rotate(
     l_tb, dl_tb, tgt_unc = _dcm_fields(db, target, shape)
 
     source_cache: dict[str, tuple[_Array, dict[str, _Array], Any]] = {}
+    rotated_names: set[str] = set()
     for comps, source_name in groups.values():
+        rotated_names.update(comps)
         if source_name not in source_cache:
             source_cache[source_name] = _dcm_fields(
                 db, db.axes.resolve(source_name), shape
@@ -243,13 +246,35 @@ def rotate(
             cov = (u[..., :, None] * u[..., None, :]) * corr
             cov_t = np.einsum("...kj,...jl,...ml->...km", r, cov, r)
             var = np.einsum("...kk->...k", cov_t).copy()
-            var += _angle_terms(
+            angle_extra = _angle_terms(
                 label, comps, v, l_tb, dl_tb, tgt_unc, l_sb, dl_sb, src_unc
             )
+            var += angle_extra
+            diagonal = np.einsum("...kj,...j->...k", r**2, u**2) + angle_extra
             for i, comp in enumerate(comps):
-                component[comp] = np.sqrt(np.maximum(var[..., i], 0.0))
+                component[comp] = standard_uncertainty(
+                    var[..., i],
+                    diagonal[..., i],
+                    terms=9,
+                    obj=f"{label} uncertainty of '{comp}'",
+                    operation=f"rotate to '{target_axis}'",
+                )
 
+    # The rotated components' mutual correlation is the off-diagonal of
+    # cov_t, which varies per grid cell; the pair store holds one scalar
+    # per pair and cannot represent it. Carrying the pre-rotation value
+    # would be a false statement about the new frame, so declared pairs
+    # among rotated components are dropped rather than approximated
+    # (OQ-23). Pairs touching no rotated component survive.
+    new_correlation = (
+        db.correlation.without(rotated_names) if db.correlation is not None else None
+    )
     detail = f"target='{target_axis}', groups={sorted(groups)}"
+    if db.correlation is not None and (
+        new_correlation is None
+        or dict(new_correlation.pairs) != dict(db.correlation.pairs)
+    ):
+        detail += ", correlation=dropped"
     operation = f"rotate({detail})"
     return rebuild(
         db,
@@ -257,6 +282,7 @@ def rotate(
         operation=operation,
         comment=comment,
         history=history,
+        correlation=new_correlation,
         call="rotate",
         replay_kwargs={
             "target_axis": target_axis,

@@ -250,3 +250,26 @@ class TestInterpolateBookkeeping:
     def test_original_untouched(self, ramp: VarFrame) -> None:
         ramp.interpolate({"alpha": [0.5]})
         assert ramp.shape == (3,)
+
+
+def test_itaca_025d_axis_translation_drops_pairs_naming_the_target() -> None:
+    """REV-001 ITACA-025d: the target variable becomes a dimension.
+
+    axisTranslation moves `to` out of vars, so its declared pairs no
+    longer name a variable of the frame. The drop is scoped: a pair
+    between two variables that both survive is untouched. The operation
+    already had a channel for recording exactly this kind of drop, for
+    the uncertainty half.
+    """
+    x = np.array([0.0, 1.0, 2.0, 3.0])
+    arr = np.column_stack([x, 1.0 + 2.0 * x, 3.0 * x, 4.0 * x])
+    db = itc.load(arr, names=["x", "y", "z", "z2"]).pivot(dims=["x"])
+    db = db.set_correlation({("y", "z"): 0.5, ("z", "z2"): 0.1})
+
+    out = db.interpolate(axisTranslation={"from": "x", "to": "y"})
+
+    assert "y" in out.dims
+    assert out.correlation is not None
+    assert not any("y" in pair for pair in out.correlation.pairs)
+    assert out.correlation.get("z", "z2") == 0.1
+    assert "axis_correlation=dropped" in out.history[-1].operation

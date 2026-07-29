@@ -22,6 +22,7 @@ from itaca.core.coords import Cartesian, CoordSystem
 from itaca.core.correlation import CorrelationMatrix
 from itaca.core.dimension import Dimension
 from itaca.core.errors import (
+    CorrelationKeyError,
     DataError,
     ProvenanceError,
     UncertaintyError,
@@ -147,6 +148,19 @@ class VarFrame:
                         f"dimension shape {expected}",
                         "tags mirror the variable shape exactly (SRS 4.3)",
                     )
+        if self.correlation is not None:
+            for name_a, name_b in self.correlation.pairs:
+                for name in (name_a, name_b):
+                    if name not in variables:
+                        raise CorrelationKeyError(
+                            f"correlation pair ('{name_a}', '{name_b}')",
+                            f"attachment to a VarFrame whose variables do not "
+                            f"include '{name}'",
+                            f"declare correlation only between present "
+                            f"variables {sorted(variables)}; an operation that "
+                            f"drops or renames a variable must drop its pairs "
+                            f"too (REQ-40)",
+                        )
         object.__setattr__(self, "dims", dims)
         object.__setattr__(self, "vars", variables)
 

@@ -102,15 +102,20 @@ def set_correlation(
                     "set_correlation references a variable that is absent",
                     f"available variables: {list(db.vars)}",
                 )
-    canonical_new = {
-        (a, b) if a < b else (b, a): float(r) for (a, b), r in spec.items()
-    }
+    # Delegate canonicalization to CorrelationMatrix rather than
+    # repeating it here. Canonicalizing first made the conflict detector
+    # unreachable from this entry point: {('a','b'): 0.1, ('b','a'): 0.9}
+    # collapsed to one key and the later value won by dictionary order.
+    # Validating what the caller actually passed catches it, and
+    # validating the MERGED store applies the positive-semidefinite check
+    # to the accumulated declaration, which no single call can see.
+    declared = CorrelationMatrix(pairs=spec)
     merged = (
-        {**dict(db.correlation.pairs), **canonical_new}
+        {**dict(db.correlation.pairs), **dict(declared.pairs)}
         if db.correlation is not None
-        else canonical_new
+        else dict(declared.pairs)
     )
-    operation = f"set_correlation(pairs={sorted(canonical_new)})"
+    operation = f"set_correlation(pairs={sorted(declared.pairs)})"
     return db._derive(
         operation=operation,
         comment=comment,
@@ -120,7 +125,7 @@ def set_correlation(
         # recorded as [a, b, r] triples and rebuilt on replay.
         step=PipelineStep(
             call="set_correlation",
-            kwargs={"spec": [[a, b, r] for (a, b), r in canonical_new.items()]},
+            kwargs={"spec": [[a, b, r] for (a, b), r in declared.pairs.items()]},
             comment=comment,
         ),
     )

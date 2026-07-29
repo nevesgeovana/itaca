@@ -6,7 +6,11 @@ import numpy as np
 import pytest
 
 import itaca as itc
-from itaca.core.errors import DataError, OperatingModeMixError
+from itaca.core.errors import (
+    CorrelationMatrixError,
+    DataError,
+    OperatingModeMixError,
+)
 from itaca.core.historyframe import HistoryFrame
 from itaca.core.varframe import VarFrame
 
@@ -120,3 +124,62 @@ class TestCombineTags:
         result = tagged_left.combine(tagged_right, op="sum")
         assert result.tags is not None
         assert list(result.tags.tags["CT"]) == [-1, 0]
+
+
+class TestCombineCorrelationAndCoefficient:
+    """REV-001 ITACA-025f and ITACA-001c."""
+
+    def test_itaca_001c_cross_correlation_out_of_range_rejected(
+        self, left: VarFrame, right: VarFrame
+    ) -> None:
+        """The REQ-40 bound applies when r arrives as a keyword too.
+
+        Measured before the fix: cross_correlation=5.0 was accepted and
+        produced a variance the clamp then reported as a plausible
+        uncertainty. This is the one propagation site whose correlation
+        does not arrive through a validated CorrelationMatrix, so it is
+        the one that still needed its own bound check.
+        """
+        left = left.set_uncertainty({"CT": 0.1})
+        right = right.set_uncertainty({"CT": 0.2})
+        with pytest.raises(CorrelationMatrixError) as excinfo:
+            left.combine(right, op="sum", cross_correlation=-2.0)
+        message = str(excinfo.value)
+        assert "-2.0" in message
+        assert "|r| <= 1" in message
+
+    @pytest.mark.parametrize("coefficient", [-1.0, 0.0, 1.0])
+    def test_itaca_001c_cross_correlation_bounds_are_inclusive(
+        self, left: VarFrame, right: VarFrame, coefficient: float
+    ) -> None:
+        """The endpoints stay legal; only outside the interval raises."""
+        left = left.set_uncertainty({"CT": 0.1})
+        right = right.set_uncertainty({"CT": 0.2})
+        out = left.combine(right, op="sum", cross_correlation=coefficient)
+        assert out.uncertainty is not None
+
+    def test_itaca_025f_combine_drops_correlation_from_both_inputs(
+        self, left: VarFrame, right: VarFrame
+    ) -> None:
+        """combine recomputes every value, so no coefficient survives.
+
+        Measured before the fix: db.correlation was carried and
+        other.correlation was discarded, silently, so the result
+        asserted a relationship between quantities that no longer
+        existed. Identical declarations on both sides are NOT a special
+        case: r(a_new, b_new) is not r(a, b) even for op='sum', by
+        Cauchy-Schwarz, with equality only under a proportionality
+        condition combine cannot check.
+        """
+        arr = np.column_stack([[1.0, 2.0], [3.0, 4.0]])
+        first = itc.load(arr, names=["CT", "CP"]).set_correlation({("CT", "CP"): 0.4})
+        second = itc.load(arr, names=["CT", "CP"])
+
+        out = first.combine(second, op="sum")
+        assert out.correlation is None
+        assert "correlation=dropped" in out.history[-1].operation
+
+        both = second.set_correlation({("CT", "CP"): 0.4})
+        agreed = first.combine(both, op="sum")
+        assert agreed.correlation is None
+        assert "correlation=dropped" in agreed.history[-1].operation

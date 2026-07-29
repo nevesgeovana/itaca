@@ -132,3 +132,74 @@ class TestDebug:
         assert "tokens" in out.lower()
         assert "CT" in out
         assert "partial" in out.lower()
+
+
+class TestOverwriteClearsPriorState:
+    """REV-001 ITACA-024: an overwrite recorded the operation while the
+    mathematical state stayed the one the overwrite replaced."""
+
+    @staticmethod
+    def _frame() -> "VarFrame":
+        arr = np.column_stack([[0.0, 1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0]])
+        return itc.load(arr, names=["a", "b"])
+
+    def test_itaca_024_constant_recompute_clears_stale_uncertainty_and_pair(
+        self,
+    ) -> None:
+        """`a = 42.0` makes a exact, so its old u and pairs must go.
+
+        Measured before the fix: u(a) survived at 0.1 describing values
+        that no longer existed, and corr(a, b) survived at 0.7 naming a
+        variable whose meaning had been replaced. No error, no warning.
+        """
+        db = self._frame().set_uncertainty({"a": 0.1, "b": 0.2})
+        db = db.set_correlation({("a", "b"): 0.7})
+        out = db.compute("a = 42.0")
+
+        assert out.uncertainty is not None  # b still carries its own
+        assert "a" not in out.uncertainty.systematic
+        assert "a" not in out.uncertainty.random
+        assert out.uncertainty.systematic["b"] == pytest.approx(0.2)
+        assert out.correlation is None
+        assert "correlation=dropped" in out.history[-1].operation
+
+    def test_itaca_024_recompute_on_a_frame_whose_only_uncertainty_was_the_target(
+        self,
+    ) -> None:
+        """Clearing the last carrier returns to None, not to an empty mirror.
+
+        REQ-91 says the UncFrame is absent until something is assigned.
+        The state hash is identical either way, so this assertion is the
+        only thing that can see the difference.
+        """
+        db = self._frame().set_uncertainty({"a": 0.1})
+        out = db.compute("a = 42.0")
+        assert out.uncertainty is None
+
+    def test_itaca_024b_component_without_a_carrier_is_cleared_not_left_stale(
+        self,
+    ) -> None:
+        """A component the new expression does not derive is deleted.
+
+        `a = b * 0.0 + 7.0` has one carrier, b, which declares only a
+        systematic component. The derived systematic u(a) is therefore
+        an exact zero, and the random component has no carrier at all,
+        so a's old random uncertainty must not survive.
+        """
+        db = self._frame().set_uncertainty({"a": 0.1})
+        db = db.set_uncertainty({"a": 0.3}, component="random")
+        db = db.set_uncertainty({"b": 0.2})
+        out = db.compute("a = b * 0.0 + 7.0")
+
+        assert out.uncertainty is not None
+        assert out.uncertainty.systematic["a"] == pytest.approx(0.0)
+        assert "a" not in out.uncertainty.random
+
+    def test_itaca_024_new_target_keeps_unrelated_pairs(self) -> None:
+        """The drop is scoped to the overwritten name, not blanket."""
+        db = self._frame().set_uncertainty({"a": 0.1, "b": 0.2})
+        db = db.set_correlation({("a", "b"): 0.7})
+        out = db.compute("c = a + b")
+        assert out.correlation is not None
+        assert out.correlation.get("a", "b") == 0.7
+        assert not any("c" in pair for pair in out.correlation.pairs)

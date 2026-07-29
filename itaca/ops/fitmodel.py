@@ -9,6 +9,13 @@ fitmodel row, so the operation raises when uncertainty is present
 rather than guessing (DD-18); the gap is queued for the author
 (OQ-24).
 
+Both operations keep the variable names and replace what those names
+hold: after ``fitmodel`` the arrays are polynomial coefficients, and
+after ``fitvalue`` they are values evaluated from coefficients. A
+declared correlation keyed on a name would therefore retarget silently
+onto a different quantity, so declared pairs are dropped and the drop
+is recorded (REQ-18, REQ-40).
+
 ``fitvalue`` is the forward evaluation ``sum_k c_k t^k``, exact and
 linear in the coefficients. Because a fitmodel output never carries
 coefficient uncertainty until OQ-24 is resolved, ``fitvalue`` defers
@@ -135,13 +142,17 @@ def fitmodel(
     ]
     content.dims = dict(dims)
     content.tags = new_tags if content.tags is not None else None
-    operation = f"fitmodel(along='{along}', deg={deg})"
+    detail = f"along='{along}', deg={deg}"
+    if db.correlation is not None:
+        detail += ", correlation=dropped"
+    operation = f"fitmodel({detail})"
     return rebuild(
         db,
         content,
         operation=operation,
         comment=comment,
         history=history,
+        correlation=None,
         call="fitmodel",
         replay_kwargs={"along": along, "deg": deg},
     )
@@ -250,13 +261,17 @@ def fitvalue(
             "(check for a typo) (REQ-32)",
         )
     at_detail = {name: np.atleast_1d(np.asarray(v)).tolist() for name, v in at.items()}
-    operation = f"fitvalue(coef_dims={coef_dims}, at={at_detail})"
+    detail = f"coef_dims={coef_dims}, at={at_detail}"
+    if db.correlation is not None:
+        detail += ", correlation=dropped"
+    operation = f"fitvalue({detail})"
     return rebuild(
         db,
         content,
         operation=operation,
         comment=comment,
         history=history,
+        correlation=None,
         call="fitvalue",
         replay_kwargs={"coef_dims": coef_dims, "at": at},
     )

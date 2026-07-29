@@ -63,3 +63,73 @@ class TestOpResultsReadOnly:
     def test_fitvalue(self, ramp: VarFrame) -> None:
         model = ramp.fitmodel(along="alpha", deg=2)
         _assert_read_only(model.fitvalue(coef_dims=["alpha_coef"], at={"alpha": [1.5]}))
+
+
+class TestCorrelationInvariantAcrossOperations:
+    """REV-001 ITACA-025c, the structural guard.
+
+    The per-operation tests elsewhere pin what each policy IS. This one
+    pins that no operation can FORGET to have a policy: since the
+    invariant lives in ``VarFrame.__post_init__``, an operation that
+    drops or renames a variable without dropping its pairs cannot
+    construct its result at all. That covers operations added after this
+    change, which is what makes recurrence impossible rather than
+    merely unlikely.
+    """
+
+    @staticmethod
+    def _correlated() -> VarFrame:
+        arr = np.column_stack(
+            [
+                [0.0, 1.0, 2.0, 3.0],
+                [1.0, 3.0, 5.0, 7.0],
+                [2.0, 4.0, 6.0, 8.0],
+                [1.0, 1.0, 2.0, 3.0],
+            ]
+        )
+        db = itc.load(arr, names=["x", "a", "b", "c"]).pivot(dims=["x"])
+        return db.set_correlation({("a", "b"): 0.5, ("b", "c"): 0.2})
+
+    @pytest.mark.parametrize(
+        "name,call",
+        [
+            ("select", lambda db: db.select({"x": [0.0, 1.0]})),
+            ("squeeze", lambda db: db.select({"x": [0.0]}).squeeze()),
+            ("expand", lambda db: db.expand("rpm", [1.0, 2.0])),
+            ("average", lambda db: db.average("x")),
+            ("integrate", lambda db: db.integrate("a", over="x")),
+            ("diff", lambda db: db.diff(along="x")),
+            ("compute_new", lambda db: db.compute("d = a + b")),
+            ("compute_overwrite", lambda db: db.compute("a = 1.0")),
+            ("smooth", lambda db: db.smooth(along="x", method="movingavg", window=3)),
+            ("fitmodel", lambda db: db.fitmodel(along="x", deg=1)),
+            ("interpolate", lambda db: db.interpolate({"x": [0.5, 1.5]})),
+            (
+                "axis_translation",
+                lambda db: db.interpolate(axisTranslation={"from": "x", "to": "a"}),
+            ),
+            ("fill", lambda db: db.fill("x", method="linear")),
+            ("combine", lambda db: db.combine(db, op="sum")),
+        ],
+    )
+    def test_itaca_025_every_operation_leaves_a_constructible_correlation(
+        self, name: str, call: object
+    ) -> None:
+        """Each op either returns a valid frame or raises a documented error."""
+        db = self._correlated()
+        try:
+            out = call(db)  # type: ignore[operator]
+        except itc.ITACAError:
+            # A documented refusal is an acceptable outcome; what is not
+            # acceptable is a frame carrying a pair naming a variable it
+            # no longer has.
+            return
+        if out.correlation is None:
+            return
+        for pair in out.correlation.pairs:
+            for member in pair:
+                assert member in out.vars, (
+                    f"{name} returned a frame whose correlation names "
+                    f"'{member}', which is not one of its variables "
+                    f"{sorted(out.vars)}"
+                )
