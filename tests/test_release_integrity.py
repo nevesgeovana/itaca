@@ -143,6 +143,72 @@ def test_the_release_gate_checker_had_something_to_check() -> None:
     assert "scanned 0 workflow file(s)" not in done.stdout, done.stdout
 
 
+def test_r3_ita_001_every_caller_grants_what_the_called_gate_needs() -> None:
+    """`R3-ITA-001`: a caller must grant `contents: read` to a gate that
+    checks out.
+
+    Measured before the fix: `release.yml` declared `id-token: write` and
+    nothing else, while `release_gate.yml` runs `actions/checkout` three
+    times. Declaring any permission sets every undeclared one to `none`,
+    and a reusable workflow cannot exceed what its caller granted, so the
+    only path a tag would take could not check out. Nothing caught it,
+    because the green run on that commit came from `ci.yml`, a different
+    caller that does grant it, and the publish jobs it skipped were the
+    ones that would have exercised this caller.
+
+    The rule generalizes past this repository and belongs in the shared
+    kit next to `check_release_gate.py`; what lives here is its
+    application, which is the half this repository owns.
+
+    This assertion is a static check, and static checks are exactly what
+    this finding shows to be insufficient on their own. It is the
+    regression guard; the closure evidence is a canary run recorded in
+    the CHK-1 remediation report.
+    """
+    yaml = pytest.importorskip("yaml")
+    workflows = {
+        path.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in sorted(_WORKFLOWS.glob("*.yml"))
+    }
+    assert workflows, f"no workflow files under {_WORKFLOWS}"
+
+    def checks_out(name: str) -> bool:
+        called = workflows.get(name)
+        if called is None:
+            return False
+        return "actions/checkout" in (_WORKFLOWS / name).read_text(encoding="utf-8")
+
+    callers = 0
+    for name, document in workflows.items():
+        for job_name, job in (document.get("jobs") or {}).items():
+            uses = job.get("uses", "")
+            if not isinstance(uses, str) or not uses.startswith("./.github/workflows/"):
+                continue
+            target = uses.rsplit("/", 1)[-1]
+            if not checks_out(target):
+                continue
+            callers += 1
+            granted = job.get("permissions")
+            assert granted is not None, (
+                f"{name}: job '{job_name}' calls {target}, which checks out, "
+                "and declares no permissions block"
+            )
+            assert granted.get("contents") == "read", (
+                f"{name}: job '{job_name}' calls {target}, which runs "
+                f"actions/checkout, but grants {dict(granted)}. Declaring any "
+                "permission sets the rest to none and a reusable workflow "
+                "cannot exceed its caller, so the checkout cannot succeed "
+                "(R3-ITA-001)."
+            )
+
+    # A clean pass must not mean nothing was inspected: the same
+    # self-skipping shape ITACA-006 was, one level up.
+    assert callers >= 2, (
+        f"only {callers} checkout-bearing caller(s) inspected; ci.yml and "
+        "release.yml are both expected to call the gate"
+    )
+
+
 class TestBuiltArtifactIdentity:
     """`ITACA-004`, `ITACA-014` and `BRF-048` live in the BUILT artifact,
     so that is what these assert. All three were invisible to a suite that

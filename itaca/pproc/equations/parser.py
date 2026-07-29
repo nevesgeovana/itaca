@@ -481,6 +481,46 @@ def _dependencies(source: Path, equation: Equation) -> set[str]:
     }
 
 
+def builtin_constants_read(equations: Iterable[Equation]) -> set[str]:
+    """Built-in expression constants the equations reference (REQ-44).
+
+    ``_dependencies`` subtracts these unconditionally, which is right for
+    "which channels must the frame supply" and wrong for "can this frame
+    feed this processor": a frame carrying a variable named ``e`` makes
+    every read of that name ambiguous, and the name never appears in
+    ``required_variables`` for anything to notice. Exposed so
+    ``EquationProcessor.validate`` can refuse the collision at the
+    lifecycle step that holds both the file and the frame (CHK1-001).
+
+    Parameters
+    ----------
+    equations : iterable of Equation
+        The equations to scan.
+
+    Returns
+    -------
+    set of str
+        The subset of ``pi`` and ``e`` any expression reads as a name.
+
+    Examples
+    --------
+    >>> builtin_constants_read([Equation("CDi", "CL ** 2 / (pi * AR * e)")])
+    {'e', 'pi'}
+    """
+    found: set[str] = set()
+    for equation in equations:
+        try:
+            tree = ast.parse(equation.expression, mode="eval")
+        except SyntaxError:  # pragma: no cover - _dependencies already refused
+            continue
+        found |= {
+            node.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and node.id in _EXPRESSION_CONSTANTS
+        }
+    return found
+
+
 def _resolve(
     source: Path,
     equations: tuple[Equation, ...],

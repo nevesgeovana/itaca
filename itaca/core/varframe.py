@@ -126,6 +126,26 @@ class VarFrame:
                     f"registration under the mapping key '{key}'",
                     "the mapping key must equal the object's name",
                 )
+        # The two namespaces must not intersect. Datapoint mode always
+        # creates the synthetic `datapoint` dimension and also accepted a
+        # column of that name, so one frame carried both: `select`
+        # resolved the dimension and never the variable, `to_csv` emitted
+        # a duplicate header the loader then refused to read back, and
+        # `to_pandas` lost one of the two columns to a dict-key
+        # overwrite. Enforced at the constructor, like the correlation
+        # invariant below, so no operation can build one either
+        # (R3-ITA-008).
+        shared = sorted(set(dims) & set(variables))
+        if shared:
+            raise DataError(
+                f"name(s) {shared}",
+                "construction of a VarFrame carrying each as BOTH a "
+                "dimension and a variable, which makes every reference to "
+                "the name ambiguous and loses one of the two on export",
+                "rename one of the pair; in datapoint mode the synthetic "
+                "dimension is called 'datapoint', so a column of that name "
+                "must be renamed on the way in (SRS 4.1.1, REQ-01)",
+            )
         expected = tuple(d.cardinality for d in dims.values())
         for key, var in variables.items():
             if var.values.shape != expected:

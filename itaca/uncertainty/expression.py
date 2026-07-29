@@ -320,6 +320,25 @@ def _convert(node: ast.expr, known: Set[str], text: str) -> Node:
             "use numbers, variables, and the REQ-44 operators",
         )
     if isinstance(node, ast.Name):
+        if node.id in _CONSTANTS and node.id in known:
+            # REQ-44 names pi and e as language constants but says
+            # nothing about precedence, and preferring the constant is
+            # the one option that returns a wrong number: `e` is the
+            # Oswald span efficiency factor, so a frame carrying it read
+            # Euler's number instead and neither the result nor History
+            # said so. Refusing is symmetric with DD-39, which already
+            # refuses the same collision for an .itceq [constants] name
+            # against a measured channel (CHK1-001).
+            raise DataError(
+                f"name '{node.id}' in expression '{text}'",
+                f"it is both a built-in expression constant "
+                f"({node.id} = {_CONSTANTS[node.id]!r}) and a variable the "
+                "VarFrame carries, so the expression would silently read "
+                "the constant and never the measurement",
+                f"rename the variable, or compute with the constant "
+                f"written out; a measured channel named '{node.id}' cannot "
+                "be referenced while the constant shadows it (REQ-44)",
+            )
         if node.id in _CONSTANTS:
             return Const(_CONSTANTS[node.id])
         if node.id in known:

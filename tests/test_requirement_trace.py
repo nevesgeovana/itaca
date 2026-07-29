@@ -41,6 +41,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRS = ROOT / "docs" / "srs" / "chapters"
 PACKAGE = ROOT / "itaca"
 SUITE = ROOT / "tests"
+_SELF = Path(__file__).resolve()
 
 _REQBOX = re.compile(r"\\begin\{reqbox\}\{(REQ-\d+)\}\{\\(\w+)\}")
 _CITATION = re.compile(r"\bREQ-\d+\b")
@@ -71,6 +72,15 @@ def build_trace() -> dict[str, Requirement]:
     }
     for root, bucket in ((PACKAGE, "code"), (SUITE, "tests")):
         for path in sorted(root.rglob("*.py")):
+            if path == _SELF:
+                # This module is ADMINISTRATION, not evidence. It walked
+                # itself, so every id in _UNREACHED_AT_LANE_CLOSE below
+                # counted as a test citation of the very requirement it
+                # records as unreached, and the unreached count came out
+                # 0 where the honest figure is 26. The gate was green
+                # exactly because the file listing the gaps was read as
+                # closing them (R3-ITA-010).
+                continue
             text = path.read_text(encoding="utf-8")
             for identifier in set(_CITATION.findall(text)):
                 citations[bucket][identifier].add(path.relative_to(ROOT).as_posix())
@@ -110,18 +120,23 @@ _UNREACHED_AT_LANE_CLOSE: frozenset[str] = frozenset(
         "REQ-104",
         "REQ-108",
         # Implemented in CONFIGURATION, which this walk cannot see:
-        # REQ-75 is --cov-fail-under=90, REQ-78 is mypy strict, REQ-93
-        # is the (absent) commitlint job, REQ-94 the changelog rule.
+        # REQ-75 is --cov-fail-under=90, REQ-93 is the (absent)
+        # commitlint job, REQ-94 the changelog rule.
         "REQ-09",
         "REQ-75",
-        "REQ-78",
-        "REQ-85",
         "REQ-87",
         "REQ-93",
         "REQ-94",
         "REQ-97",
     }
 )
+# REQ-78 and REQ-85 left this set when the walk stopped reading its own
+# administration: both are genuinely cited outside this file, so with
+# the contaminated evidence removed the honest measurement is 26
+# unreached, not 28 and not the 0 the gate used to report. Taking them
+# off is the deliberate, reviewable act the ratchet asks for, and it
+# TIGHTENS the guard, because a requirement outside this set is one the
+# reached-ratchet then protects.
 
 
 def _reached_at_lane_close() -> frozenset[str]:

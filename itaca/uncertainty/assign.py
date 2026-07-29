@@ -23,6 +23,37 @@ from itaca.core.varframe import VarFrame
 _COMPONENTS = ("systematic", "random")
 
 
+def _scalar(name: str, value: object, origin: str) -> float:
+    """Parse the declared magnitude, refusing anything that is not one.
+
+    ``float()`` was called unguarded on both branches, so a typo in a
+    percentage escaped as ``ValueError`` and a wrong type as
+    ``TypeError``, neither inside the hierarchy REQ-81 promises
+    (``ITACA-031``); and a parse that succeeded on ``nan`` or ``inf`` put
+    a non-finite standard uncertainty into the state, which then
+    propagated into every derived quantity (``R3-ITA-007``). UncFrame
+    already refuses a NEGATIVE one with a GUM citation; finiteness is the
+    same rule and was simply missing.
+    """
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as error:
+        raise UncertaintyError(
+            f"uncertainty {value!r} for '{name}'",
+            f"{origin} is not a number",
+            'use a float (absolute) or e.g. "0.05%" (relative, REQ-39)',
+        ) from error
+    if not np.isfinite(number):
+        raise UncertaintyError(
+            f"uncertainty {value!r} for '{name}'",
+            f"{origin} is not finite, and a non-finite standard uncertainty "
+            "would propagate into every quantity derived from this variable",
+            "declare a finite, non-negative standard uncertainty "
+            "(GUM clause 2.3.1, REQ-39)",
+        )
+    return number
+
+
 def _resolve_value(
     name: str, value: float | str, reference: NDArray[Any]
 ) -> NDArray[Any]:
@@ -33,9 +64,9 @@ def _resolve_value(
                 "string values must be relative percentages",
                 'use a float (absolute) or e.g. "0.05%" (relative, REQ-39)',
             )
-        fraction = float(value[:-1]) / 100.0
+        fraction = _scalar(name, value[:-1], "the percentage") / 100.0
         return np.asarray(fraction * np.abs(reference))
-    return np.full(reference.shape, float(value))
+    return np.full(reference.shape, _scalar(name, value, "the value"))
 
 
 def set_uncertainty(

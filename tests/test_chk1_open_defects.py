@@ -51,23 +51,34 @@ def _frame(names, rows, dims):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="CHK1-001: open at 730649f")
 def test_chk1_001_builtin_constant_does_not_shadow_a_measured_channel() -> None:
     """A frame variable named ``e`` must not lose to Euler's number.
 
     ``e`` is the Oswald span efficiency factor, so this is the most
-    likely name collision in the library's own target domain. The
-    library already refuses the same collision for an ``.itceq``
-    ``[constants]`` name against a measured channel (DD-39, OQ-31); the
-    built-in expression constants got no such check.
+    likely name collision in the library's own target domain. Measured
+    before the fix: ``CDi`` came out ``0.01463746``, the value for
+    Euler's number, where ``0.07957747`` is correct for ``e = 0.5``, and
+    neither the result nor History said so.
+
+    Two remedies were open, the frame winning or the collision being
+    refused, and refusing is the one taken: it is symmetric with DD-39,
+    which already refuses an ``.itceq`` ``[constants]`` name against a
+    measured channel, and REQ-44 names ``pi`` and ``e`` without saying
+    which wins, so silently choosing either would be a new rule invented
+    at the point of a wrong answer. The refusal must name the collision.
     """
     db = itc.load(np.array([[1.0, 8.0, 0.5]]), names=["CL", "AR", "e"])
-    out = db.compute("CDi = CL**2 / (pi * AR * e)")
-    obtained = float(np.asarray(out.vars["CDi"].values).ravel()[0])
-    assert obtained == pytest.approx(1.0**2 / (np.pi * 8.0 * 0.5))
+    with pytest.raises(ITACAError) as raised:
+        db.compute("CDi = CL**2 / (pi * AR * e)")
+    assert "'e'" in str(raised.value)
+    # pi is still a constant on a frame that does not carry the name
+    plain = itc.load(np.array([[1.0, 8.0]]), names=["CL", "AR"])
+    out = plain.compute("half = pi / 2.0")
+    assert float(np.asarray(out.vars["half"].values).ravel()[0]) == pytest.approx(
+        np.pi / 2.0
+    )
 
 
-@pytest.mark.xfail(strict=True, reason="CHK1-002: open at 730649f")
 def test_chk1_002_negative_itceq_constant_keeps_its_sign_under_a_power(
     tmp_path: Path,
 ) -> None:
@@ -90,9 +101,37 @@ def test_chk1_002_negative_itceq_constant_keeps_its_sign_under_a_power(
     out = itc.processor(str(path))(db)
     obtained = float(np.asarray(out.vars["Cm"].values).ravel()[0])
     assert obtained == pytest.approx((-0.25) ** 2 * 2.0)
+    # The sharper half: History recorded `Cm = -0.25 ** 2 * CN`, an
+    # expression that is not equivalent to the file's, so the provenance
+    # record was self-consistent and wrong. It must round-trip.
+    recorded = out.history.entries[-1].operation
+    assert "(-0.25) ** 2" in recorded, recorded
 
 
-@pytest.mark.xfail(strict=True, reason="CHK1-003: open at 730649f")
+def test_chk1_001_a_processor_refuses_a_shadowed_channel_at_validate(
+    tmp_path: Path,
+) -> None:
+    """The refusal must land at ``validate``, not mid-application.
+
+    ``_dependencies`` subtracts ``pi`` and ``e`` unconditionally, so the
+    name never reached ``required_variables`` and ``validate`` certified
+    a frame the equations could not actually read. REQ-45 makes
+    ``validate`` the step that answers whether this frame can feed this
+    processor, so that is where the collision has to surface.
+    """
+    path = tmp_path / "drag.itceq"
+    path.write_text(
+        '[meta]\nname = "drag"\nversion = "1.0"\n\n'
+        '[equations]\nCDi = "CL ** 2 / (pi * AR * e)"\n',
+        encoding="utf-8",
+    )
+    proc = itc.processor(str(path))
+    carries_e = itc.load(np.array([[1.0, 8.0, 0.5]]), names=["CL", "AR", "e"])
+    with pytest.raises(ITACAError) as raised:
+        proc.validate(carries_e)
+    assert "e" in str(raised.value)
+
+
 def test_chk1_003_concat_refuses_to_mix_vector_groups_from_different_axes() -> None:
     """Concatenating a body-axis frame with a wind-axis frame must refuse.
 
@@ -104,19 +143,22 @@ def test_chk1_003_concat_refuses_to_mix_vector_groups_from_different_axes() -> N
     """
 
     def build(k: float) -> object:
-        rows = [[k, 90.0, 1.0, 0.0, 0.0]]
-        db = itc.load(np.array(rows), names=["k", "alpha", "FX", "FY", "FZ"]).pivot(
-            dims=["k"]
-        )
-        return db.set_metadata({"alpha": {"unit": "deg"}}).declare_vector(
-            "force", ["FX", "FY", "FZ"]
-        )
+        rows = [[k, 90.0, 0.0, 1.0, 0.0, 0.0]]
+        names = ["k", "alpha", "beta", "FX", "FY", "FZ"]
+        db = itc.load(np.array(rows), names=names).pivot(dims=["k"])
+        db = db.set_metadata({"alpha": {"unit": "deg"}, "beta": {"unit": "deg"}})
+        return db.declare_vector("force", ["FX", "FY", "FZ"])
 
     body = build(0.0)
     wind = build(1.0).rotate("wind")
-    assert body.axes.group_axis("force") != wind.axes.group_axis("force")
-    with pytest.raises(ITACAError):
+    assert body.axes.group_axis("force") == "body"
+    assert wind.axes.group_axis("force") == "wind"
+    with pytest.raises(ITACAError) as raised:
         itc.concat([body, wind], along="k")
+    assert "force" in str(raised.value)
+    # Two inputs agreeing on the axis still concatenate.
+    joined = itc.concat([body, build(1.0)], along="k")
+    assert joined.axes.group_axis("force") == "body"
 
 
 @pytest.mark.xfail(strict=True, reason="R3-ITA-002: open at 730649f")
@@ -174,7 +216,6 @@ def test_r3_ita_006_processor_applies_declared_uncertainty_to_an_existing_target
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-007: open at 730649f")
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), "nan%", "inf%"])
 def test_r3_ita_007_set_uncertainty_refuses_a_non_finite_value(value: object) -> None:
     """A non-finite standard uncertainty is not a standard uncertainty.
@@ -188,7 +229,6 @@ def test_r3_ita_007_set_uncertainty_refuses_a_non_finite_value(value: object) ->
         db.set_uncertainty({"x": value})
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-009: open at 730649f")
 def test_r3_ita_009_csv_row_wider_than_the_header_is_refused(tmp_path: Path) -> None:
     """A cell past the header width must not vanish.
 
@@ -203,7 +243,6 @@ def test_r3_ita_009_csv_row_wider_than_the_header_is_refused(tmp_path: Path) -> 
         itc.load(path)
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-008: open at 730649f")
 def test_r3_ita_008_a_variable_cannot_collide_with_the_synthetic_dimension() -> None:
     """``dims`` and ``vars`` must not intersect.
 
@@ -212,8 +251,13 @@ def test_r3_ita_008_a_variable_cannot_collide_with_the_synthetic_dimension() -> 
     ``select`` then resolves the dimension, and ``to_pandas`` loses one
     of the two columns to a dict-key overwrite.
     """
-    db = itc.load(np.array([[10.0, 1.0], [20.0, 2.0]]), names=["datapoint", "a"])
-    assert set(db.dims).isdisjoint(set(db.vars))
+    with pytest.raises(ITACAError) as raised:
+        itc.load(np.array([[10.0, 1.0], [20.0, 2.0]]), names=["datapoint", "a"])
+    assert "datapoint" in str(raised.value)
+    # The invariant is on the constructor, so no operation can build one
+    # either, and an ordinary frame is unaffected.
+    ordinary = itc.load(np.array([[10.0, 1.0], [20.0, 2.0]]), names=["b", "a"])
+    assert set(ordinary.dims).isdisjoint(set(ordinary.vars))
 
 
 @pytest.mark.xfail(strict=True, reason="R3-ITA-013: open at 730649f")
@@ -351,7 +395,6 @@ def test_r3_ita_015_a_malformed_itc_raises_an_itaca_error(tmp_path: Path) -> Non
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="ITACA-031: open at 730649f")
 def test_itaca_031_set_uncertainty_wraps_a_bad_value_type() -> None:
     """``set_uncertainty({"x": object()})`` must raise an ``ITACAError``."""
     db = _frame(["i", "x"], [[0.0, 1.0], [1.0, 2.0]], ["i"])
@@ -419,7 +462,6 @@ def test_itaca_012_no_chapter_claims_an_absent_export_symbol() -> None:
     assert not claiming, f"chapters claiming an absent symbol: {claiming}"
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-010: open at 730649f")
 def test_r3_ita_010_the_trace_does_not_count_its_own_inventory_as_evidence() -> None:
     """A requirement id listed as unreached must not thereby be reached.
 

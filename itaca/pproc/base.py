@@ -32,7 +32,11 @@ from itaca.core.errors import (
     ProcessorIdempotenceWarning,
     ProcessorValidationError,
 )
-from itaca.pproc.equations.parser import Equation, ItceqSpec
+from itaca.pproc.equations.parser import (
+    Equation,
+    ItceqSpec,
+    builtin_constants_read,
+)
 
 if TYPE_CHECKING:
     from itaca.core.varframe import VarFrame
@@ -217,6 +221,25 @@ class EquationProcessor:
                 "channel deliberately, correct it with a [corrections] "
                 "line or db.compute instead, so the substitution is "
                 "recorded in History (REQ-45, REQ-48, SRS Section 4.6)",
+            )
+        # The same collision one layer down: `pi` and `e` are supplied by
+        # the expression language, so _dependencies subtracts them and
+        # they never reach required_variables. A frame carrying `e` was
+        # therefore certified usable while every equation reading that
+        # name got Euler's number (CHK1-001). Refused beside the
+        # [constants] case because it is the same defect with a different
+        # source of the number.
+        shadowed = sorted(builtin_constants_read(self.spec.equations) & available)
+        if shadowed:
+            raise ProcessorValidationError(
+                f"name(s) {shadowed} of processor '{self.name}' against VarFrame",
+                "each is a built-in expression constant (REQ-44) and also "
+                "carried by the VarFrame as a measured variable, so every "
+                "equation reading the name would use the constant and the "
+                "measurement would never be read",
+                "rename the VarFrame variable; a measured channel cannot be "
+                "referenced while a language constant shadows it (REQ-44, "
+                "REQ-45)",
             )
         missing = sorted(set(self.spec.required_variables) - available)
         unknown_unc = sorted(
@@ -454,10 +477,23 @@ class _ConstantSubstitution(ast.NodeTransformer):
         return node
 
     def visit_Name(self, node: ast.Name) -> ast.expr:
-        """Replace a declared constant by its numeric value."""
-        if node.id in self.constants:
-            return ast.Constant(value=self.constants[node.id])
-        return node
+        """Replace a declared constant by its numeric value.
+
+        A negative value is emitted as unary minus over its magnitude
+        rather than as a negative literal. ``ast.unparse`` writes
+        ``Constant(-0.25)`` as the bare token ``-0.25``, which is not an
+        atom: re-parsed in the base of a power it binds as
+        ``-(0.25 ** 2)``, so ``x_ref ** 2`` with ``x_ref = -0.25``
+        returned the wrong sign AND History recorded an expression that
+        is not equivalent to the file's. The unary form unparses to
+        ``(-0.25) ** 2`` and is identical everywhere else (CHK1-002).
+        """
+        if node.id not in self.constants:
+            return node
+        value = self.constants[node.id]
+        if value < 0:
+            return ast.UnaryOp(op=ast.USub(), operand=ast.Constant(value=-value))
+        return ast.Constant(value=value)
 
 
 def _configure(spec: ItceqSpec, config: Mapping[str, float]) -> Mapping[str, float]:

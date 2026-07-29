@@ -17,6 +17,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.errors import (
+    AxesError,
     ConcatOverlapError,
     DataError,
     DimensionNotFoundError,
@@ -100,6 +101,29 @@ def _validate_inputs(frames: Sequence[VarFrame], along: str) -> None:
     # rebuilding on frames[0] silently did. Compare the pair dicts, never
     # the CorrelationMatrix objects, which are eq=False and so compare by
     # identity.
+    # Same class of defect one field across: concat rebuilds on
+    # frames[0], so frames[0]'s AxisRegistry stood in for all of them and
+    # a body-axis frame concatenated with an already-rotated wind-axis
+    # frame came out claiming every row was body-axis. The next
+    # rotate('wind') then transformed the rotated rows a SECOND time.
+    # REQ-107 makes the recorded source axis the thing that keeps a
+    # repeated rotation an identity, so mixing the axis silently is
+    # exactly what defeats it (CHK1-003).
+    groups: dict[str, set[str]] = {}
+    for frame in frames:
+        for name in frame.axes.vector_groups:
+            groups.setdefault(name, set()).add(frame.axes.group_axis(name))
+    mixed = sorted(name for name, axes in groups.items() if len(axes) > 1)
+    if mixed:
+        detail = {name: sorted(groups[name]) for name in mixed}
+        raise AxesError(
+            f"vector group(s) {mixed} across the inputs",
+            f"they are expressed in different axis systems {detail}, and "
+            "concat would record a single source axis for all of them, so a "
+            "later rotate would transform some rows twice",
+            "express every input in the same axis before concatenating, by "
+            "rotating them to a common target (REQ-38, REQ-107)",
+        )
     stores = [
         dict(frame.correlation.pairs) if frame.correlation is not None else {}
         for frame in frames

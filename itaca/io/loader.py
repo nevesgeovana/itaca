@@ -339,7 +339,24 @@ def _read_csv(path: Path) -> dict[str, list[object]]:
         req="REQ-01",
     )
     columns: dict[str, list[object]] = {name: [] for name in header}
-    for row in rows[1:]:
+    for number, row in enumerate(rows[1:], start=2):
+        # A row wider than the header was iterated by header position, so
+        # every cell past that width was dropped with no signal, while
+        # Provenance went on hashing the complete file bytes: the source
+        # hash certified content the frame did not represent. A row that
+        # wide is a malformed file, either a truncated header or a
+        # delimiter inside an unquoted field, and it is refused here for
+        # the same reason a repeated header name is (R3-ITA-009).
+        if len(row) > len(header):
+            raise DataError(
+                f"row {number} of source file '{path.name}'",
+                f"it has {len(row)} fields against a header of "
+                f"{len(header)} ({header}), so itc.load would silently "
+                f"discard {row[len(header) :]}",
+                "correct the header, or quote the field containing the "
+                "delimiter; coordinates and measurements must not be "
+                "dropped on ingestion (REQ-01)",
+            )
         for index, name in enumerate(header):
             cell = row[index].strip() if index < len(row) else ""
             if cell == "":

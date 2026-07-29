@@ -1,4 +1,4 @@
-# Release (DD-21 incremental releases; M1 plan Phase B0).
+﻿# Release (DD-21 incremental releases; M1 plan Phase B0).
 #
 # This file is a CALLER of the vendored shared release gate and holds no
 # build, check or publish logic of its own. That is the whole point of
@@ -30,6 +30,13 @@ jobs:
   gate:
     uses: ./.github/workflows/release_gate.yml
     permissions:
+      # Declaring ANY permission sets every undeclared one to none, and
+      # a reusable workflow cannot be granted more than its caller has.
+      # The gate runs actions/checkout three times, so omitting this line
+      # left the tag path unable to check out at all, while ci.yml (a
+      # different caller, which does grant it) stayed green and the
+      # publish jobs it skips never exercised this one (R3-ITA-001).
+      contents: read
       # OIDC trusted publishing: the gate exchanges a short-lived
       # identity token with PyPI instead of a stored secret.
       id-token: write
