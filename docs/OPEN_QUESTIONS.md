@@ -1145,3 +1145,53 @@ does not argue for it.
 **Who decides:** the numerical analyst and the domain expert.
 
 **SRS:** Section 4.6 (document 0.2.5), REQ-39, REQ-99, Chapter 8.
+
+---
+
+## OQ-46: Should a declared uncertainty be withdrawable?
+
+**Raised:** 2026-07-30 (lane ITA-2C, v0.2.0 release review, API-designer
+pass)
+**Status:** open
+**Question:** `db.set_uncertainty` has no inverse. Once a VarFrame carries
+an UncFrame the only way back is to re-run from `itc.load`. The release
+notes for v0.2.0 state that limitation and say the question "is registered
+and belongs to the author"; it was not registered anywhere, which is what
+this entry corrects.
+
+**Why it is not cosmetic.** Five operations in v0.2.0 refuse to propagate
+uncertainty and their suggested fix is "run this before assigning
+uncertainty". Applying a processor assigns its `[uncertainties]` section
+itself, so `proc(db).smooth(...)` refuses even though the caller never
+called `set_uncertainty`, and the advice becomes unfollowable: there is no
+verb that gets back to a frame without one.
+
+**The asymmetry that makes it a design question rather than a gap.** This
+release introduced two withdrawal idioms and they disagree, so whichever is
+chosen here settles which one the library means:
+
+| verb | how it is undone | shipped |
+|---|---|---|
+| `set_metadata` | pass `None` as the field value | new in 0.2.0 |
+| `set_correlation` | a separate `drop_correlation` method | new in 0.2.0 |
+| `set_uncertainty` | nothing | 0.1.0, no inverse |
+
+**The options.** (A) `db.drop_uncertainty(names=None, *, component=None)`,
+symmetric with `drop_correlation`, recorded in History and replayable. Adds
+a public name; makes the `drop_*` idiom the library's answer. (B) Extend
+`set_uncertainty` to accept `None` per name, matching `set_metadata`. No new
+public name, and it makes `drop_correlation` the odd one out. (C) Ship as
+is: re-running from `itc.load` is the only way back, and that is a
+deliberate position because an uncertainty silently removable is a
+provenance hazard.
+
+**Note what (C) costs, since it is the current state and therefore the
+default.** REQ-18 says every operation records itself, so a withdrawal that
+IS recorded is not a provenance hazard; the hazard would be an unrecorded
+one. That weakens (C) considerably, which is why this is worth deciding
+rather than leaving.
+
+**Who decides:** the product owner, with the numerical analyst on whether a
+partial withdrawal (one component, or one variable) is meaningful at all.
+
+**SRS:** REQ-39, REQ-40, REQ-98, REQ-18.

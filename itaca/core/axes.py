@@ -113,7 +113,7 @@ def _convention_angles(convention: str) -> tuple[str, ...]:
     return _CONVENTION_ANGLES[convention]
 
 
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, kw_only=True)
 class Axis:
     """A named coordinate frame relative to the canonical body axis.
 

@@ -1,0 +1,25 @@
+# What the sdist must NOT carry.
+#
+# setuptools-scm supplies the sdist file list from git, so every tracked file
+# is included by default and there is no opt-in list to forget to add to.
+# That is the right default for `tests/`, `docs/` and `examples/`, which are
+# deliberately shipped: a reviewer of the science should be able to get the
+# specification, the examples and the suite from PyPI without a git clone
+# (DD-38).
+#
+# It is the wrong default for `.claude/`. That directory is development
+# process machinery: agent charters, skills, the vendored shared-process kit
+# and the push-gate hooks. None of it is the library, none of it runs for a
+# user, and a hook body inside a published artifact invites someone to run it
+# outside the repository it was written for. Author decision 2026-07-30, after
+# the release review measured that the v0.2.0 sdist would have carried all of
+# it.
+#
+# `tests/test_release_integrity.py` asserts this over a REAL built sdist, so a
+# future change to the build cannot quietly put it back.
+prune .claude
+
+# Local staging for proprietary material. Gitignored, so setuptools-scm never
+# sees it; pruned here as well because a defense that depends on one mechanism
+# is one mechanism away from gone.
+prune _private

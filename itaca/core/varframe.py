@@ -551,7 +551,7 @@ class VarFrame:
         self,
         dim_name: str,
         values: object,
-        *args: int,
+        *,
         axis: int | None = None,
         history: bool = False,
         comment: str | None = None,
@@ -605,23 +605,6 @@ class VarFrame:
         # removed in v0.3.0. Breaking it outright would be a silent
         # semantic change for anyone who wrote the positional form,
         # since `axis` is an int and would land in a later parameter.
-        if args:
-            if len(args) > 1 or axis is not None:
-                raise DataError(
-                    f"expand positional arguments {args}",
-                    "expand takes at most the dimension name, its values, "
-                    "and (deprecated) the axis positionally",
-                    "pass axis= as a keyword (REQ-85)",
-                )
-            warnings.warn(
-                "passing 'axis' to expand positionally is deprecated and "
-                "will become keyword-only in v0.3.0; pass axis= as a "
-                "keyword (REQ-85)",
-                FutureWarning,
-                stacklevel=2,
-            )
-            axis = args[0]
-
         from itaca.ops.expand import expand as _expand
 
         return _expand(self, dim_name, values, axis, history=history, comment=comment)
@@ -629,9 +612,9 @@ class VarFrame:
     def interpolate(
         self,
         mapping: dict[str, object] | None = None,
-        *args: object,
+        *,
         method: str = "linear",
-        deg: int | None = None,
+        deg: int | NoDefault = no_default,
         override: bool = False,
         axisTranslation: dict[str, str] | None = None,  # noqa: N803  (SRS REQ-25)
         history: bool = False,
@@ -650,8 +633,13 @@ class VarFrame:
             ``"linear"`` (default), ``"cubic"`` (natural spline),
             ``"nearest"``, or ``"polyfit"`` (global fit of degree
             ``deg``).
-        deg : int or None, optional
-            Polynomial degree for ``"polyfit"``.
+        deg : int, optional
+            Polynomial degree, consumed by ``"polyfit"`` alone. Passing
+            it to any other method raises rather than being ignored
+            (REQ-105): the three weight-matrix methods do not read a
+            degree, and an ignored keyword that History then records is
+            a provenance record asserting an intent the computation did
+            not honor.
         override : bool, optional
             By default a target that already exists in the original
             dimension keeps the existing value (and its origin tag);
@@ -684,8 +672,9 @@ class VarFrame:
         AxisTranslationError
             The translation target is not strictly monotonic.
         DataError
-            Unknown method, missing ``deg``, empty call, or malformed
-            targets.
+            Unknown method; ``deg`` missing for ``"polyfit"`` or passed
+            to a method that does not consume it (REQ-105); empty call;
+            or malformed targets.
 
         Examples
         --------
@@ -697,28 +686,6 @@ class VarFrame:
         >>> dense.vars["CT"].values.tolist()
         [1.0, 3.0]
         """
-        # REQ-85 deprecation window; see expand above.
-        if args:
-            names = ("method", "deg", "override")
-            if len(args) > len(names):
-                raise DataError(
-                    f"interpolate positional arguments {args}",
-                    "interpolate takes at most the mapping and "
-                    "(deprecated) method, deg and override positionally",
-                    "pass method=, deg= and override= as keywords (REQ-85)",
-                )
-            warnings.warn(
-                f"passing {list(names[: len(args)])} to interpolate "
-                "positionally is deprecated and will become keyword-only "
-                "in v0.3.0; pass them as keywords (REQ-85)",
-                FutureWarning,
-                stacklevel=2,
-            )
-            supplied = dict(zip(names, args, strict=False))
-            method = cast("str", supplied.get("method", method))
-            deg = cast("int | None", supplied.get("deg", deg))
-            override = cast("bool", supplied.get("override", override))
-
         from itaca.ops.interpolate import interpolate as _interpolate
 
         return _interpolate(
@@ -1075,8 +1042,10 @@ class VarFrame:
             ``deg`` negative or not below the point count, or a name
             collision with ``<along>_coef``.
         UncertaintyError
-            Uncertainty is present (the REQ-98 table declares no
-            fitmodel row; DD-18).
+            Uncertainty is present. REQ-98 carries ``fitmodel`` and
+            ``fitvalue`` as a PROVISIONAL row whose coefficient-space
+            rule is not frozen, so the operation raises rather than
+            guessing one (DD-18, OQ-24).
 
         Examples
         --------

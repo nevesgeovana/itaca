@@ -121,7 +121,7 @@ def _validate(
             f"smooth(method='{method}')",
             "uncertainty propagation through smoothing kernels is not "
             "frozen yet (REQ-98 provisional row, OQ-18)",
-            "smooth before assigning uncertainty; the rule freezes during v0.2.0",
+            "smooth before assigning uncertainty; OQ-18 is what lifts this",
         )
 
 

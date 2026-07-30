@@ -125,9 +125,15 @@ package (\code{ITACA-012}).
 
 \itc{} code follows PEP~8~\citep{pep8}. Public-API docstrings follow the
 NumPy docstring convention. Ruff's pydocstyle rules enforce PRESENCE
-and STYLE; SECTION COMPLETENESS on the declared public surface is
-enforced by \code{tests/test\_docstring\_sections.py} (REQ-79), not by
-linting. An earlier revision claimed linting enforced the sections,
+and STYLE; the \emph{Parameters} and \emph{Returns} sections on the
+declared public surface are enforced by
+\code{tests/test\_docstring\_sections.py} (REQ-79), not by linting.
+REQ-79 names four sections and that checker pins two, so
+\emph{Raises} and \emph{Examples} completeness is machine-checked by
+nothing; an earlier revision of this paragraph claimed SECTION
+COMPLETENESS without that qualifier, overclaiming in the same
+direction as the defect it was correcting.
+An earlier revision claimed linting enforced the sections,
 which it does not: ruff checks that a docstring exists and is
 well-formed, never that it carries Parameters or Examples
 (\code{ITACA-016}).

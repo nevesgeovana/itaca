@@ -27,6 +27,7 @@ from itaca.core.errors import (
     FitDegreeError,
     NonNumericDimensionError,
 )
+from itaca.core.sentinels import NoDefault, no_default
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import Content, content_of, rebuild, recoord
 from itaca.ops._degree import require_nonnegative_degree
@@ -42,43 +43,61 @@ _Array = NDArray[Any]
 _METHODS = ("linear", "cubic", "nearest", "polyfit")
 
 
-def _weight_matrix(x: _Array, targets: _Array, method: str, deg: int | None) -> _Array:
+def _weight_matrix(
+    x: _Array, targets: _Array, method: str, deg: int | NoDefault
+) -> _Array:
     if method == "linear":
         return linear_matrix(x, targets)
     if method == "nearest":
         return nearest_matrix(x, targets)
     if method == "cubic":
         return cubic_matrix(x, targets)
-    assert deg is not None
+    # Only 'polyfit' reaches here, and `_validate_method` has already
+    # refused a missing deg for it and refused a supplied deg for every
+    # other method (REQ-105), so this is the invariant rather than a check.
+    assert isinstance(deg, int), deg
     return polyfit_matrix(x, targets, deg)
 
 
-def _validate_method(db: VarFrame, method: str, deg: int | None, n: int) -> None:
+def _validate_method(db: VarFrame, method: str, deg: int | NoDefault, n: int) -> None:
     if method not in _METHODS:
         raise DataError(
             f"method {method!r}",
             "interpolate received an unknown method",
             f"use one of {list(_METHODS)} (REQ-25)",
         )
-    if method == "polyfit":
-        if deg is None:
+    # REQ-105. `deg` is consumed by `polyfit` and by nothing else, so
+    # passing it to another method is refused rather than ignored. It was
+    # ignored, and then recorded in History and in the replay kwargs, so
+    # the provenance record asserted a degree the computation never read:
+    # ITACA-023's defect over the library's own keyword instead of NumPy's.
+    if method != "polyfit":
+        if deg is not no_default:
             raise DataError(
-                "interpolate(method='polyfit')",
-                "called without deg",
-                "pass deg=<polynomial degree> (REQ-25)",
+                f"argument deg={deg!r}",
+                f"interpolate(method='{method}') does not consume deg",
+                f"omit it; only 'polyfit' fits a polynomial, and "
+                f"'{method}' interpolates through a weight matrix (REQ-105)",
             )
-        require_nonnegative_degree(
-            deg,
-            operation="interpolate(method='polyfit')",
-            parameter="deg",
-            req="REQ-25",
+        return
+    if deg is no_default:
+        raise DataError(
+            "interpolate(method='polyfit')",
+            "called without deg",
+            "pass deg=<polynomial degree> (REQ-25)",
         )
-        if deg >= n:
-            raise FitDegreeError(
-                f"deg {deg} against {n} points",
-                "polyfit needs more points than the degree",
-                "reduce deg or densify the source first (REQ-25)",
-            )
+    require_nonnegative_degree(
+        deg,
+        operation="interpolate(method='polyfit')",
+        parameter="deg",
+        req="REQ-25",
+    )
+    if deg >= n:
+        raise FitDegreeError(
+            f"deg {deg} against {n} points",
+            "polyfit needs more points than the degree",
+            "reduce deg or densify the source first (REQ-25)",
+        )
 
 
 def _apply_line(flat: _Array, weights: _Array, kind: str) -> _Array:
@@ -103,7 +122,7 @@ def _interp_axis(
     dim: str,
     targets: _Array,
     method: str,
-    deg: int | None,
+    deg: int | NoDefault,
     override: bool,
 ) -> None:
     """Interpolate every variable along one dimension, in place."""
@@ -165,7 +184,7 @@ def _translate_axis(
     to_var: str,
     targets: _Array | None,
     method: str,
-    deg: int | None,
+    deg: int | NoDefault,
     override: bool,
 ) -> tuple[_Array, bool]:
     """Replace ``from_dim`` with ``to_var`` as sweep axis, in place."""
@@ -273,7 +292,7 @@ def interpolate(
     mapping: dict[str, Any] | None = None,
     *,
     method: str = "linear",
-    deg: int | None = None,
+    deg: int | NoDefault = no_default,
     override: bool = False,
     axis_translation: dict[str, str] | None = None,
     history: bool = False,
@@ -394,9 +413,21 @@ def interpolate(
             )
         _interp_axis(content, dim, targets, method, deg, override)
     detail = {name: np.asarray(coords).tolist() for name, coords in mapping.items()}
+    # Record what the computation CONSUMED. `deg` reaches this line only for
+    # 'polyfit', because every other method refuses it above, so emitting it
+    # unconditionally would put a degree into the provenance record of a
+    # computation that never read one.
+    consumed = "" if deg is no_default else f", deg={deg}"
     operation = (
-        f"interpolate({detail}, method='{method}', deg={deg}, override={override})"
+        f"interpolate({detail}, method='{method}'{consumed}, override={override})"
     )
+    replay: dict[str, Any] = {
+        "mapping": detail,
+        "method": method,
+        "override": override,
+    }
+    if deg is not no_default:
+        replay["deg"] = deg
     return rebuild(
         db,
         content,
@@ -404,10 +435,5 @@ def interpolate(
         comment=comment,
         history=history,
         call="interpolate",
-        replay_kwargs={
-            "mapping": detail,
-            "method": method,
-            "deg": deg,
-            "override": override,
-        },
+        replay_kwargs=replay,
     )

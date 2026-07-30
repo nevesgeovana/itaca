@@ -12,6 +12,51 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.6, 2026-07-30, Release Review: Three Claims Withdrawn}
+
+A PATCH revision withdrawing three claims this document made and could not
+keep. No requirement is added and none is withdrawn. Found by the v0.2.0
+RELEASE review, which is the first pass over the whole M1 surface at once,
+and all three are of one kind: text that was correct when written and became
+false without anyone editing it.
+
+\paragraph{Changed (REQ-70, an absent method promised as an export
+format).} REQ-70's export list carried
+\code{db.export\_provenance(path, format="prov-json")} with no qualifier,
+and that symbol exists nowhere in the package. It is now marked an M2
+deliverable and NOT IMPLEMENTED.
+
+This is the chapter~6 residual of \code{ITACA-012}, and the reason it
+survived is worth more than the fix. When that finding was first closed,
+chapter~8 was corrected and a guard was written to keep the claim and the
+symbol from drifting apart again. The guard read chapter~8. So the finding
+was closed, a mechanism was installed, and the same claim went on standing
+in a STABLE requirement box one chapter over, which is the shape this
+repository names as measuring the mention instead of the carrier. The guard
+now walks every chapter.
+
+\paragraph{Changed (Chapter~\ref{ch:standards}, what the docstring
+checker actually enforces).} The chapter said SECTION COMPLETENESS on the
+declared public surface is enforced by
+\code{tests/test\_docstring\_sections.py}. That checker requires
+\emph{Parameters} and \emph{Returns}. REQ-79 names four sections, so
+\emph{Raises} and \emph{Examples} completeness is machine-checked by
+nothing, and the release review found four public methods whose
+\emph{Raises} sections omit refusals the library actually performs. The
+sentence now says which two are enforced.
+
+Note the direction: the paragraph being corrected is itself the correction
+made for \code{ITACA-016}, where an earlier revision had claimed LINTING
+enforced the sections. That correction overclaimed in the same direction as
+the error it replaced, which is why this entry states the mechanism's scope
+rather than its existence.
+
+\paragraph{Changed (Chapter~\ref{ch:roadmap}, a module that is not
+there).} The v0.2.0 deliverables table named
+\code{ops/fitmodel.py}, \code{ops/fitvalue.py}. There is no
+\code{ops/fitvalue.py}: \code{fitvalue} is defined beside
+\code{fitmodel}. The second path is removed.
+
 \section*{Document 0.2.5, 2026-07-30, The Application Moment, Corrected}
 
 A PATCH revision correcting 0.2.4 below, which was written the same day and
@@ -71,14 +116,14 @@ here for consistency with the 0.2.3 entry below, which recorded a shipped
 refusal the same way.
 
 \paragraph{Changed (Section~\ref{sec:itceq}; bears on REQ-41, REQ-45,
-REQ-99).} The section rules now state WHEN a declared uncertainty is
-applied, as two independent questions rather than one classification.
-Applied before the first line when the VarFrame CARRIES the name, so every
-line reading it propagates from the declared value; applied again after the
-first line that WRITES it, so the frame does not ship a declaration as the
-propagation of itself. A name answering yes to both is assigned twice. The
-two are jointly exhaustive because \code{validate} refuses a declared name
-that is neither (REQ-45).
+REQ-99).} SUPERSEDED BY 0.2.6 ABOVE, whose entry carries the corrected
+rule; what follows is what this revision said, kept unedited.
+
+The section rules now state WHEN a declared uncertainty is applied:
+before the first equation for a name the file does not produce, and
+immediately after the writing equation for a name it does. The rule keys
+on what the file produces and never on what the VarFrame carried on the
+way in.
 
 The document had said only that the values are absolute or relative and
 per-variable, so the moment was unspecified and the implementation had

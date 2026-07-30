@@ -6,15 +6,21 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.0] - 2026-07-30
+
+Milestone M1, "Analysis Core, computation complete". Read the two blocks
+below before the feature list: the first is a deliberate design position
+you will hit immediately, and the second is what is known BROKEN in this
+release.
+
 **Read this first: five operations refuse uncertainty on purpose.**
 This is a deliberate design position, not a defect, and it is stated at
 the top of these notes because it is the first thing a user propagating
 uncertainty through this release will hit. These five are a different
 set from the CHK-1 input refusals listed under Changed below, and the
-two sets are unrelated. The number is deliberately not repeated here:
-those are counted as five bullets in these notes and as six refusals in
-the SRS, for the reason given where they are listed, and a bare number
-in this paragraph would read as a third answer.
+two sets are unrelated.
 
 Five operations **raise** when the VarFrame carries an UncFrame, rather
 than returning a number:
@@ -53,186 +59,87 @@ an UncFrame the only way back is to re-run from `itc.load`; and applying
 a processor assigns its `[uncertainties]` section itself, so
 `proc(db).smooth(...)` refuses even though you never called
 `set_uncertainty`. Whether a recorded `db.drop_uncertainty` should exist,
-as the symmetric partner of `db.drop_correlation`, is registered and
-belongs to the author.
+as the symmetric partner of `db.drop_correlation`, is OQ-46 and belongs
+to the author. Note that this release introduced TWO withdrawal idioms
+that disagree: `set_metadata` is undone by passing `None`, and
+`set_correlation` by a separate `drop_correlation`. OQ-46 is where that
+is settled.
 
-### Changed
+### Known open
 
-The CHK-1 release checkpoint turned five previously accepted inputs into
-refusals. Each is listed with the number that used to come out wrong,
-because that is the part a reader needs in order to tell whether their
-own data was affected.
+**This release ships WITH known defects, deliberately and on the record.**
+The alternative was holding the analysis core behind a long tail of
+findings from an independent review, and the decision was to ship and
+disclose. Disclosure is the half that makes that legitimate, so it is
+here rather than in an issue tracker.
 
-* **BREAKING. A built-in expression constant may not shadow a measured
-  channel** (`CHK1-001`, DD-42). `pi` and `e` were tested before the
-  frame's own names, so a frame carrying a variable named `e` read
-  Euler's number instead: `CDi = CL**2 / (pi * AR * e)` on `e = 0.5`
-  returned `0.01463746` against the correct `0.07957747`, and neither
-  the result nor History said so. `e` is the Oswald span efficiency
-  factor, so this is the most likely collision in the library's own
-  domain. `db.compute` and `EquationProcessor.validate` now refuse it,
-  naming the name. Symmetric with DD-39, which already refuses the
-  `[constants]` form of the same defect. **Migration:** give the channel
-  another name on the way in, with `itc.load(..., names=[...])` for an
-  array source or by correcting the header for a file source. A recorded
-  rename operation does not exist yet and is OQ-41.
-* **BREAKING. `itc.load` refuses a CSV row wider than its header**
-  (`R3-ITA-009`). Rows were read by header position, so every cell past
-  that width was dropped with no signal while Provenance went on hashing
-  the complete file bytes: the source hash certified content the frame
-  did not represent. A row that wide is a malformed file, either a
-  truncated header or a delimiter inside an unquoted field.
-  **Migration:** correct the header, or quote the offending field. A row
-  NARROWER than the header is still filled with NaN, unchanged.
-* **BREAKING. A VarFrame may not carry one name as both a dimension and
-  a variable** (`R3-ITA-008`). Datapoint mode always creates the
-  synthetic `datapoint` dimension and also accepted a column of that
-  name, so one frame carried both: `select` resolved the dimension and
-  never the variable, `to_csv` emitted a duplicate header the loader
-  then refused to read back, and `to_pandas` lost one of the two columns
-  to a dict-key overwrite. Enforced on the constructor, beside the
-  correlation invariant, so no operation can build one either.
-  **Migration:** as above.
-* **BREAKING. `itc.concat` refuses inputs whose vector groups sit in
-  different axis systems** (`CHK1-003`). `concat` rebuilds on the first
-  input, so its AxisRegistry stood for every row: a body-axis frame
-  joined to an already-rotated wind-axis frame came out claiming one
-  axis for all of them, and the next `rotate` transformed the rotated
-  rows a second time. REQ-107 makes the recorded source axis the thing
-  that keeps a repeated rotation an identity. An input that never
-  declared the group counts as the canonical body axis, so the check
-  covers the common shape where nobody called `declare_vector`.
-  **Migration:** rotate every input to a common target first.
-* **BREAKING for a non-finite value. `db.set_uncertainty` refuses a
-  declared magnitude that is not a finite number** (`R3-ITA-007`), and a
-  malformed one now raises `UncertaintyError` rather than a bare
-  `ValueError` or `TypeError` (`ITACA-031`). A NaN standard uncertainty
-  propagated into every quantity derived from the variable.
-  **Known limitation, stated rather than implied:** only the DECLARED
-  magnitude is validated. A relative spec resolves against the data, so
-  `"5%"` on a variable carrying NaN still yields a non-finite standard
-  uncertainty. The structural fix belongs in `UncFrame` and is blocked
-  on OQ-40, because that array carries NaN deliberately for cells
-  `compute(where=)` and `fill` did not touch.
+Every item below is pinned by a strict-xfail test in
+`tests/test_chk1_open_defects.py`, so it cannot be silently forgotten: the
+moment one is fixed, that test passes, strict xfail turns the pass into a
+failure, and whoever fixed it has to come and remove the marker.
 
-* **The SRS now describes the refusals this release ships** (SRS
-  documents 0.2.2 and 0.2.3, `ITC-20260729-1450` and
-  `ITC-20260729-2255`, which blocked the tag). All five refusals above
-  landed against requirement text that contradicted them or passed over
-  them in silence: REQ-01 said every column becomes a variable and
-  described no row-width refusal at all, REQ-24 and REQ-107 described no
-  `AxesError`, REQ-39 said a value may be any float, REQ-44 named `pi`
-  and `e` as constants without saying what happens when the frame carries
-  one, and REQ-45 said `validate` refuses two things where it now refuses
-  three. Six stable requirements are amended, plus REQ-92 and
-  REQ-98/REQ-26 as separate items below.
+**Wrong numbers, produced silently.** These are the ones to read.
 
-  **Why five bullets amend six requirements, and why the SRS counts six
-  refusals where this list counts five.** The mapping is not one to one in
-  either direction, and the two effects are separate. Upward: the concat
-  refusal is written into REQ-24 **and** REQ-107, and the
-  constant-shadowing refusal into REQ-44 **and** REQ-45, so two bullets
-  need two requirements each. Downward: REQ-01 is amended for **two** of
-  the five, the `datapoint` collision and the row-width refusal. Those net
-  out at six requirements for five bullets.
-  The SRS counts *refusals* rather than bullets, and it counts six because
-  it states `validate`'s third refusal as its own amendment (REQ-45)
-  rather than folding it into the constant-shadowing bullet as these notes
-  do. The five here are the five rules a caller can hit. Nothing is
-  missing from either document: SRS 0.2.2 closed five of the six and SRS
-  0.2.3 closed the last one, the row-width refusal, which was missed when
-  this list was first written and was found by the independent review
-  REV-004 (`ITC-20260729-2255`).
+* **`combine` truncates its Jacobians on an integer dtype** (`R3-ITA-002`).
+  A mean of two integer-valued variables takes Jacobian 0.5 and stores it
+  as 0, so the propagated uncertainty is zero rather than half. Load or
+  cast to float before combining.
+* **`average` treats an infinity as missing data** (`R3-ITA-014`), so a
+  column containing `inf` reports a finite mean rather than refusing or
+  returning `inf`.
+* **`interpolate` from a single support point returns `inf`** behind a bare
+  `RuntimeWarning` rather than raising (`R3-ITA-013`, linear and cubic).
+* **`combine` sums incompatible units silently** (`ITACA-030`): newtons
+  plus pounds-force is accepted and the result carries one of the two unit
+  strings.
 
-* **The SRS is now built by CI, and it did not build before** (`REQ-95`,
-  `ITC-20260729-2300`, `ITC-20260729-2350`, `ITC-20260730-0010`). Nothing
-  compiled `docs/srs/` at any point in this release, so a specification
-  that could not be built was indistinguishable from one that could.
-  `pdflatex` exited non-zero with seven errors: four from a chapter whose
-  every content line carried a blank after it, making each source line its
-  own paragraph and splitting a `\caption`, and three from a single
-  unescaped underscore that put another chapter into math mode which then
-  leaked into the chapter after it. Both are fixed, both are guarded, and
-  the document now compiles with no errors and no undefined references.
-  This is listed for the same reason the requirement amendments above are:
-  the authority chain opens by calling `docs/srs/` authoritative, and for
-  two document versions it asserted a state nobody had observed. Nothing in the library
-  changed: the code was correct and the specification was wrong, which
-  is the direction the SRS's own note says is not supposed to happen and
-  the reason this was a tag blocker.
+**Provenance and archive integrity.**
 
-### Fixed
+* **`db.coords` is outside the state hash AND is lost on an `.itc` round
+  trip** (`R3-ITA-004`). A frame saved in polar coordinates reopens as
+  Cartesian, and the state hash does not notice. If you use coordinate
+  systems, do not rely on `.itc` to carry them in this release.
+* **A forged `HistoryEntry.state_hash` inside an `.itc` is not detected**
+  (`R3-ITA-005`). The archive-level check catches a tampered final hash;
+  a per-entry one does not exist. Treat `.itc` provenance as
+  tamper-evident against accident, not against an adversary.
+* **`comment=None` and `comment=""` hash identically** (`R3-ITA-003`), and
+  **metadata field order changes the state hash** (`R3-ITA-019`), so two
+  frames that are semantically identical can hash differently and two that
+  differ in one field can hash the same.
 
-* **A declared `[uncertainties]` value could be replaced by a different
-  one, silently** (`R4-ITA-003`, SRS document 0.2.4). A processor decided
-  when to apply each declaration from a single question, whether the
-  incoming VarFrame already carried the name. A name the file *writes* and
-  the frame happened to carry was therefore assigned before the equations
-  ran and then overwritten by its own equation's propagation. With
-  `[uncertainties] x = 1.0, y = 5.0` and `[equations] y = "2*x"`, the
-  frame shipped `u(y) = 2.0`, which is what `u(x)` propagates to, where
-  the file declares `5.0`. With `y = 5.0` declared alone, or declared
-  relatively as `"10%"`, the frame shipped no uncertainty at all.
-  **Never shipped:** `itc.processor` is new in this release, so no
-  published build produced these numbers; if you are running a development
-  build, re-apply the processor and re-derive anything downstream of the
-  affected target.
-  The rule is now two independent questions, and a name may answer yes to
-  both: applied before the first line when the frame carries the name, so
-  every line reading it propagates from the declared value, and applied
-  again after the first line that writes it, so a declaration is not
-  shipped as the propagation of itself. The moment was unspecified in the
-  SRS, which is why the fix amends Section 4.6 rather than only the code.
-  **Three known limitations, all of them reachable through legal files and
-  none of them decided:**
-  * a name written *more than once*, by an equation and then by a
-    correction, takes the declaration after the FIRST write, so the
-    correction propagates over it. With `CL = 0.01` declared,
-    `[equations] CL = "2*x"` and `[corrections] CL = "CL * 2"`, the frame
-    ships `u(CL) = 0.02` (OQ-43);
-  * a *relative* declaration on a name that is both carried and written is
-    resolved twice, against the values it holds at each moment, so one
-    declaration yields two numbers. With `CL = "10%"`,
-    `[equations] CD = "CL * 2"` and `[corrections] CL = "CL + 90"` against
-    `CL = [10, 10]`, the frame ships `u(CL) = 10.0` beside `u(CD) = 2.0`
-    (OQ-44);
-  * a declaration speaks for the **systematic** component only, so a random
-    component your frame already carries is kept and propagates untouched.
-    An `.itceq` file cannot currently specify the whole uncertainty of a
-    name it declares (OQ-45).
+**Loud but wrong-shaped.**
 
-  All three are numerical-analyst decisions and all three are pinned by
-  tests, so the answers cannot change without saying so.
-* A negative `.itceq` `[constants]` value kept its sign under a power
-  (`CHK1-002`). Substitution round-tripped through `ast.unparse`, which
-  writes a negative float as the bare token `-0.25`; re-parsed in the
-  base of a power it bound as `-(0.25 ** 2)`, so `x_ref ** 2` with
-  `x_ref = -0.25` returned `-0.125` where `+0.125` is correct. Worse,
-  History recorded `Cm = -0.25 ** 2 * CN`, an expression that is not
-  equivalent to the file's, so the provenance record was
-  self-consistent and wrong. Negative reference stations are ordinary in
-  this domain.
-* The release workflow could not check out (`R3-ITA-001`).
-  `release.yml` declared `id-token: write` and nothing else, while the
-  gate it calls runs `actions/checkout` three times; declaring any
-  permission sets every undeclared one to `none`, and a reusable
-  workflow cannot exceed its caller. The green runs came from `ci.yml`,
-  a different caller that does grant `contents: read`, and the publish
-  jobs it skips were the ones that would have exercised this path.
-  `tests/test_release_integrity.py` now asserts every checkout-bearing
-  caller grants it.
-* The requirement traceability matrix counted its own gap inventory as
-  evidence (`R3-ITA-010`). `build_trace` walked the whole suite
-  including the module declaring `_UNREACHED_AT_LANE_CLOSE`, so every id
-  in that inventory registered as a test citation of the requirement it
-  records as unreached, and the gate reported zero unreached where the
-  honest figure is 26. The walk now skips its own file, and the ratchet
-  asserts both directions, so a stale entry can no longer hide.
+* **A malformed `.itc` member leaks `json.JSONDecodeError`** rather than an
+  `ITACAError` (`R3-ITA-015`), so `except itc.ITACAError` does not catch a
+  corrupt archive.
+* **A broken processor constructor leaks its own exception**
+  (`ITACA-031` residual).
+* **A relative uncertainty spec can still inherit a non-finite value**
+  (`R3-ITA-007` structural half). `set_uncertainty` refuses a declared
+  NaN; `"5%"` resolved against a column containing NaN is not refused,
+  because that array carries NaN deliberately for cells `compute(where=)`
+  and `fill` did not touch. Separating the two meanings is `OQ-40`.
+
+**The wider population.** The independent review REV-004 (2026-07-29)
+returned 26 findings, all 26 reproduced. Its two blockers and the release
+blockers found since are fixed and are described under Fixed above. What
+remains is roughly 71 items at P1 and 42 at P2, tracked in the project's
+working ledger outside this repository, together with the open design
+questions `OQ-18`, `OQ-24`, `OQ-40`, `OQ-42`, `OQ-43`, `OQ-44` and
+`OQ-45`, several of which are what would lift the five uncertainty
+refusals above. None of them is a wrong number produced silently; that
+class is enumerated in full at the top of this block.
+
+**How to report one.** Open an issue on the repository. A finding that
+comes with the `.itceq` or the array that produces it, and what you
+expected instead, is one that can be reproduced and therefore fixed.
 
 ### Added
 
 * M1 Phase B3b, processors and the `.itceq` equation file (REQ-45 to
-  REQ-48, DD-16, DD-17). `itc.processor(name_or_path, config=None, *, auto_sort=False)` builds a
+  REQ-48, DD-16, DD-17).
+  `itc.processor(name_or_path, *, config=None, auto_sort=False)` builds a
   processor from a registered name or from a
   path to an `.itceq` file, whose `[constants]` defaults the `config`
   mapping overrides (REQ-46). A processor satisfies the `Processor`
@@ -424,6 +331,109 @@ own data was affected.
 
 ### Changed
 
+The CHK-1 release checkpoint turned five previously accepted inputs into
+refusals. Each is listed with the number that used to come out wrong,
+because that is the part a reader needs in order to tell whether their
+own data was affected.
+
+* **BREAKING. A built-in expression constant may not shadow a measured
+  channel** (`CHK1-001`, DD-42). `pi` and `e` were tested before the
+  frame's own names, so a frame carrying a variable named `e` read
+  Euler's number instead: `CDi = CL**2 / (pi * AR * e)` on `e = 0.5`
+  returned `0.01463746` against the correct `0.07957747`, and neither
+  the result nor History said so. `e` is the Oswald span efficiency
+  factor, so this is the most likely collision in the library's own
+  domain. `db.compute` and `EquationProcessor.validate` now refuse it,
+  naming the name. Symmetric with DD-39, which already refuses the
+  `[constants]` form of the same defect. **Migration:** give the channel
+  another name on the way in, with `itc.load(..., names=[...])` for an
+  array source or by correcting the header for a file source. A recorded
+  rename operation does not exist yet and is OQ-41.
+* **BREAKING. `itc.load` refuses a CSV row wider than its header**
+  (`R3-ITA-009`). Rows were read by header position, so every cell past
+  that width was dropped with no signal while Provenance went on hashing
+  the complete file bytes: the source hash certified content the frame
+  did not represent. A row that wide is a malformed file, either a
+  truncated header or a delimiter inside an unquoted field.
+  **Migration:** correct the header, or quote the offending field. A row
+  NARROWER than the header is still filled with NaN, unchanged.
+* **BREAKING. A VarFrame may not carry one name as both a dimension and
+  a variable** (`R3-ITA-008`). Datapoint mode always creates the
+  synthetic `datapoint` dimension and also accepted a column of that
+  name, so one frame carried both: `select` resolved the dimension and
+  never the variable, `to_csv` emitted a duplicate header the loader
+  then refused to read back, and `to_pandas` lost one of the two columns
+  to a dict-key overwrite. Enforced on the constructor, beside the
+  correlation invariant, so no operation can build one either.
+  **Migration:** as above.
+* **BREAKING. `itc.concat` refuses inputs whose vector groups sit in
+  different axis systems** (`CHK1-003`). `concat` rebuilds on the first
+  input, so its AxisRegistry stood for every row: a body-axis frame
+  joined to an already-rotated wind-axis frame came out claiming one
+  axis for all of them, and the next `rotate` transformed the rotated
+  rows a second time. REQ-107 makes the recorded source axis the thing
+  that keeps a repeated rotation an identity. An input that never
+  declared the group counts as the canonical body axis, so the check
+  covers the common shape where nobody called `declare_vector`.
+  **Migration:** rotate every input to a common target first.
+* **BREAKING for a non-finite value. `db.set_uncertainty` refuses a
+  declared magnitude that is not a finite number** (`R3-ITA-007`), and a
+  malformed one now raises `UncertaintyError` rather than a bare
+  `ValueError` or `TypeError` (`ITACA-031`). A NaN standard uncertainty
+  propagated into every quantity derived from the variable.
+  **Known limitation, stated rather than implied:** only the DECLARED
+  magnitude is validated. A relative spec resolves against the data, so
+  `"5%"` on a variable carrying NaN still yields a non-finite standard
+  uncertainty. The structural fix belongs in `UncFrame` and is blocked
+  on OQ-40, because that array carries NaN deliberately for cells
+  `compute(where=)` and `fill` did not touch.
+
+* **The SRS now describes the refusals this release ships** (SRS
+  documents 0.2.2 and 0.2.3, `ITC-20260729-1450` and
+  `ITC-20260729-2255`, which blocked the tag). All five refusals above
+  landed against requirement text that contradicted them or passed over
+  them in silence: REQ-01 said every column becomes a variable and
+  described no row-width refusal at all, REQ-24 and REQ-107 described no
+  `AxesError`, REQ-39 said a value may be any float, REQ-44 named `pi`
+  and `e` as constants without saying what happens when the frame carries
+  one, and REQ-45 said `validate` refuses two things where it now refuses
+  three. Six stable requirements are amended, plus REQ-92 and
+  REQ-98/REQ-26 as separate items below.
+
+  **Why five bullets amend six requirements, and why the SRS counts six
+  refusals where this list counts five.** The mapping is not one to one in
+  either direction, and the two effects are separate. Upward: the concat
+  refusal is written into REQ-24 **and** REQ-107, and the
+  constant-shadowing refusal into REQ-44 **and** REQ-45, so two bullets
+  need two requirements each. Downward: REQ-01 is amended for **two** of
+  the five, the `datapoint` collision and the row-width refusal. Those net
+  out at six requirements for five bullets.
+  The SRS counts *refusals* rather than bullets, and it counts six because
+  it states `validate`'s third refusal as its own amendment (REQ-45)
+  rather than folding it into the constant-shadowing bullet as these notes
+  do. The five here are the five rules a caller can hit. Nothing is
+  missing from either document: SRS 0.2.2 closed five of the six and SRS
+  0.2.3 closed the last one, the row-width refusal, which was missed when
+  this list was first written and was found by the independent review
+  REV-004 (`ITC-20260729-2255`).
+
+* **The SRS is now built by CI, and it did not build before** (`REQ-95`,
+  `ITC-20260729-2300`, `ITC-20260729-2350`, `ITC-20260730-0010`). Nothing
+  compiled `docs/srs/` at any point in this release, so a specification
+  that could not be built was indistinguishable from one that could.
+  `pdflatex` exited non-zero with seven errors: four from a chapter whose
+  every content line carried a blank after it, making each source line its
+  own paragraph and splitting a `\caption`, and three from a single
+  unescaped underscore that put another chapter into math mode which then
+  leaked into the chapter after it. Both are fixed, both are guarded, and
+  the document now compiles with no errors and no undefined references.
+  This is listed for the same reason the requirement amendments above are:
+  the authority chain opens by calling `docs/srs/` authoritative, and for
+  two document versions it asserted a state nobody had observed. Nothing in the library
+  changed: the code was correct and the specification was wrong, which
+  is the direction the SRS's own note says is not supposed to happen and
+  the reason this was a tag blocker.
+
 * **The source distribution now contains the whole repository**, not
   only the package: `pip download itaca --no-binary :all:` delivers
   `tests/`, `docs/`, `examples/` and the workspace configuration
@@ -476,6 +486,119 @@ own data was affected.
 
 ### Fixed
 
+* **`interpolate` recorded a polynomial degree it never used**
+  (`REQ-105`). `interpolate({...}, method="linear", deg=3)` was accepted,
+  `deg` was ignored by every method except `"polyfit"`, and it was then
+  written into the History string and into the replay kwargs anyway, so the
+  provenance record asserted an intent the computation did not honor. That
+  is `ITACA-023`, fixed earlier in this same release for NumPy keywords and
+  missed for the library's own. `deg` now raises when passed to a method
+  that does not consume it, and is recorded only when it was. **Never
+  shipped:** `interpolate` is new in this release. `db.fill` has the
+  identical hole for `deg`, `window` and `global_fit`, and that signature
+  DID ship in v0.1.0, so it needs a deprecation window and is registered
+  rather than changed here.
+* **`Axis` becomes keyword-only.** It was a six-field positional dataclass,
+  one of whose fields (`parent`) exists only to raise until chained
+  transforms land, so it occupied a permanent positional slot that could
+  never be removed. `Pipeline`, added in the same release, was already
+  `kw_only`. Every documented use passes keywords, so nothing breaks.
+* **The SRS no longer promises a method that does not exist**
+  (`ITACA-012`, the chapter-6 residual). REQ-70 listed
+  `db.export_provenance` among the export formats with no qualifier while
+  the symbol exists nowhere; it is now marked an M2 deliverable and NOT
+  IMPLEMENTED. Chapter 8 had been corrected when the finding was first
+  closed and this had not, because the guard written for it read chapter 8
+  alone. The guard now walks every chapter.
+* **Chapter 8 no longer overclaims what the docstring checker enforces.**
+  It said SECTION COMPLETENESS is enforced; the checker pins `Parameters`
+  and `Returns`, and REQ-79 names four sections, so `Raises` and
+  `Examples` completeness is machine-checked by nothing. Stated as it is.
+* **Four `rotate` refusals now name `db.drop_correlation`**, the method
+  this release added so that their prescribed remedy would exist. They
+  still said "drop the declaration", which is the state the method was
+  introduced to end.
+* **Two refusals stopped promising a fix in the version that ships them.**
+  `smooth` and `diff` said "the rule freezes during v0.2.0", in v0.2.0.
+  Both now cite OQ-18, which is what actually lifts them, as their three
+  siblings already did.
+* **`fitmodel` stopped misstating the specification on its public
+  surface.** `help(db.fitmodel)` said "the REQ-98 table declares no
+  fitmodel row"; the table carries `fitmodel` and `fitvalue` as a
+  provisional row. The module docstring had been corrected and the method
+  docstring, which is what a user reads, had not.
+* **The published sdist no longer carries `.claude/`.** setuptools-scm
+  ships every tracked file, which is deliberate for `tests/`, `docs/` and
+  `examples/` and wrong for eleven agent charters, six skills, the
+  vendored process kit and the push-gate hooks. `MANIFEST.in` prunes it and
+  `tests/test_release_integrity.py` reads a real built sdist to check.
+
+* **A declared `[uncertainties]` value could be replaced by a different
+  one, silently** (`R4-ITA-003`, SRS document 0.2.4). A processor decided
+  when to apply each declaration from a single question, whether the
+  incoming VarFrame already carried the name. A name the file *writes* and
+  the frame happened to carry was therefore assigned before the equations
+  ran and then overwritten by its own equation's propagation. With
+  `[uncertainties] x = 1.0, y = 5.0` and `[equations] y = "2*x"`, the
+  frame shipped `u(y) = 2.0`, which is what `u(x)` propagates to, where
+  the file declares `5.0`. With `y = 5.0` declared alone, or declared
+  relatively as `"10%"`, the frame shipped no uncertainty at all.
+  **Never shipped:** `itc.processor` is new in this release, so no
+  published build produced these numbers; if you are running a development
+  build, re-apply the processor and re-derive anything downstream of the
+  affected target.
+  The rule is now two independent questions, and a name may answer yes to
+  both: applied before the first line when the frame carries the name, so
+  every line reading it propagates from the declared value, and applied
+  again after the first line that writes it, so a declaration is not
+  shipped as the propagation of itself. The moment was unspecified in the
+  SRS, which is why the fix amends Section 4.6 rather than only the code.
+  **Three known limitations, all of them reachable through legal files and
+  none of them decided:**
+  * a name written *more than once*, by an equation and then by a
+    correction, takes the declaration after the FIRST write, so the
+    correction propagates over it. With `CL = 0.01` declared,
+    `[equations] CL = "2*x"` and `[corrections] CL = "CL * 2"`, the frame
+    ships `u(CL) = 0.02` (OQ-43);
+  * a *relative* declaration on a name that is both carried and written is
+    resolved twice, against the values it holds at each moment, so one
+    declaration yields two numbers. With `CL = "10%"`,
+    `[equations] CD = "CL * 2"` and `[corrections] CL = "CL + 90"` against
+    `CL = [10, 10]`, the frame ships `u(CL) = 10.0` beside `u(CD) = 2.0`
+    (OQ-44);
+  * a declaration speaks for the **systematic** component only, so a random
+    component your frame already carries is kept and propagates untouched.
+    An `.itceq` file cannot currently specify the whole uncertainty of a
+    name it declares (OQ-45).
+
+  All three are numerical-analyst decisions and all three are pinned by
+  tests, so the answers cannot change without saying so.
+* A negative `.itceq` `[constants]` value kept its sign under a power
+  (`CHK1-002`). Substitution round-tripped through `ast.unparse`, which
+  writes a negative float as the bare token `-0.25`; re-parsed in the
+  base of a power it bound as `-(0.25 ** 2)`, so `x_ref ** 2` with
+  `x_ref = -0.25` returned `-0.125` where `+0.125` is correct. Worse,
+  History recorded `Cm = -0.25 ** 2 * CN`, an expression that is not
+  equivalent to the file's, so the provenance record was
+  self-consistent and wrong. Negative reference stations are ordinary in
+  this domain.
+* The release workflow could not check out (`R3-ITA-001`).
+  `release.yml` declared `id-token: write` and nothing else, while the
+  gate it calls runs `actions/checkout` three times; declaring any
+  permission sets every undeclared one to `none`, and a reusable
+  workflow cannot exceed its caller. The green runs came from `ci.yml`,
+  a different caller that does grant `contents: read`, and the publish
+  jobs it skips were the ones that would have exercised this path.
+  `tests/test_release_integrity.py` now asserts every checkout-bearing
+  caller grants it.
+* The requirement traceability matrix counted its own gap inventory as
+  evidence (`R3-ITA-010`). `build_trace` walked the whole suite
+  including the module declaring `_UNREACHED_AT_LANE_CLOSE`, so every id
+  in that inventory registered as a test citation of the requirement it
+  records as unreached, and the gate reported zero unreached where the
+  honest figure is 26. The walk now skips its own file, and the ratchet
+  asserts both directions, so a stale entry can no longer hide.
+
 * **No personal or institutional identifier appears outside the files
   where authorship is deliberate** (DD-41), and none at all inside the
   importable package. Four occurrences in shipped docstrings stated
@@ -506,12 +629,17 @@ own data was affected.
   `VarFrame` methods were annotated `-> object`, so a caller under
   `mypy --strict` got nothing back they could use; they now declare
   what they return. `expand`'s `axis` and `interpolate`'s `method`,
-  `deg` and `override` become keyword-only behind the window `fill`
-  established: a positional call still works, emits a `FutureWarning`
-  naming the parameter, and the shim is removed in v0.3.0. Breaking it
-  outright would have been worse than the finding, since `axis` is an
-  int and a positional call would have landed it in a different
-  parameter silently.
+  `deg` and `override` become keyword-only OUTRIGHT, with no
+  deprecation window. A window was added first, on the reasoning that
+  breaking a positional call would be worse than the finding, and the
+  release review measured that reasoning against the shipped surface:
+  NEITHER method existed in v0.1.0, so there were no released callers
+  to protect, and with `axis` keyword-only a positional call raises
+  `TypeError` naming the arity, which is loud. The window would have
+  let v0.2.0 users write a positional call legally and broken them in
+  v0.3.0: it manufactured the compatibility obligation it was added to
+  avoid. `db.fill(along, method)` keeps ITS window, because that
+  signature genuinely shipped in v0.1.0.
 
   This finding was CLAIMED CLOSED in the lane's plan entry while it was
   untouched, and the role review caught it. The claim is corrected
@@ -689,6 +817,9 @@ own data was affected.
   `TypeError`, is covered by the same check, and `np.pi(x)` now raises
   `DataError` rather than a bare `TypeError`, because the admission gate
   tests `callable` where it used to test `hasattr`.
+  **Shipped in v0.1.0.** If you passed a keyword to a function inside
+  `db.compute`, the keyword was ignored and History recorded it as used;
+  re-derive those variables.
 
 * **A dead expression branch no longer poisons a derivative**
   (`ITACA-022`). `u(x**2)` was `NaN` for a negative base and for zero,
@@ -707,6 +838,9 @@ own data was affected.
   `y = x + np.sum(z)` with uncertainty on `x` alone now succeeds where
   it used to raise. That widening is exact rather than an approximation:
   the branch cannot affect the result by any amount.
+  **Shipped in v0.1.0.** `u(x**2)` came out `NaN` wherever `x` was zero or
+  negative, so any uncertainty derived through a power over such data was
+  lost rather than wrong; re-derive it.
 
 * **Repeated names are refused at every ingestion boundary**
   (`ITACA-026`, new `DuplicateNameError`). `itc.load(array,
@@ -718,6 +852,9 @@ own data was affected.
   dict-mode coordinate that would shadow the file's own column. The CSV
   and `dims=` cases did not lose data but reported a shape mismatch that
   named neither the file nor the repeated name.
+  **Shipped in v0.1.0.** A repeated name in `names=` silently dropped a
+  column at load, so anything derived from that frame is suspect;
+  re-load and re-derive.
 
 * **A negative polynomial degree is refused** (`ITACA-033`).
   `interpolate({"x": [...]}, "polyfit", -1)` returned zeros over data
@@ -726,6 +863,10 @@ own data was affected.
   check: `interpolate`, `fill` (both the moving-window path and the
   `global_fit` path, the second of which was a silent no-op that
   recorded `deg=-1` in History), `diff`, `smooth` and `fitmodel`.
+  **Shipped in v0.1.0.** `fill(..., deg=-1, global_fit=True)` was a
+  no-op that recorded `deg=-1`, and `interpolate(..., 'polyfit', -1)`
+  returned zeros over real data; both are wrong numbers with a
+  provenance record that looks correct.
 
 * **The version is derived from the repository instead of written in a
   file** (`ITACA-004`, DD-38, REQ-92). `itaca/core/version.py` held

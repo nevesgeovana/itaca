@@ -338,14 +338,28 @@ class TestNegativePolynomialDegree:
 
 
 class TestKeywordOnlyOptions:
-    """REV-001 ITACA-032, the deprecation half.
+    """REV-001 ITACA-032: the options are keyword-only, with no window.
 
-    `expand` and `interpolate` accepted their options positionally
-    against REQ-85. They are keyword-only now, behind the same window
-    `fill` established: a positional call still works and says so, and
-    the shim is removed in v0.3.0. Breaking it outright would be worse
-    than the finding, because `axis` is an int and a positional call
-    would silently land it in a different parameter.
+    REQ-85 makes every optional parameter beyond the first positional
+    argument keyword-only, and mandates no deprecation window.
+
+    THE WINDOW WAS REMOVED BEFORE THE v0.2.0 TAG, and the reason is worth
+    keeping. The lane that closed ITACA-032 added a `*args` shim to both
+    methods, emitting `FutureWarning` and promising removal in v0.3.0, on
+    the reasoning that "breaking it outright would be worse than the
+    finding, because `axis` is an int and a positional call would silently
+    land it in a different parameter". The release review measured that
+    reasoning against the shipped surface and it does not hold here:
+    NEITHER method existed in v0.1.0, so there were no released callers to
+    protect. With `axis` keyword-only, `db.expand("rpm", vals, 0)` raises
+    `TypeError` naming the arity, which is loud.
+
+    The shim therefore inverted its own purpose. It let v0.2.0 users write
+    a positional call legally, so v0.3.0 would have broken them: it
+    MANUFACTURED the compatibility obligation it was added to avoid, and
+    spent three public affordances on it. The `fill` precedent it cited is
+    genuinely different, because `fill(along, method)` did ship in v0.1.0
+    and its window is still in place.
     """
 
     @staticmethod
@@ -355,28 +369,72 @@ class TestKeywordOnlyOptions:
             np.column_stack([x, 1.0 + 2.0 * x]), names=["alpha", "y"]
         ).pivot(dims=["alpha"])
 
-    def test_itaca_032_positional_interpolate_options_warn(self) -> None:
-        """The old call still works, and names what to change."""
-        with pytest.warns(FutureWarning, match="keyword-only in v0.3.0"):
-            out = self._ramp().interpolate({"alpha": [0.5]}, "polyfit", 1)
-        assert out.vars["y"].values[0] == pytest.approx(2.0)
+    def test_itaca_032_positional_interpolate_options_are_refused(self) -> None:
+        """A positional option raises, loudly, naming the arity."""
+        with pytest.raises(TypeError, match="positional argument"):
+            self._ramp().interpolate({"alpha": [0.5]}, "polyfit", 1)  # type: ignore[misc]
 
-    def test_itaca_032_positional_expand_axis_warns(self) -> None:
-        """Same window on expand's `axis`."""
-        with pytest.warns(FutureWarning, match="keyword-only in v0.3.0"):
-            out = self._ramp().expand("rpm", [1.0, 2.0], 0)
-        assert list(out.dims) == ["rpm", "alpha"]
+    def test_itaca_032_positional_expand_axis_is_refused(self) -> None:
+        """Same on expand's `axis`, which is the int the window worried about."""
+        with pytest.raises(TypeError, match="positional argument"):
+            self._ramp().expand("rpm", [1.0, 2.0], 0)  # type: ignore[misc]
 
     def test_itaca_032_the_keyword_form_warns_about_nothing(self) -> None:
-        """The supported form is silent.
+        """The supported form is silent, and is the only form.
 
-        Which is what makes the warning mean something: a deprecation
-        that fires on the recommended call teaches people to ignore it.
+        No `FutureWarning` is emitted by either method any more, which is
+        the point: a deprecation that fires on the recommended call teaches
+        people to ignore deprecations, and a deprecation for a form that
+        never shipped teaches them to write it.
         """
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             self._ramp().interpolate({"alpha": [0.5]}, method="polyfit", deg=1)
             self._ramp().expand("rpm", [1.0, 2.0], axis=0)
+
+    def test_req105_interpolate_refuses_a_degree_it_does_not_consume(self) -> None:
+        """`deg` reaches only `polyfit`, and is refused elsewhere (REQ-105).
+
+        Found by the v0.2.0 release review. `_validate_method` inspected
+        `deg` only inside the `polyfit` branch, so `method="linear",
+        deg=3` was accepted, `deg` was never read, and it was then written
+        into the History string AND into the replay kwargs. The provenance
+        record asserted a degree the computation did not use, which is
+        ITACA-023 over the library's own keyword instead of NumPy's, in a
+        signature new in this release.
+
+        `smooth` already answered this question the other way in the same
+        release, so v0.2.0 was about to publish two opposite answers for
+        two operations a user reaches for in the same breath.
+        """
+        ramp = self._ramp()
+        for method in ("linear", "cubic", "nearest"):
+            with pytest.raises(DataError, match="does not consume deg"):
+                ramp.interpolate({"alpha": [0.5]}, method=method, deg=3)
+        # And the consuming method still requires it.
+        with pytest.raises(DataError, match="called without deg"):
+            ramp.interpolate({"alpha": [0.5]}, method="polyfit")
+
+    def test_req105_history_records_no_degree_when_none_was_consumed(self) -> None:
+        """The provenance half, which is what made this a defect.
+
+        A recorded `deg=` on a computation that read no degree is a
+        provenance record asserting an intent the execution did not honor.
+        """
+        out = self._ramp().interpolate({"alpha": [0.5]}, method="linear")
+        recorded = out.history[-1].operation
+        assert "deg=" not in recorded, (
+            f"History recorded a degree for a method that consumes none: {recorded!r}"
+        )
+        step = out.history[-1].step
+        assert step is not None and "deg" not in step.kwargs, (
+            f"the replay kwargs carry a degree the computation never read: "
+            f"{step.kwargs if step else None!r}"
+        )
+        # The polyfit path still records it, so the absence above is a
+        # consequence of the rule and not of the recording being dropped.
+        fitted = self._ramp().interpolate({"alpha": [0.5]}, method="polyfit", deg=1)
+        assert "deg=1" in fitted.history[-1].operation
 
     def test_itaca_032_public_returns_are_not_object(self) -> None:
         """No public method may annotate its return as bare `object`.

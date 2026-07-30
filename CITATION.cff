@@ -6,20 +6,33 @@ authors:
   - family-names: Neves
     given-names: Geovana
 license: MIT
-version: 0.1.0
-date-released: 2026-07-22
-doi: 10.5281/zenodo.21482649
+version: 0.2.0
+date-released: 2026-07-30
+# No per-release `doi:` here, deliberately. Zenodo mints the v0.2.0 DOI when
+# this tag is archived, so a value written before the tag can only be the
+# PREVIOUS release's, which is what shipped in the v0.1.0 record: this file
+# carried 10.5281/zenodo.21482649 (the v0.1.0 DOI) beside `version: 0.1.0`
+# while the v0.2.0 tag was being prepared, and there is no `.zenodo.json`, so
+# Zenodo falls back to this file for deposit metadata. The concept DOI below
+# resolves to the latest version and is the one to cite when a specific
+# release is not meant.
 identifiers:
   - type: doi
     value: 10.5281/zenodo.21482648
     description: Concept DOI, resolving to the latest version.
+  - type: doi
+    value: 10.5281/zenodo.21482649
+    description: Version DOI for v0.1.0.
 repository-code: "https://github.com/nevesgeovana/itaca"
 abstract: >-
   Python library for rigorous engineering data management, analysis, and
   computation in aerospace applications: multidimensional datasets with
   mandatory provenance, two-component GUM uncertainty propagation with
-  covariance, and origin tags. Reusable processors and plotting are
-  roadmapped rather than released in this version.
+  covariance, and origin tags. This release adds the analysis operations,
+  the axes and vector-group system with rotation and moment transfer,
+  replayable pipelines, and reusable processors defined by an .itceq
+  equation file. Publication-quality plotting is roadmapped rather than
+  released in this version.
 keywords:
   - aerospace
   - wind tunnel

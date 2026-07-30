@@ -221,9 +221,9 @@ def _reject_cross_group_correlation(db: VarFrame, comps: tuple[str, str, str]) -
                 "only, so a pair that joins a rotated component to a "
                 "variable outside its group would be left holding its "
                 "pre-rotation coefficient",
-                "drop the pair before rotating and declare it again in the "
-                "target axis, or await the OQ-34 joint-covariance "
-                "resolution (REQ-40)",
+                "drop the pair with db.drop_correlation([...]) before "
+                "rotating and declare it again in the target axis, or "
+                "await the OQ-34 joint-covariance resolution (REQ-40)",
             )
 
 
@@ -260,8 +260,8 @@ def _reject_angle_correlation(
                 f"declared correlation {pair}",
                 "rotation propagation does not yet consult a correlation "
                 "involving a frame angle (angle independence, OQ-26)",
-                "drop the angle correlation, or await the OQ-26 "
-                "resolution; the angle-independent rule is applied "
+                "drop it with db.drop_correlation([...]), or await the "
+                "OQ-26 resolution; the angle-independent rule is applied "
                 "otherwise",
             )
 
@@ -494,7 +494,8 @@ def _refuse_unrepresentable(
             "rotate recomputed a coefficient that differs from cell to "
             "cell, and the correlation store holds one coefficient per pair",
             "rotate one condition at a time with db.at or db.select, or "
-            "drop the declaration before rotating (REQ-40)",
+            "drop it with db.drop_correlation([...]) before rotating "
+            "(REQ-40)",
         )
     assert values is not None
     raise UncertaintyError(
@@ -503,7 +504,7 @@ def _refuse_unrepresentable(
         f"and {values[1]!r} for the random component, and one coefficient "
         f"is shared by both (OQ-23)",
         "rotate a frame carrying a single uncertainty component, or drop "
-        "the declaration before rotating (REQ-40)",
+        "it with db.drop_correlation([...]) before rotating (REQ-40)",
     )
 
 

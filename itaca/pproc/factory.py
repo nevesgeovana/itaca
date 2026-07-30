@@ -25,8 +25,8 @@ SUFFIX = ".itceq"
 
 def processor(
     name_or_path: str | Path,
-    config: Mapping[str, float] | None = None,
     *,
+    config: Mapping[str, float] | None = None,
     auto_sort: bool = False,
 ) -> Processor:
     """Construct a processor (REQ-46).

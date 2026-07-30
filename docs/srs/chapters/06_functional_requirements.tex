@@ -1373,7 +1373,10 @@ A VarFrame supports export to:
     (\code{to\_numpy(return\_dims=True)});
   \item native \itc{} binary \code{.itc} (\code{save} / \code{itc.open});
   \item PROV-N and PROV-JSON for the provenance graph
-    (\code{db.export\_provenance(path, format="prov-json")}).
+    (\code{db.export\_provenance(path, format="prov-json")}), an M2
+    deliverable and NOT IMPLEMENTED in v0.2.0. The method does not exist
+    yet; this list stated it without that qualifier, which is the
+    chapter~6 half of \code{ITACA-012}.
 \end{itemize}
 The \code{.itc} format preserves all metadata, Provenance, History,
 uncertainty, correlation, and origin tags.

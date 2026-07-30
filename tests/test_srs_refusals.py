@@ -778,7 +778,33 @@ def test_every_breaking_change_in_the_release_notes_carries_the_marker() -> None
         "section could not be delimited and this check would inspect the "
         "wrong text"
     )
-    section = lines[headings[0] : headings[1]]
+    # The newest RELEASED section, skipping an `[Unreleased]` heading that
+    # carries no bullets. Reading `headings[0]` unconditionally was correct
+    # while the release notes lived under `[Unreleased]`, and became wrong
+    # the moment v0.2.0 got its own dated heading and a fresh empty
+    # `[Unreleased]` opened above it: the guard then inspected three lines
+    # of "Nothing yet." and reported that no break was marked. A guard that
+    # fails because the file became more correct is a guard reading the
+    # wrong window.
+    start = next(
+        (
+            index
+            for position, index in enumerate(headings)
+            if any(
+                line.startswith("* ")
+                for line in lines[index : headings[position + 1]]
+                if position + 1 < len(headings)
+            )
+        ),
+        headings[0],
+    )
+    following = [index for index in headings if index > start]
+    assert following, (
+        f"CHANGELOG.md's newest section with bullets starts at line "
+        f"{start + 1} and nothing follows it, so the section cannot be "
+        f"delimited"
+    )
+    section = lines[start : following[0]]
     assert any("**BREAKING" in line for line in section), (
         "no breaking change is marked in the release notes; this check "
         "would pass vacuously on a section it failed to find"

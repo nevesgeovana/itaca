@@ -511,6 +511,70 @@ class TestBuiltArtifactIdentity:
             f"{identifiers.REMEDY}"
         )
 
+    def test_no_process_machinery_ships_inside_the_sdist(
+        self, artifacts: tuple[Path, Path]
+    ) -> None:
+        """`.claude/` is pruned from the published artifact, and it is READ.
+
+        Author decision 2026-07-30, taken when the release review measured
+        that the v0.2.0 sdist would carry the whole of `.claude/`: eleven
+        agent charters, six skills, the vendored shared-process kit and the
+        push-gate hooks. setuptools-scm supplies the file list from git, so
+        every tracked file ships by default, which is right for `tests/`,
+        `docs/` and `examples/` (DD-38) and wrong for process machinery. None
+        of it is the library, none of it runs for a user, and a gate hook
+        inside a published archive invites being run outside the repository
+        it was written for.
+
+        `MANIFEST.in` is the mechanism and this is the guard. Reasoning about
+        what a build includes is how the original defect arrived: the source
+        guard in `tests/test_house_style.py` decides what ships by inference,
+        and this reads the archive, which is the only thing that cannot be
+        wrong about its own contents.
+
+        The positive half is asserted too. A `prune` that was too broad, or a
+        build that stopped shipping the tree, would satisfy the absence
+        assertion by shipping nothing, so the three trees the decision keeps
+        are required to still be there.
+        """
+        _, sdist = artifacts
+        with tarfile.open(sdist) as bundle:
+            # Strip the "itaca-<version>/" root so paths are repo-relative.
+            names = [
+                member.name.split("/", 1)[-1]
+                for member in bundle.getmembers()
+                if member.isfile()
+            ]
+
+        machinery = sorted(name for name in names if name.startswith(".claude/"))
+        assert not machinery, (
+            f"the sdist ships {len(machinery)} file(s) under .claude/, which is "
+            f"development process machinery and not the library: "
+            f"{machinery[:10]}. `MANIFEST.in` prunes it; if that stopped "
+            f"working, a build change put it back. Do not fix this by narrowing "
+            f"the scan."
+        )
+        assert not [name for name in names if name.startswith("_private/")], (
+            "the sdist ships files under _private/, the local staging tree for "
+            "proprietary material. That directory is gitignored AND pruned; if "
+            "it reached an archive, both failed."
+        )
+        # The floors, so the absence above cannot be satisfied vacuously.
+        assert len(names) >= 100, f"the sdist holds {len(names)} files"
+        for kept in (
+            "itaca/core/varframe.py",
+            "tests/test_release_integrity.py",
+            "docs/srs/main.tex",
+            "examples/wt_campaign.py",
+            "CHANGELOG.md",
+            "CITATION.cff",
+        ):
+            assert kept in names, (
+                f"the sdist no longer ships {kept}, so the prune above is too "
+                f"broad or the build stopped including the tree. DD-38 keeps "
+                f"tests, docs and examples in the artifact deliberately."
+            )
+
     def test_guard_1_the_built_artifacts_carry_no_forbidden_identifier(
         self, artifacts: tuple[Path, Path]
     ) -> None:

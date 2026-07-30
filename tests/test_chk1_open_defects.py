@@ -631,14 +631,24 @@ def test_itaca_030_combine_refuses_incompatible_units() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="ITACA-012: residual at 730649f")
 def test_itaca_012_no_chapter_claims_an_absent_export_symbol() -> None:
     """The ITACA-012 scan must cover every chapter, not the cited one.
 
-    Chapter 8 was corrected and now retracts the claim in place. REQ-70
-    in chapter 6 still lists ``db.export_provenance`` among the export
-    formats, and the guard test reads only chapter 8, so it cannot see
-    it.
+    FIXED before the v0.2.0 tag, and the marker is gone because the ratchet
+    forced it: this passed, and strict xfail turns a pass into a failure.
+
+    Chapter 8 was corrected when ITACA-012 was first closed, and REQ-70 in
+    chapter 6 went on listing ``db.export_provenance`` among the export
+    formats with no qualifier, because the guard written for the finding
+    read chapter 8 alone. So a stable requirement promised a method that
+    exists nowhere, in a document the sdist now publishes. The release
+    review found it; REQ-70 now marks it an M2 deliverable and NOT
+    IMPLEMENTED.
+
+    This test is the widened form and it stays: it walks EVERY chapter, so
+    the next claim of an absent symbol cannot hide in the one file the
+    original guard did not read. The skip below is the forward path, for
+    when M2 actually ships the method.
     """
     package = "\n".join(
         path.read_text(encoding="utf-8")

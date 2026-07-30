@@ -7,7 +7,7 @@ that ``fitvalue`` can tag evaluations inside (+1) or beyond (-1) the
 fitted range (REQ-32). The normative REQ-98 table carries ``fitmodel``
 and ``fitvalue`` as a provisional row whose coefficient-space rule is
 not yet frozen, so the operation raises when uncertainty is present
-rather than guessing (DD-18); the rule is queued for the author
+rather than guessing (DD-18); OQ-24 is what lifts it
 (OQ-24).
 
 Both operations keep the variable names and replace what those names
@@ -86,9 +86,9 @@ def fitmodel(
     if db.uncertainty is not None:
         raise UncertaintyError(
             "fitmodel",
-            "the REQ-98 table declares no coefficient propagation rule for fitmodel",
-            "fit before assigning uncertainty (DD-18); the rule is "
-            "queued for the author",
+            "REQ-98 carries fitmodel as a provisional row and its "
+            "coefficient-space propagation rule is not frozen (OQ-24)",
+            "fit before assigning uncertainty (DD-18); OQ-24 is what lifts this",
         )
     coef_name = f"{along}_coef"
     if coef_name in db.dims or coef_name in db.vars:
@@ -189,7 +189,7 @@ def fitvalue(
             "coefficient-space uncertainty is not frozen yet, so its "
             "forward evaluation defers with fitmodel (REQ-98 provisional "
             "row, OQ-24)",
-            "evaluate before assigning uncertainty; the rule is queued for the author",
+            "evaluate before assigning uncertainty; OQ-24 is what lifts this",
         )
 
     content = content_of(db)

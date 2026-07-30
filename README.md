@@ -18,8 +18,10 @@ It manages multidimensional experimental and numerical datasets (wind
 tunnel campaigns, CFD post-processing, flight-test data, engineering
 computations) with mandatory provenance, automatic GUM-compliant
 uncertainty propagation including covariance, and origin tags for every
-value. The plotting layer (`ItcFigure`, the AIAA style, the matplotlib
-backend) is roadmapped for v0.2.1 and is not in the library today.
+value. Where a propagation rule is not yet frozen, the operation raises
+instead of returning a number: see Status below for which five. The
+plotting layer (`ItcFigure`, the AIAA style, the matplotlib backend) is
+roadmapped for v0.2.1 and is not in the library today.
 
 ## Installation
 
@@ -59,17 +61,26 @@ wind tunnel walkthrough.
 
 ## Status
 
-Pre-release. Milestone M0 (released as v0.1.0) is implemented and
-test-covered: loading in all modes, inspection and diagnostics,
-structural operations, two-component GUM uncertainty propagation with
-covariance, string-equation derivation, explicit combination, exports,
-and the `.itc` native format with state-hash revalidation.
+Pre-release, and the API is not frozen. Two milestones have shipped.
 
-Milestone M1 is complete in the working tree and not yet released: the
-analysis operations (`expand`, `concat`, `interpolate`, `average`,
-`integrate`, `smooth`, `diff`, `fitmodel`, `fitvalue`), the axes and
-vector-group system with rotation and moment transfer, pipelines and
-`.itc_pipe`, and reusable `.itceq` processors.
+**Milestone M0, released as v0.1.0**: loading in all modes, inspection and
+diagnostics, structural operations, two-component GUM uncertainty
+propagation with covariance, string-equation derivation, explicit
+combination, exports, and the `.itc` native format with state-hash
+revalidation.
+
+**Milestone M1, released as v0.2.0**: the analysis operations (`expand`,
+`concat`, `interpolate`, `average`, `integrate`, `smooth`, `diff`,
+`fitmodel`, `fitvalue`), the axes and vector-group system with rotation and
+moment transfer, replayable pipelines and `.itc_pipe`, and reusable
+processors defined by an `.itceq` equation file.
+
+**Read the release notes in `CHANGELOG.md` before you rely on
+uncertainty.** Five operations REFUSE to propagate it rather than guessing:
+`smooth`, `diff`, `fitmodel`, `fitvalue`, and `fill(method="polyfit")`.
+Each raises when the frame carries an uncertainty, because its propagation
+rule is not yet frozen. The notes also list the defects known open in this
+release, several of which produce a wrong number silently.
 
 The SRS is versioned in `docs/srs/`; its document version and revision
 are stated on the SRS title page and in the revision history table.
@@ -107,7 +118,9 @@ MIT License (see `LICENSE`). Citation metadata lives in `CITATION.cff`.
 Tagged releases are mirrored on Zenodo: cite the concept DOI
 [10.5281/zenodo.21482648](https://doi.org/10.5281/zenodo.21482648) for
 the latest version, or the per-release DOI (v0.1.0:
-[10.5281/zenodo.21482649](https://doi.org/10.5281/zenodo.21482649)). A
+[10.5281/zenodo.21482649](https://doi.org/10.5281/zenodo.21482649); the
+v0.2.0 DOI is minted when the tag is archived and is on the Zenodo record).
+A
 software paper (JOSS or SoftwareX) is planned after the API
 stabilizes.
 
