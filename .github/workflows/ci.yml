@@ -79,3 +79,68 @@ jobs:
         [2.0, 4.0, 6.0], db.vars['CZ'].values; assert
         list(db.uncertainty.systematic['CZ']) == [0.2, 0.2, 0.2],
         db.uncertainty.systematic['CZ']; print('smoke ok', itc.__version__)"
+
+  # ITC-20260730-0010. The authority chain opens with "docs/srs/ is the
+  # authoritative specification", and until this job existed nothing built
+  # it. `main.log` was dated 2026-07-23 while document versions 0.2.1 and
+  # 0.2.2 both shipped after it, each asserting in its own revision history
+  # that the document had changed. Two build defects reached main that way
+  # and neither was found by a machine: chapter 7 was blank-line doubled
+  # (ITC-20260729-2300, four errors) and one unescaped underscore inside
+  # \code{} put chapter 8 into math mode that leaked into chapter 9
+  # (ITC-20260729-2350, three errors). Seven errors, exit 1, and the only
+  # mechanism that ever found either was a person running pdflatex by hand.
+  #
+  # This is a JOB and not an apparatus, deliberately. It sits outside the
+  # matrix because the document does not depend on the Python version, and
+  # outside the reusable gate because the gate is a hash-pinned kit body
+  # that no repository may edit to add its own document build.
+  #
+  # It asserts BOTH the exit status and an empty error list, which is this
+  # repository's own rule applied to a new checker: "read a checker's entry
+  # count and not only its exit code". latexmk in nonstopmode can emit a
+  # PDF and still have logged errors, and an 85-page PDF built from a
+  # document in math mode is exactly the artifact that looks like a
+  # success. Measured before this job was written: the broken tree gives
+  # exit 12 with 7 error lines, and the fixed tree exit 0 with 0.
+  srs:
+    name: SRS builds (latexmk)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      # No TeX distribution is present on the runner. The set below is the
+      # smallest that covers this document's preamble: newtx lives in
+      # fonts-extra, tcolorbox/titlesec/lettrine/enumitem/multirow in
+      # latex-extra, and natbib/mathtools/microtype/hyperref in
+      # latex-recommended. bibtex-extra is for the natbib run over
+      # sample.bib, which latexmk drives on its own.
+      - name: Install TeX Live
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            latexmk \
+            texlive-latex-recommended \
+            texlive-latex-extra \
+            texlive-fonts-recommended \
+            texlive-fonts-extra \
+            texlive-bibtex-extra
+      - name: Build the SRS
+        working-directory: docs/srs
+        run: latexmk -pdf -file-line-error -interaction=nonstopmode main.tex
+      - name: Refuse a build that logged errors even after exiting zero
+        working-directory: docs/srs
+        run: |
+          if grep -nE '^(!|[^ ]+:[0-9]+: )' main.log; then
+            echo "::error::the SRS build logged LaTeX errors; see the lines above"
+            exit 1
+          fi
+          echo "no LaTeX errors in main.log"
+      - name: Show the errors on failure
+        if: failure()
+        working-directory: docs/srs
+        run: |
+          grep -nE '^(!|[^ ]+:[0-9]+: )' main.log || true
+          echo "----- last 60 lines of main.log -----"
+          tail -60 main.log

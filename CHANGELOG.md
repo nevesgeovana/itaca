@@ -114,13 +114,18 @@ own data was affected.
 
 * **The SRS now describes the refusals this release ships** (SRS
   document 0.2.2, `ITC-20260729-1450`, which blocked the tag). All five
-  refusals above landed against requirement text that contradicted them:
-  REQ-01 said every column becomes a variable, REQ-24 and REQ-107
+  refusals above landed against requirement text that contradicted them
+  or passed over them in silence: REQ-01 said every column becomes a
+  variable and described no row-width refusal at all, REQ-24 and REQ-107
   described no `AxesError`, REQ-39 said a value may be any float, REQ-44
   named `pi` and `e` as constants without saying what happens when the
   frame carries one, and REQ-45 said `validate` refuses two things where
   it now refuses three. Six stable requirements are amended, plus REQ-92
-  and REQ-98/REQ-26 as separate items below. Nothing in the library
+  and REQ-98/REQ-26 as separate items below. REQ-01 carries two of the
+  five, the `datapoint` collision and the row-width refusal; the second
+  was missed when this list was first written and was found by the
+  independent review REV-004 (`ITC-20260729-2255`), which is why the
+  refusal count and the amended-requirement count differ. Nothing in the library
   changed: the code was correct and the specification was wrong, which
   is the direction the SRS's own note says is not supposed to happen and
   the reason this was a tag blocker.

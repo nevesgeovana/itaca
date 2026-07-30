@@ -192,6 +192,62 @@ def test_every_srs_label_is_reached_by_a_real_latex_command() -> None:
     assert not offenders, f"label reached without a reference command: {offenders}"
 
 
+def test_no_srs_source_is_blank_line_doubled() -> None:
+    """A blank after EVERY content line makes each line its own paragraph.
+
+    In LaTeX a blank line is ``\\par``. A source carrying a blank between
+    every pair of content lines therefore renders every line of every
+    requirement as a separate paragraph, and the breaks fall mid-sentence
+    because they are a tooling artifact rather than authored spacing. It
+    also breaks outright wherever a construct may not span a paragraph:
+    ``ITC-20260729-2300`` was four of the seven errors in the first SRS
+    build anyone had run since 2026-07-23, three of them at one
+    ``\\caption`` that a doubled blank split.
+
+    Why this is guarded here and not left to the build. The CI job added by
+    ``ITC-20260730-0010`` compiles the document and so catches a doubling
+    that happens to break a caption. It does NOT catch the general case: a
+    doubled chapter containing no such construct compiles perfectly and
+    renders as garbage, which is the same defect with no signal. So the
+    structural property is asserted directly.
+
+    The threshold rests on measurement rather than taste. The ratio of
+    non-blank lines immediately followed by a blank, over all non-blank
+    lines, was 1.00 for the doubled chapter 7 and 0.04 to 0.23 for the
+    other fourteen sources. 0.9 sits four times above the healthy maximum
+    and a tenth below the defect, so it separates them without being
+    sensitive to how any one chapter is spaced.
+    """
+    root = _ROOT / "docs" / "srs"
+    offenders: list[str] = []
+    for path in sorted(root.rglob("*.tex")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        nonblank = [index for index, line in enumerate(lines) if line.strip()]
+        # A very short include has no room for the ratio to mean anything.
+        if len(nonblank) < 10:
+            continue
+        followed = sum(
+            1
+            for index in nonblank
+            if index + 1 < len(lines) and not lines[index + 1].strip()
+        )
+        ratio = followed / len(nonblank)
+        if ratio >= 0.9:
+            offenders.append(
+                f"{path.name}: {len(lines)} lines, {len(nonblank)} non-blank, "
+                f"{followed} of them followed by a blank (ratio {ratio:.2f})"
+            )
+    assert not offenders, (
+        f"an SRS source is blank-line doubled, so every content line renders "
+        f"as its own LaTeX paragraph: {offenders}. The inverse transform is "
+        f"deterministic from the blank-run histogram: delete every run of one "
+        f"blank, and collapse every run of three to one. Verify afterwards "
+        f"that the non-blank lines are byte-identical and in the same order, "
+        f"since the transform may only add or remove blank lines "
+        f"(ITC-20260729-2300)."
+    )
+
+
 def test_no_personal_or_institutional_identifier_is_tracked_outside_authorship() -> (
     None
 ):

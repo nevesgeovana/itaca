@@ -15,16 +15,26 @@ it adds or modifies.
 \section*{Document 0.2.2, 2026-07-29, CHK-1 Refusal Amendment}
 
 Issued to close \code{ITC-20260729-1450}, which blocked the v0.2.0 tag.
-The CHK-1 release checkpoint added five public refusals to surfaces
+The CHK-1 release checkpoint added six public refusals to surfaces
 whose requirement text did not describe them, which is the defect class
 the 0.2.1 revision above named in its own words and did not finish
 closing. The code shipped correct; the text was wrong. No requirement
 scope is added or withdrawn here.
 
-\paragraph{Changed (the five CHK-1 refusals).} REQ-01 states that one
+The count reads six rather than five because the sixth was found after
+this section was first written, by the independent review REV-004, and is
+closed by \code{ITC-20260729-2255}. It is recorded as part of this
+revision rather than as a later one because it is the same defect class
+from the same checkpoint, and splitting it would suggest two amendments
+where the work was one.
+
+\paragraph{Changed (the six CHK-1 refusals).} REQ-01 states that one
 name may not be both a dimension and a variable, so a source column
 named \code{datapoint} is refused at load and at VarFrame construction
-(\code{R3-ITA-008}). REQ-24 and REQ-107 both state that
+(\code{R3-ITA-008}); it also states that a CSV row wider than its header
+is refused with \code{DataError}, and that a row narrower than its header
+is still filled with NaN, an asymmetry the requirement now gives its
+reason for (\code{R3-ITA-009}). REQ-24 and REQ-107 both state that
 \code{itc.concat} raises \code{AxesError} when the inputs express a
 vector group in different axis systems, or declare one group over
 different components, with an undeclared input counting as the

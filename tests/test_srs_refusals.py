@@ -582,8 +582,20 @@ def test_each_provisional_row_names_the_open_question_that_lifts_it() -> None:
 _CHK1_REFUSALS = (
     (
         "REQ-01",
-        ("R3-ITA-008", "both a dimension and a variable"),
-        "a column named datapoint is refused",
+        (
+            "R3-ITA-008",
+            "both a dimension and a variable",
+            # The sixth CHK-1 refusal, ITC-20260729-2255, found by REV-004
+            # after the first five were closed. All three phrases were
+            # measured ABSENT from REQ-01 before the amendment, the way the
+            # rows below were chosen: "wider" and "narrower" carry the
+            # refusal and its asymmetry, and the finding id anchors it.
+            "R3-ITA-009",
+            "wider",
+            "narrower",
+        ),
+        "a column named datapoint is refused, and so is a row wider than "
+        "the header while a narrower one is still NaN-filled",
     ),
     ("REQ-24", ("AxesError",), "concat refuses mixed vector-group axes"),
     ("REQ-107", ("AxesError",), "the same refusal from the axis-registry side"),

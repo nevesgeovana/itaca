@@ -49,6 +49,22 @@ beside the correlation invariant, so no operation can build such a frame
 either, and it therefore governs \code{db.pivot} and every operation as
 well as this entry point. The cost is stated rather than hidden: no
 rename operation exists to recover with, and that gap is OQ-41.
+
+A CSV row may not be WIDER than its header. Rows are read by header
+position, so every cell past that width was dropped with no signal while
+Provenance went on hashing the complete file bytes: the source hash
+certified content the frame did not represent. Such a row is refused with
+\code{DataError}, naming the row, its field count, the header, and the
+cells that would have been discarded (\code{R3-ITA-009}).
+
+A row NARROWER than its header is NOT refused: its absent trailing cells
+are filled with NaN, exactly as an empty cell is. The asymmetry is
+deliberate, and it is stated here because a reader who meets one half of
+it will otherwise infer the other wrongly. A row wider than its header is
+a malformed file, either a truncated header or a delimiter inside an
+unquoted field, and neither of those is repaired by discarding data; a
+row narrower than its header is ordinary missing data, which this format
+already represents as NaN everywhere else.
 \end{reqbox}
 
 \begin{reqbox}{REQ-02}{\stable}
