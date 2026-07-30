@@ -1,16 +1,19 @@
-# Local CI mirror (REQ-96), in TIERS. Install BOTH hook types once:
+# Local CI mirror (REQ-96), in TIERS. Install once:
 #
 #     pre-commit install
-#     pre-commit install --hook-type pre-push
 #
-# The second line is not optional. Without it the commit tier runs and the
-# blocking tier does not exist, which would be strictly worse than what
-# this file replaced: the full suite would then run nowhere locally.
+# `default_install_hook_types` below is what makes that one line install
+# BOTH types. It is not a convenience: without the pre-push hook the commit
+# tier runs and the blocking tier does not exist, so the `slow` marker would
+# mean "runs nowhere locally", which is strictly worse than what this file
+# replaced. Two reviewers measured that a documented two-command install is
+# a silent hole, because the missing tier is indistinguishable from a
+# passing one; the fix is this key rather than a warning nobody reads.
 #
 # | tier     | when         | runs                               | budget         |
 # |----------|--------------|------------------------------------|----------------|
 # | commit   | every commit | ruff, mypy, the fast test subset   | p95 under 30 s |
-# | pre-push | every push   | the full suite WITH coverage       | minutes, once  |
+# | pre-push | every push   | the full suite WITH coverage, mypy | minutes, once  |
 # | PR       | CI           | the matrix, three interpreters     | CI's problem   |
 # | release  | tag          | artifact, examples, the full panel | once           |
 #
@@ -21,9 +24,14 @@
 # decide (BRF-063).
 #
 # WHY. The hook below was named `pytest-fast` and ran `pytest -x -q
-# --no-cov` with `always_run`, which is the entire suite plus a full
-# `mypy --strict`, on every commit. At 49 commits in three days that is
-# hours per day paid at the wrong gate (BRF-060, BRF-063). Measured here on
+# --no-cov` with `always_run`, which is the entire suite; the separate
+# `mypy` hook ran a full `mypy --strict` beside it. At 49 commits in three
+# days that is hours per day paid at the wrong gate (BRF-060, BRF-063).
+#
+# ONLY THE SUITE HALF MOVED. `mypy` still runs on every commit, unchanged,
+# and a reviewer measured that `mypy-full` at pre-push is the byte-identical
+# command a second time. Scoping or de-duplicating mypy is registered as
+# ITC-20260730-2355, not done here. Measured here on
 # 2026-07-30: two modules were essentially all of it, `test_release_integrity`
 # at 539 s and `test_push_gate` at 108 s, against 0.7 to 3.9 s for every
 # other module. Both are process-level, spawning a checker or a hook per
@@ -32,6 +40,8 @@
 # Keep the ruff rev below equal to the ruff pin in the pyproject [dev]
 # extra; the bump procedure is documented there.
 # tests/test_tooling_config.py fails if they drift apart.
+default_install_hook_types: [pre-commit, pre-push]
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.22

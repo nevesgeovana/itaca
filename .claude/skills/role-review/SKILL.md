@@ -117,24 +117,6 @@ per review are countable in the review rounds and attestations, so
 an impression. Do not build tooling for it; the claim needs only the
 numbers already there.
 
-The five gated charters pin `model: opus` and `effort: low` in their
-own frontmatter (author decision 11, BRF-064, installed 2026-07-30),
-so you do not pass either on the Agent call and must not override
-them. The reason is independence: without the pin a reviewer inherits
-the IMPLEMENTING session's model, so a lane running a weaker model
-reviews its own work with a weaker reviewer, exactly when that matters
-most. `tests/test_house_style.py` pins it in both directions;
-`incident-analyst` is deliberately unpinned here because it is a
-kit-derived body whose pin arrives by re-vendor.
-
-**The falsifiable safeguard, recorded and deliberately not built.** If
-the count or quality of findings per review drops after the effort
-pin, the RELEASE tier returns to `effort: high` by the author's
-decision. The falsifier is the record already being written: findings
-per review are countable in the review rounds and attestations, so
-"did low reduce what reviews catch" is a measurable claim rather than
-an impression. Do not build tooling for it; the claim needs only the
-numbers already there.
 
 ## 4. Update or fix, never leave for later
 

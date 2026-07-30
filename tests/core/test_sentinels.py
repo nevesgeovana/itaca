@@ -22,6 +22,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import itaca as itc
 from itaca.core.sentinels import NoDefault, no_default
 
@@ -81,6 +83,18 @@ class TestIdentityInvariants:
 
 
 class TestTypingConformance:
+    # MARKED because it spawns `mypy --strict`, which is process-level, and
+    # because a reviewer measured what that costs on a COLD cache: 4.08 s,
+    # against a 3.0 s commit-tier budget, so the very first commit in a fresh
+    # clone failed. On a warm cache the same test is 0.23 s, which is why the
+    # tree it was designed on never showed it.
+    #
+    # Nothing is lost at commit time: `.pre-commit-config.yaml` runs a full
+    # `mypy --strict` over the package as its own hook on every commit, so the
+    # typing gate this test guards is enforced there by the type checker
+    # itself. What moves to pre-push is this test's SNIPPET-level check that
+    # the sentinel narrows out of the union (REQ-105).
+    @pytest.mark.slow
     def test_mypy_strict_narrows_the_identity_check(self, child_env):
         # The typed half of REQ-105: the docstring's adoption pattern
         # must hold under mypy --strict. The snippet's assignments fail

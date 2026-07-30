@@ -97,7 +97,8 @@ def draft_prov(prov: Provenance) -> Provenance:
 # a p95 budget of 30 seconds. A budget nothing enforces is a wish: unmarked
 # slow tests accrete one at a time, each defensible on its own, and a year
 # later the fast tier is the suite again. That is exactly how the hook NAMED
-# `pytest-fast` came to run all 1391 cases plus a full mypy on every commit
+# `pytest-fast` came to run the whole suite, and a full mypy beside it,
+# on every commit
 # (BRF-063, measured by the coordination level on 2026-07-30).
 #
 # So a test that is not marked `slow` and exceeds the per-test budget below
@@ -106,18 +107,27 @@ def draft_prov(prov: Provenance) -> Provenance:
 #
 # The budget is per test and covers setup plus call plus teardown, because
 # `test_push_gate.py` spent its 108 seconds almost entirely in SETUP and a
-# call-only budget would have read it as fast. Measured on the tree that
-# introduced this: the slowest unmarked test was 1.36 s, so 3.0 s is roughly
-# a factor of two of headroom, enough that ordinary variation on a loaded
-# machine does not redden a commit.
+# call-only budget would have read it as fast.
 #
-# What this does NOT bound is the TOTAL. A thousand tests at 0.02 s each is
-# a slow tier made of fast tests, and no per-test rule sees that.
-# `tests/test_tooling_config.py::test_the_commit_tier_subset_is_actually_fast`
-# measures the aggregate and is itself marked slow, so the whole-subset
-# question is answered at the gate that can afford to ask it.
+# 3.0 s WITH THE CONDITION STATED, because the first version of this comment
+# gave the number without it. The slowest unmarked test measured 1.36 s on a
+# tree with a WARM mypy cache. On a cold cache, which is a fresh clone or any
+# tree after `.mypy_cache` is cleared, the mypy-spawning conformance test
+# measured 4.08 s and tripped this budget on the first commit. That test now
+# carries the marker for that reason; the number below is honest only for the
+# warm case and a reviewer measured the cold one.
+#
+# TWO THINGS THIS DOES NOT BOUND, both measured by reviewers rather than
+# reasoned about, and both open:
+#
+#   1. THE TOTAL. A thousand tests at 0.02 s each is a slow tier made of fast
+#      tests. `test_the_commit_tier_subset_is_actually_fast` measures the
+#      aggregate, at a ceiling four times the current cost.
+#   2. ONE PARAMETRIZED TEST. Four cases of 2.5 s ran 10.25 s and passed
+#      unmarked, because the budget is per CASE. That is a single edit, not
+#      slow drift, and it is the practical hole rather than the theoretical
+#      one. Registered as ITC-20260730-2355.
 _FAST_TEST_BUDGET_SECONDS = 3.0
-_over_budget: list[tuple[str, float]] = []
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
@@ -151,8 +161,14 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     was measuring the wrong thing. A budget enforced under conditions the
     budgeted tier never runs in does not protect the tier; it erodes it.
 
-    Enforcement is not lost by narrowing: every commit runs the fast tier
-    with `--no-cov`, so this fires constantly, at the gate it is about.
+    WHERE THIS ACTUALLY FIRES, stated exactly, because the first version of
+    this docstring overclaimed it. Every commit runs the fast tier with
+    `--no-cov`, so it fires there. It does NOT fire in CI: `ci.yml` and
+    `release.yml` run bare `pytest`, which carries coverage through
+    `addopts`. So the only enforcement point today is a developer machine
+    that ran `pre-commit install`, and an unmarked slow test can reach main
+    through a pull request with every gate green. Registered as
+    ITC-20260730-2355 with the CI leg that would close it.
     """
     measuring_coverage = not getattr(session.config.option, "no_cov", True)
     if measuring_coverage:
@@ -173,8 +189,10 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         f"commit-tier budget without carrying the `slow` marker:\n{listed}\n"
         f'The commit tier runs `pytest -m "not slow"` and is budgeted at a '
         f"p95 under 30 seconds, so an unmarked test this size makes every "
-        f"commit in this repository pay for it. Either mark it "
-        f"`pytestmark = pytest.mark.slow` (it then runs at pre-push, where "
-        f"it still blocks, and in CI), or make it faster. Do not raise the "
-        f"budget to make this pass."
+        f"commit in this repository pay for it. Either decorate that TEST "
+        f"`@pytest.mark.slow` (it then runs at pre-push, where it still "
+        f"blocks, and in CI), or make it faster. Use module-level "
+        f"`pytestmark` only to move a whole module, and note that "
+        f"tests/test_tooling_config.py refuses it on the contract modules. "
+        f"Do not raise the budget to make this pass."
     )

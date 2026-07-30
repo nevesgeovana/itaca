@@ -39,7 +39,11 @@ own rule says documentation is not a guard, so it is not the mechanism that
 makes the revert impossible. The mechanism this repository does have is
 `tests/test_house_style.py`, which fails when a charter granting `Bash` does
 not carry this section, so the rule cannot be dropped silently; running each
-lens in its own worktree is the stronger mechanism and is not in place. The
+lens in its own worktree is the stronger mechanism and IS now in place
+(`.claude/kit/review_runner.py`, installed 2026-07-30), but it isolates the
+working DIRECTORY only: a lens holding `Bash` can still reach the live tree by
+absolute path, so this prohibition remains the only control over that and does
+not shrink to a pointer. The
 vendored `incident-analyst` charter holds `Bash` too, and kit 0.2.10 gave it
 the same prohibition in its own words, so the by-name exemption that guard
 used to carry is gone and every Bash-holding seat is covered by it

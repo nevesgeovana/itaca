@@ -292,6 +292,31 @@ def test_the_push_tier_runs_the_whole_suite_and_blocks() -> None:
     )
 
 
+def test_the_coverage_floor_is_declared_with_its_value() -> None:
+    """REQ-75: the 90 percent floor, asserted on the CARRIER not the mention.
+
+    THREE REVIEWERS INDEPENDENTLY CAUGHT THE ABSENCE OF THIS TEST, and one
+    proved it by mutation: with `--cov-fail-under=90` deleted from
+    `addopts`, every guard in this repository stayed green while the
+    requirement trace reported REQ-75 as reached. It read as reached only
+    because the string `REQ-75` had appeared in an assertion MESSAGE, which
+    is the trace's whole notion of reached, so the ratchet did not notice an
+    improvement; it reacted to a comment.
+
+    REQ-75 names a THRESHOLD, so the value is asserted and not merely the
+    flag. The pre-push tier check beside this one asserts the floor is not
+    disabled there; this asserts it exists at all.
+    """
+    addopts = _pyproject()["tool"]["pytest"]["ini_options"]["addopts"]
+    assert "--cov-fail-under=90" in addopts, (
+        f"pyproject's pytest addopts is {addopts!r}, which does not carry "
+        f"`--cov-fail-under=90`. REQ-75 is the 90 percent coverage floor and "
+        f"this is the only place it exists; without it the suite reports "
+        f"coverage and enforces nothing, and the requirement trace still "
+        f"lists REQ-75 as reached."
+    )
+
+
 def test_the_contract_modules_stay_in_the_commit_tier() -> None:
     """A cheap invariant must not be moved off the gate developers feel.
 
@@ -301,31 +326,46 @@ def test_the_contract_modules_stay_in_the_commit_tier() -> None:
     four seconds and each pins something the repository cannot afford to
     discover at push time.
     """
+    # ONE collection for all of them. Seven subprocesses cost 4.36 s and
+    # tripped this repository's own commit-tier budget, which then failed the
+    # aggregate test that runs the subset: the guard was paying more than the
+    # thing it guards. Collecting once and reading the node ids is the same
+    # question asked once.
+    argv = [
+        sys.executable, "-m", "pytest", "--collect-only", "-q", "--no-cov",
+        "-m", "not slow", "-p", "no:cacheprovider", "tests",
+    ]  # fmt: skip
+    done = subprocess.run(
+        argv, capture_output=True, text=True, cwd=str(ROOT), env=child_env()
+    )
+    assert done.returncode == 0, (
+        f"collecting the commit tier's own selection failed, so this guard "
+        f"cannot say which modules run there:\n{done.stdout[-2000:]}"
+    )
+    collected = done.stdout.replace("\\", "/")
     for relative in _COMMIT_TIER_CONTRACT_MODULES:
-        path = ROOT / relative
-        assert path.is_file(), (
+        assert (ROOT / relative).is_file(), (
             f"{relative} is named as a commit-tier contract module but does "
             f"not exist; either it was renamed, in which case update this "
             f"list deliberately, or a guard was deleted."
         )
-        # MODULE-level only, and the distinction is not pedantry: a single
-        # slow test inside a fast module is legitimate and this file is the
-        # example, carrying the aggregate measurement that must not run at
-        # commit time. What the contract forbids is the whole module
-        # leaving the commit tier. An earlier version of this assertion
-        # searched the source for the marker as a substring and failed
-        # against its own text, which is a guard measuring a mention rather
-        # than the carrier.
-        module_marked = re.search(
-            r"^pytestmark\s*=.*\bslow\b", path.read_text(encoding="utf-8"), flags=re.M
-        )
-        assert not module_marked, (
-            f"{relative} sets a module-level `pytestmark` marking it slow, "
-            f"so none of it runs at commit time. It is on the contract list "
-            f"precisely because it is cheap and load-bearing. If it became "
-            f"genuinely slow, that is the finding: make it fast again, or "
-            f"take it off this list deliberately and say why. Marking one "
-            f"test inside it slow is fine and is not what this refuses."
+        # MEASURE THE SELECTION, never the source. Two earlier versions read
+        # the file: the first matched `pytest.mark.slow` as a substring and
+        # failed against its own assertion text, and the second matched a
+        # `pytestmark` line, which a reviewer defeated six ways. Two of the
+        # six need nobody to do anything wrong: `ruff format` produces a
+        # multiline list the moment a second marker joins `slow`, and a
+        # marker applied in `pytest_collection_modifyitems` never appears in
+        # the module at all. Asking pytest what the tier would collect is
+        # immune to all six, because it is the question the tier asks.
+        assert f"{relative}::" in collected, (
+            f"{relative} contributes NO test to the commit tier: everything "
+            f"in it is marked slow, however that marking is spelled. It is "
+            f"on the contract list precisely because it is cheap and "
+            f"load-bearing. If it became genuinely slow, that is the "
+            f"finding: make it fast again, or take it off this list "
+            f"deliberately and say why. Marking one test inside it slow is "
+            f"fine and is not what this refuses."
         )
 
 

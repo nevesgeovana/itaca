@@ -35,8 +35,10 @@ from conftest import child_env  # tests/ is on sys.path under pytest prepend mod
 from gate_locator import ledger_env  # one reader of the gate's ledger variable
 
 # MEASURED 108 s on 2026-07-30, and the cost is in SETUP rather than in the
-# assertions: 42 cases each build a scratch git repository and spawn the
-# hook as a subprocess, at 1.1 to 2.5 s apiece.
+# assertions: the module collects 60 tests, and those that build a scratch
+# git repository and spawn the hook as a subprocess cost 1.1 to 2.5 s apiece.
+# An earlier version of this comment said 42, which is neither the collected
+# count nor a number it identified; a reviewer measured 60.
 #
 # NOT weakened by the marker. This module pins a gate that must not fail
 # open, so it runs at pre-push, where it blocks, and in CI on every pull
