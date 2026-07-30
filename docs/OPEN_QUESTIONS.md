@@ -975,3 +975,61 @@ risks two incompatible rules. That is a sequencing preference, not a
 claim that OQ-18 covers this case.
 
 **SRS:** REQ-26, REQ-98.
+
+---
+
+## OQ-43: Does a correction propagate over a declared uncertainty on its own target?
+
+**Raised:** 2026-07-30 (lane ITA-2C, while fixing R4-ITA-003 /
+`ITC-20260730-0105`; found by a probe of my own, not by the finding)
+**Status:** open
+**Question:** an `.itceq` declares `[uncertainties] CL = 0.01`, produces
+`CL` with an `[equations]` line, and then rewrites it with a
+`[corrections]` line. The declared uncertainty is assigned once the
+equation has written `CL`, and the correction then recomputes `CL` and
+PROPAGATES over it, so the frame ships an uncertainty the file did not
+declare. Which of the two the file means is a domain question, not an
+implementation choice.
+
+**Measured, 2026-07-30, at the fixed tree.** With
+`[uncertainties] x = 1.0, CL = 0.01`, `[equations] CL = "2*x"` and
+`[corrections] CL = "CL * 2"`, the frame ships `u(CL) = 0.02`. The same
+file with a correction that adds a constant, `CL = "CL - 1"`, ships
+`u(CL) = 0.01`, because that propagation happens to be an identity. So the
+answer today depends on the ALGEBRA of the correction, which is the part
+worth deciding deliberately.
+
+**Why this is not R4-ITA-003 and was deliberately left alone.** That defect
+was that the declaration was sorted by whether the incoming VarFrame
+already carried the name, so one file gave two answers and in the worse
+branch shipped a different number. Its fix classifies by what the file
+produces. This case is unchanged by that fix, gives the same answer whether
+or not the frame carried `CL`, and is reachable only through a file that
+both declares and corrects the same name. Changing it under cover of the
+defect fix would have been a new rule invented at the point of a wrong
+answer, which is the thing this repository refuses.
+
+**The two readings, and the cost of each.** Reading A, today's behavior: a
+declaration attaches to the output of the EQUATION that produces the name,
+and a correction is an operation like any other, so it propagates. This is
+consistent with `[corrections]` being ordinary computation and with the
+principle that every operation declares its uncertainty effect (REQ-98).
+Its cost is that a file's `[uncertainties]` section does not describe what
+the file SHIPS, which is what a reader will assume it does. Reading B: a
+declaration is what the file asserts about the name at the end, so it is
+assigned after the LAST line that writes it. Its cost is that a later
+correction reading the same name would then propagate from a value that is
+about to be overridden, which is the inconsistency the mid-loop assignment
+exists to prevent (REQ-41, REQ-99), so B needs a rule for that case rather
+than only a move.
+
+**Who decides:** the numerical analyst and the domain expert, both
+non-delegable seats. A third option exists and is theirs too: refuse the
+file at parse time when a name is both declared in `[uncertainties]` and
+rewritten by a `[corrections]` line, on the ground that it is ambiguous and
+the author should say which she means. That is symmetric with DD-37 and
+DD-39, which already refuse two other collisions rather than choosing a
+winner silently.
+
+**SRS:** Section 4.6 (`[uncertainties]` application moment, stated at
+document 0.2.4), REQ-41, REQ-99.
