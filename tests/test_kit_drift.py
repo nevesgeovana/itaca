@@ -21,8 +21,8 @@ changes, the recomputed hash stops matching, and CI goes red. It does
 NOT prove a copy is CURRENT with the kit, because the manifest below is
 an inlined frozen copy rather than a live read of the master. A
 repository that has fallen behind stays green until someone moves a pin,
-which is exactly the state of the two plan-checker entries described
-below. The env-located shared tools are checked only when their variable
+which was exactly the state of the two plan-checker entries for three
+days. The env-located shared tools are checked only when their variable
 is set (see below), so in a clone that never configured them they are not
 drift-guarded in ordinary CI.
 
@@ -55,11 +55,18 @@ expected and correct, and the pins below are per file:
   of-record copy, the runtime charter tied to it by
   ``test_the_runtime_agent_body_matches_the_of_record_copy``, and this
   pin.
-- 0.2.2: both side-effect-guard artifacts, and both kit plan-checker
-  artifacts. The plan-checker pair is a KNOWN LAG: the kit is at 0.2.3
-  for those two (adoption-review hardening), and itaca still pins and
-  runs 0.2.2. Re-vendoring them is separate work, out of scope for the
-  release-integrity promotion.
+- 0.2.2: both side-effect-guard artifacts.
+- 0.2.10 and 0.2.3: the kit plan checker and its mutation companion. This
+  was the KNOWN LAG and it is closed. The two moved together with the
+  DEPLOYED copies they name, which is what the rule below requires: the
+  deployed pair sits outside this repository, under the directory
+  ``ITACA_PLAN_VALIDATOR`` names, and moving the pins alone would have
+  reddened this suite for a change made nowhere. The checker's 0.2.10 body
+  is the fix for ``ITC-20260727-1612``: an empty plan directory now exits
+  2 with ``CANNOT VERIFY`` instead of printing ``no entries`` and exiting
+  zero. Measured at the deployed path after re-vendoring: empty exits 2,
+  a missing directory still exits 1, the real ledger reports 141 entries
+  and 0 bad, and the companion reports ``0 check(s) could not fail``.
 - 0.1.0: ``check_incidents.py``, unchanged.
 
 The rule that decides both of those, stated once so the asymmetry is not
@@ -69,9 +76,9 @@ repository moves only together with the deployed copy it names. The
 carries that body: it was written when the defect was fixed, and this
 repository's pin was the half left behind, which is why the suite at
 ``0d0dadd`` was red on exactly this one test before the pin moved. The
-plan-checker pins did not move because
-their deployed copies were not, and moving them alone would redden this
-suite for a change made elsewhere. A reader who repoints
+plan-checker pins were the other half of the same rule: for three days
+they did NOT move, because their deployed copies had not, and they moved
+only in the commit that re-vendored those copies. A reader who repoints
 ``ITACA_PLAN_VALIDATOR`` at a directory holding a different kit version
 will see this suite fail; that is configuration, not drift, and the
 remedy the failure message suggests (re-vendor) is the wrong one for it.
@@ -235,14 +242,17 @@ MANIFEST: dict[str, Pin] = {
     "snap.sh": Pin(
         "0835e6ae1bd43d05e213a88552bcd94a1b91ebec946f9dabb5411d7595b265d1", "0.2.5"
     ),
-    # KNOWN LAG, deliberate: the kit is at 0.2.3 for these two. Do NOT sync
-    # them from the manifest of record without also moving the deployed
-    # copies these pins name; see the module docstring.
+    # The KNOWN LAG is over. Both deployed copies were re-vendored in the
+    # same commit that moved these two pins, which is what the rule in the
+    # module docstring requires of a pin naming an artifact deployed OUTSIDE
+    # this repository. Per-file versions, as the kit ships them: the checker
+    # is at 0.2.10 and its companion at 0.2.3, and both declared values
+    # agreed with their own bodies on recomputation.
     "check_plan_kit.py": Pin(
-        "d7b7126a83ad96196c5a063d3b6d6c771747af84e590a9c97a3d702b057b9e52", "0.2.2"
+        "a6eca8d542e6189b6b14cde0d4eb92e3f2850f8a21b3dd26a8fc30c06829c39c", "0.2.10"
     ),
     "check_plan_kit_mutations.py": Pin(
-        "cef4d90a31b11e8642f78ed47a4fad20c3f5c1a6e33dd36e6ddb60dc7390c4aa", "0.2.2"
+        "410db0d4003dcb085b87eba4af35686d490aa2974d67606ea509ba25bcf6fe8b", "0.2.3"
     ),
 }
 

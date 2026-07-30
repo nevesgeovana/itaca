@@ -25,8 +25,17 @@ Resolution mirrors the plan skill and the incident-ledger philosophy:
   configuration error, since the directory beside it holds the sister
   repository's ``check_plan.py`` and one typo reaches it;
 - resolving correctly but reporting ZERO entries -> a failure here whatever
-  the exit code was, because an empty ledger folder exits zero and a run
-  against the wrong path would otherwise read as a pass.
+  the exit code was, because a run against the wrong path would otherwise
+  read as a pass.
+
+That last one is kept as a check on itaca's own CONSUMPTION even though the
+checker itself now refuses the case (kit 0.2.10: ``CANNOT VERIFY``, exit
+2). Two reasons it is not redundant. The count assertion also catches a
+checker whose output wording changed, which is a way for this guard to go
+blind that no exit code reports. And the two live at different levels: the
+kit decides what an empty walk means to a checker, and this decides what a
+zero-entry REPORT means to itaca, which would still be a silent pass if
+some future caller here read the exit code alone.
 
 As of kit 0.2.2 the companion resolves the checker as a sibling
 (``Path(__file__).resolve().parent / "check_plan_kit.py"``) instead of
@@ -34,6 +43,9 @@ the old hardcoded coordination path, so it now proves the DEPLOYED copy
 beside it, not the coordination master. That closes the coupling this
 test previously had to disclose (routed item ITC-20260724-1715), which is
 why the mutation companion can finally be wired as a tier-1 test here.
+The deployed pair moved to kit 0.2.10 (checker) and 0.2.3 (companion) on
+2026-07-30, together with their pins, and the companion still reports
+``0 check(s) could not fail``.
 """
 
 from __future__ import annotations
@@ -227,23 +239,27 @@ def test_a_zero_entry_ledger_report_is_a_failure_here() -> None:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="ITC-20260727-1612: the kit checker exits 0 on an empty ledger folder",
-)
 def test_the_plan_checker_refuses_an_empty_ledger_folder(tmp_path: Path) -> None:
-    """The kit-side half of ``ITC-20260727-1612``, pinned as a ratchet.
+    """The kit-side half of ``ITC-20260727-1612``. FIXED; the marker is gone.
 
-    The desired behavior is that an empty ledger folder is refused, either
-    outright or unless an explicit ``--allow-empty`` is passed for the
-    genuine first-run case. It is not refused today, which is why this is
-    marked. The marker is the ratchet: the moment the kit is fixed and
-    re-vendored, this passes, strict xfail turns that into a failure, and
-    whoever fixed it must come here and remove the marker.
+    The defect was that an empty ledger folder printed ``no entries`` and
+    exited ZERO, so a checker aimed at the wrong path, at an unsynced tree,
+    or at a directory naming nothing was indistinguishable from a ledger
+    with no defects. Kit 0.2.10 refuses it: ``CANNOT VERIFY`` on stderr and
+    exit 2. Adopted here by re-vendoring the DEPLOYED copy together with its
+    pin in ``tests/test_kit_drift.py``, since the copy lives outside this
+    repository under the directory ``ITACA_PLAN_VALIDATOR`` names.
 
-    Recorded this way rather than in prose because the checker is reached
-    through an environment variable and its defect is therefore invisible to
-    this repository's suite unless something asserts it.
+    This test carried ``xfail(strict=True)`` until then, and the ratchet did
+    its work: adopting the fix made it XPASS, which strict xfail turns into
+    a failure, so the marker could not be left behind.
+
+    It stays here, unmarked, as the falsifier, and that is load-bearing
+    rather than tidy. The kit's own mutation companion is at 0.2.3 and has
+    no empty-walk case, so ``0 check(s) could not fail`` is true of every
+    guard it covers and says nothing about this one. Until the kit adds it
+    (``ITC-20260730-0205``), this is the only place the 0.2.10 refusal is
+    proven, on the copy this repository actually runs.
 
     WHY THE ASSERTION IS SPECIFIC AND NOT MERELY ``returncode != 0``. A
     reviewer measured the first version XPASSING for the wrong reason twice:
@@ -254,6 +270,13 @@ def test_the_plan_checker_refuses_an_empty_ledger_folder(tmp_path: Path) -> None
     proves the checker WORKS on a known-good one-entry ledger, and then
     requires the empty-folder refusal to name the empty case. A crash now
     fails as a crash instead of passing as a fix.
+
+    The exit CODE is pinned too, and separately from the refusal, because
+    the kit distinguishes 1 (the entries were read and some were bad) from
+    2 (cannot verify). An empty walk is the second. A checker that started
+    reporting it as 1 would still refuse, so the refusal assertion alone
+    would not notice, while a caller treating any nonzero as "the ledger is
+    dirty" would report a configuration error as a content error.
     """
     resolved = _resolve()
     if resolved is None:
@@ -304,4 +327,27 @@ def test_the_plan_checker_refuses_an_empty_ledger_folder(tmp_path: Path) -> None
         f"an empty ledger folder exited {done.returncode} without refusing it, "
         f"so a run against the wrong path looks like a pass. Output: "
         f"{output.strip()!r}"
+    )
+    # The refusal and its KIND are asserted separately. A checker that
+    # refused with 1 would satisfy the assertion above while telling a
+    # caller the ledger's contents are bad, when nothing was read at all.
+    assert done.returncode == 2, (
+        f"an empty ledger folder exited {done.returncode}, and the kit reserves "
+        f"1 for a validation failure (the entries were read and some were bad) "
+        f"and 2 for CANNOT VERIFY. An empty walk is the second. Output: "
+        f"{output.strip()!r}"
+    )
+    # And a MISSING directory keeps its own answer, so the fix widened the
+    # refusal rather than collapsing two different configuration errors into
+    # one code. This half was always correct and is pinned so it stays so.
+    absent = subprocess.run(
+        [sys.executable, str(checker), str(tmp_path / "not-created")],
+        capture_output=True,
+        text=True,
+        env=child_env(),
+    )
+    assert absent.returncode == 1, (
+        f"a missing plan directory exited {absent.returncode}, where it has "
+        f"always exited 1 with 'not a directory'. Output: "
+        f"{(absent.stdout + absent.stderr).strip()!r}"
     )

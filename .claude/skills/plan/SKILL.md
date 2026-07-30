@@ -144,18 +144,27 @@ or, when the variable names the file directly:
 python "$ITACA_PLAN_VALIDATOR" "<resolved ledger path>"
 ```
 
-Read the entry count, not just the exit code. A folder that does not
-exist is refused loudly (`not a directory`, non-zero), but an **empty**
-folder reports `no entries` and exits **zero**, so a run against the
-wrong path can look like a pass. Verified 2026-07-27. The count in the
-output is what distinguishes a clean ledger from an empty one, and it
-should match the number of entry files you expect.
+Read the entry count, not just the exit code. The count in the output is
+what distinguishes a clean ledger from an empty one, and it should match
+the number of entry files you expect.
 
-A non-zero exit names the file and the failing check (a bad header, an
-illegal `status` or `priority`, a `dropped` entry with no reason, an
-empty body, an id that does not match the filename or the timestamp
-shape, or a repeated id). Fix the entry and re-run; a validator that is
-run and ignored is the same as no validator.
+Three exits, and they mean different things. **0** is a clean ledger.
+**1** is a validation failure: the entries were read and some were bad,
+and the output names the file and the failing check (a bad header, an
+illegal `status` or `priority`, a `dropped` entry with no reason, an empty
+body, an id that does not match the filename or the timestamp shape, or a
+repeated id). **2** is CANNOT VERIFY: nothing was validated. A folder that
+does not exist gives `not a directory` and 1; an **empty** folder gives
+`CANNOT VERIFY` and 2, since kit 0.2.10, adopted 2026-07-30
+(`ITC-20260727-1612`). Before that an empty folder printed `no entries`
+and exited **zero**, so a run against the wrong path looked like a pass;
+that is why the habit above is stated as a habit and not as a workaround
+for one version.
+
+Fix the entry and re-run; a validator that is run and ignored is the same
+as no validator. Do not treat any non-zero as "the ledger is dirty": a 2
+means the path or the tree is wrong, and reporting it as a content error
+sends the next reader to the entries instead of to the configuration.
 
 `check_plan_kit.py` is now a stamped shared-kit artifact: its canonical
 master lives at the coordination level and the copy this skill runs is a

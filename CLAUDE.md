@@ -193,10 +193,19 @@ resolution that is never announced cannot be noticed when it is wrong.
 
 Resolve the root before writing, and pass the **resolved** path onward.
 A repository-relative path stops meaning the ledger as soon as the root
-moves. Read a checker's entry count and not only its exit code: a
-missing folder is refused loudly, but an **empty** one reports
-`no entries` and exits **zero** (measured 2026-07-27), so a run against
-the wrong path can look like a pass.
+moves. Read a checker's entry count and not only its exit code. The plan
+checker used to make that advice load-bearing: an **empty** folder
+reported `no entries` and exited **zero** (measured 2026-07-27), so a run
+against the wrong path looked like a pass. Kit 0.2.10 fixed it, adopted
+here on 2026-07-30 (`ITC-20260727-1612`): an empty walk now exits **2**
+with `CANNOT VERIFY`, distinct from the **1** that means the entries were
+read and some were bad, and a missing folder still exits 1. The habit
+stands anyway, for two reasons that outlive the fix: a checker whose
+output wording changes goes blind in a way no exit code reports, and this
+is a family of tools, so the next one need not have adopted the rule.
+`tests/test_plan_validator.py` pins both the refusal and its exit code,
+because the kit's own mutation companion has no empty-walk case
+(`ITC-20260730-0205`).
 
 The management content migrated to the coordination hub on 2026-07-27
 under an author decision, including the plan ledger, whose migration was
