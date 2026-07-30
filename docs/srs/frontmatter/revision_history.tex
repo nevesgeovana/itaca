@@ -10,6 +10,21 @@
 \textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Summary}\\
 \midrule
 \midrule
+0.2.4 & 2026-07-30 & Geovana Neves &
+When a declared uncertainty applies. A PATCH revision by the rule
+chapter~9 states: a clarification, adding no requirement and withdrawing
+none. Section~\ref{sec:itceq} now states the moment an
+\code{[uncertainties]} declaration takes effect, which it had left
+unspecified: before the first equation for a name the file does not
+produce, and immediately after the writing equation for a name it does,
+keyed on what the FILE produces and never on what the VarFrame carried on
+the way in. The implementation had adopted the other rule, so a target the
+frame already carried was assigned before the loop and then overwritten by
+its own equation's propagation: one file gave two answers, and in the
+worse branch it shipped \code{u(y) = 2.0} where the file declares
+\code{5.0}. A wrong number rather than a missing one, chosen by nothing the
+caller can see (\code{R4-ITA-003}, \code{ITC-20260730-0105}).
+\\[4pt]
 0.2.3 & 2026-07-30 & Geovana Neves &
 The sixth CHK-1 refusal, and the build. A PATCH revision by the rule
 chapter~9 states: a clarification, adding no requirement and withdrawing

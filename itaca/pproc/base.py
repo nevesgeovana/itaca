@@ -361,9 +361,24 @@ class EquationProcessor:
 
         work = db
         pending = dict(self.spec.uncertainties)
-        # Assign what the frame already carries before anything reads
-        # it, so the first equation propagates from the declared inputs.
-        setup = {key: pending.pop(key) for key in list(pending) if key in work.vars}
+        # Split the declarations by WHAT THE FILE PRODUCES, never by what
+        # the incoming frame happens to already carry. An INPUT is
+        # assigned here, before anything reads it, so the first equation
+        # propagates from the declared value. A TARGET is left pending
+        # and assigned once its equation has run, below.
+        #
+        # Classifying by presence in the frame was R4-ITA-003
+        # (ITC-20260730-0105). A target the frame already carried was
+        # assigned here and then OVERWRITTEN by its own equation's
+        # propagation, so the same file gave a different u() depending on
+        # the shape of the input: with `x = 1.0, y = 5.0` and
+        # `y = "2*x"`, u(y) shipped as 2.0 where the file declares 5.0.
+        # Not an absent uncertainty, a silently different one, selected
+        # by nothing the caller can see. `validate` has already refused
+        # any declaration that is neither a target nor a carried
+        # variable, so every key sorted here is assigned exactly once.
+        produced = set(self.spec.targets)
+        setup = {key: pending.pop(key) for key in list(pending) if key not in produced}
         if setup:
             work = work.set_uncertainty(setup, history=True, comment=signature)
         for equation in (*self.spec.equations, *self.spec.corrections):

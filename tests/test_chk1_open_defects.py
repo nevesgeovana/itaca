@@ -257,30 +257,60 @@ def test_r3_ita_002_combine_jacobians_do_not_inherit_an_integer_dtype() -> None:
     assert u == pytest.approx(2.5)
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-006: open at 730649f")
 def test_r3_ita_006_processor_applies_declared_uncertainty_to_an_existing_target(
     tmp_path: Path,
 ) -> None:
     """The same ``.itceq`` must give the same uncertainty either way.
 
-    ``[uncertainties] y = 5.0`` is dropped from the pending set when the
-    frame already carries ``y``, and ``compute`` then clears the
-    overwritten target's uncertainty, so nothing reinstates it.
+    FIXED, and the marker removed with the fix. ``itaca/pproc/base.py``
+    sorted the ``[uncertainties]`` declarations by whether the incoming
+    frame already carried the name, when the rule is whether the FILE
+    PRODUCES it: a target the frame carried was assigned before the loop
+    and then overwritten by its own equation's propagation.
+
+    Measured before the fix, on the two files below. With ``y = 5.0``
+    alone, the present-target run shipped ``uncertainty is None``: the
+    declaration vanished. With ``x = 1.0`` beside it, the SAME run shipped
+    ``u(y) = [2.0, 2.0]``, which is what ``u(x) = 1.0`` propagates to
+    through ``y = 2*x``, where the file declares ``5.0``.
+
+    The second file is ``R4-ITA-003`` (``ITC-20260730-0105``) and is why
+    this finding was reopened as a release blocker rather than closed as a
+    lost declaration. A missing uncertainty is a visible gap. A DIFFERENT
+    one, finite and plausible and selected by whether the input frame
+    happened to carry a column, is a wrong number a reader cannot detect.
+    Both branches are pinned here, and the behavior itself is covered in
+    ``tests/pproc/test_processor.py`` where it belongs.
     """
-    path = tmp_path / "corr.itceq"
-    path.write_text(
-        '[meta]\nname = "corr"\nversion = "1.0"\n\n'
-        "[uncertainties]\ny = 5.0\n\n"
-        '[equations]\ny = "2*x"\n',
-        encoding="utf-8",
-    )
-    proc = itc.processor(str(path))
     absent = itc.load(np.array([[3.0], [4.0]]), names=["x"])
     present = itc.load(np.array([[3.0, 99.0], [4.0, 99.0]]), names=["x", "y"])
-    ua = dict(proc(absent).uncertainty.systematic)["y"]
-    assert proc(present).uncertainty is not None
-    ub = dict(proc(present).uncertainty.systematic)["y"]
-    assert np.asarray(ub) == pytest.approx(np.asarray(ua))
+    for label, declarations in (
+        ("dropped", "y = 5.0\n"),
+        ("replaced by 2.0", "x = 1.0\ny = 5.0\n"),
+    ):
+        path = tmp_path / f"corr_{label.split()[0]}.itceq"
+        path.write_text(
+            '[meta]\nname = "corr"\nversion = "1.0"\n\n'
+            f"[uncertainties]\n{declarations}\n"
+            '[equations]\ny = "2*x"\n',
+            encoding="utf-8",
+        )
+        proc = itc.processor(str(path))
+        ua = dict(proc(absent).uncertainty.systematic)["y"]
+        result = proc(present)
+        assert result.uncertainty is not None, (
+            f"the {label} branch shipped no uncertainty at all (R3-ITA-006)"
+        )
+        ub = dict(result.uncertainty.systematic)["y"]
+        assert np.asarray(ub) == pytest.approx(np.asarray(ua)), (
+            f"the {label} branch shipped u(y) = {np.asarray(ub).tolist()} "
+            f"against a frame carrying y, and {np.asarray(ua).tolist()} "
+            f"against one that did not, from one file"
+        )
+        assert np.asarray(ub) == pytest.approx(5.0), (
+            f"the {label} branch shipped u(y) = {np.asarray(ub).tolist()} "
+            f"where the file declares 5.0 (R4-ITA-003)"
+        )
 
 
 # ---------------------------------------------------------------------------

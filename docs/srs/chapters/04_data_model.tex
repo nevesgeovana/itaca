@@ -432,7 +432,24 @@ CL_corr  = "CL * blockage"
   \item \code{[constants]}: key-value pairs, all numeric. Constants are
     registered before any equation is evaluated.
   \item \code{[uncertainties]}: values are float (absolute) or string
-    ending in \code{"\%"} (relative). Per-variable.
+    ending in \code{"\%"} (relative). Per-variable. WHEN a declaration is
+    applied follows from what the FILE does with the name, and never from
+    what the VarFrame it is applied to happens to already carry. A
+    declaration on a name the file does not produce is applied before the
+    first equation runs, so every line reading that name propagates from
+    the declared value. A declaration on an equation or correction target
+    is applied once that target has been written, overriding the value
+    propagation gave it, so a later line reading the target propagates
+    from the declared value and the frame never ships a dependent
+    inconsistent with the input uncertainty it reports (REQ-41, REQ-99).
+    The two cases are exclusive and exhaustive: a declared name that is
+    neither a target nor a variable the frame carries is refused by
+    \code{validate} (REQ-45), so every declaration is applied exactly
+    once. Deciding by what the frame carried instead made one file give
+    two answers, and in the worse branch a target the frame already
+    carried shipped the uncertainty its own equation had propagated in
+    place of the declared one, which is a wrong number rather than a
+    missing one (\code{R4-ITA-003}).
   \item \code{[equations]}: evaluated in dependency order (topologically
     sorted at parse time when the optional \code{auto\_sort=True} flag is
     set, with a feedback message reporting the resolved order; otherwise

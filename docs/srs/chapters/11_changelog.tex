@@ -12,6 +12,37 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.4, 2026-07-30, When a Declared Uncertainty Applies}
+
+A PATCH revision by chapter~9's rule: a clarification, adding no
+requirement and withdrawing none.
+
+\paragraph{Changed (Section~\ref{sec:itceq}, the \code{[uncertainties]}
+application moment).} The section rules now state WHEN a declared
+uncertainty is applied: before the first equation for a name the file does
+not produce, and immediately after the writing equation for a name it
+does. The rule keys on what the file produces and never on what the
+VarFrame carried on the way in.
+
+The document had said only that the values are absolute or relative and
+per-variable, so the ordering was unspecified and the implementation had
+adopted the other rule: it sorted by whether the incoming frame already
+carried the name. A target the frame carried was therefore assigned before
+the loop and then overwritten by its own equation's propagation. With
+\code{[uncertainties] y = 5.0} alone, the declaration was lost and the
+frame shipped no uncertainty at all; with \code{x = 1.0} beside it, the
+same file shipped \code{u(y) = 2.0}, the value \code{u(x) = 1.0}
+propagates to through \code{y = "2*x"}, where the file declares
+\code{5.0}. A relative declaration was resolved against the stale input
+column rather than against what the equation wrote.
+
+The wrong-value branch is why this is stated in the specification and not
+only fixed in code. A lost declaration is a visible gap a reader can
+notice. A different, finite, plausible uncertainty, chosen by whether the
+input frame happened to carry a column, is a number no reader can check,
+which is this library's worst failure mode
+(\code{R4-ITA-003}, \code{REV-004}, \code{ITC-20260730-0105}).
+
 \section*{Document 0.2.3, 2026-07-30, The Sixth Refusal and the Build}
 
 A PATCH revision by chapter~9's rule: clarifications only, no requirement

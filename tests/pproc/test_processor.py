@@ -478,6 +478,182 @@ def test_uncertainty_declared_on_a_derived_variable_is_applied_after(
     assert processed.uncertainty.systematic["q_inf"][0] == pytest.approx(1.5)
 
 
+# ---------------------------------------------------------------------------
+# R4-ITA-003 / ITC-20260730-0105: when a declared uncertainty is applied.
+#
+# The rule (SRS 4.6, REQ-41, REQ-99): a declared uncertainty on a name the
+# FILE PRODUCES is assigned once the equation that writes it has run, and a
+# declared uncertainty on an INPUT is assigned before any equation reads it.
+# The classification is by what the file produces, never by what the input
+# frame happens to already carry, because the equation overwrites the target
+# either way and a pre-assignment made before it is destroyed by propagation.
+#
+# Measured before the fix, with `[uncertainties] x = 1.0, y = 5.0` and
+# `[equations] y = "2*x"`: u(y) shipped as 2.0, propagated from u(x), where
+# the file declares 5.0. That is the failure mode this library can least
+# afford, a silently DIFFERENT number rather than an absent one, and it was
+# selected by nothing the user can see.
+# ---------------------------------------------------------------------------
+
+# Two targets, so a frame carrying only `y` is not a full reapplication and
+# the REQ-47 idempotence warning stays out of these assertions. `z` also
+# makes the dependent observable: it must propagate from the DECLARED u(y),
+# which is the whole reason the assignment happens mid-loop and not at the
+# end.
+DECLARED_ON_A_TARGET = """\
+[meta]
+name = "declared"
+
+[uncertainties]
+x = 1.0
+y = 5.0
+
+[equations]
+y = "2*x"
+z = "y + 1"
+"""
+
+# The same file with the input declaration removed, so the pre-fix symptom
+# is the OTHER one: nothing propagates into `y`, so `compute` drops the
+# frame's uncertainty entirely and the declaration vanishes without a trace.
+DECLARED_ON_A_TARGET_ONLY = """\
+[meta]
+name = "declared only"
+
+[uncertainties]
+y = 5.0
+
+[equations]
+y = "2*x"
+z = "y + 1"
+"""
+
+# A RELATIVE declaration, whose resolution moment is observable: 10 percent
+# of what the equation wrote is [0.6, 0.8], while 10 percent of the stale
+# input column below is [10.0, 10.0].
+DECLARED_RELATIVE = """\
+[meta]
+name = "relative"
+
+[uncertainties]
+y = "10%"
+
+[equations]
+y = "2*x"
+z = "y + 1"
+"""
+
+
+def _two_column(x: list[float], y: list[float]) -> VarFrame:
+    rows = [list(pair) for pair in zip(x, y, strict=True)]
+    return itc.load(np.array(rows), names=["x", "y"])
+
+
+@pytest.mark.parametrize("text", [DECLARED_ON_A_TARGET, DECLARED_ON_A_TARGET_ONLY])
+def test_a_declared_uncertainty_wins_whether_or_not_the_target_pre_exists(
+    tmp_path: Path, text: str
+) -> None:
+    # The load-bearing assertion of R4-ITA-003. `y` is a target either way,
+    # so the same file must give the same answer against a frame that
+    # happens to carry a `y` column and one that does not.
+    path = tmp_path / "declared.itceq"
+    path.write_text(text, encoding="utf-8")
+    processor = itc.processor(path)
+    absent = itc.load(np.array([[3.0], [4.0]]), names=["x"])
+    present = _two_column([3.0, 4.0], [6.0, 8.0])
+    for label, frame in (("absent", absent), ("present", present)):
+        processed = processor(frame)
+        assert processed.uncertainty is not None, (
+            f"the {label}-target run shipped no uncertainty at all, so the "
+            f"declared u(y) = 5.0 was dropped (R4-ITA-003)"
+        )
+        systematic = dict(processed.uncertainty.systematic)
+        assert np.asarray(systematic["y"]) == pytest.approx(5.0), (
+            f"the {label}-target run shipped u(y) = "
+            f"{np.asarray(systematic['y']).tolist()} where the file declares "
+            f"5.0. A declared uncertainty is not a starting point for "
+            f"propagation; it is the value the file asserts (R4-ITA-003)."
+        )
+        # The dependent is the reason the assignment is mid-loop: z reads y
+        # AFTER the declaration is in place, so u(z) follows from 5.0.
+        assert np.asarray(systematic["z"]) == pytest.approx(5.0), (
+            f"the {label}-target run propagated u(z) from something other "
+            f"than the declared u(y) = 5.0, so the frame ships a dependent "
+            f"inconsistent with the input uncertainty it reports"
+        )
+
+
+def test_a_declared_uncertainty_on_an_existing_target_is_not_silently_replaced(
+    tmp_path: Path,
+) -> None:
+    # Named separately from the parity test above because this is the
+    # symptom that makes R4-ITA-003 a release blocker rather than a gap: the
+    # shipped number is plausible, finite, and wrong. 2.0 is what u(x) = 1.0
+    # propagates to through y = 2*x, so a reader has no way to tell it from
+    # a number the file asked for.
+    path = tmp_path / "replaced.itceq"
+    path.write_text(DECLARED_ON_A_TARGET, encoding="utf-8")
+    processed = itc.processor(path)(_two_column([3.0, 4.0], [6.0, 8.0]))
+    assert processed.uncertainty is not None
+    shipped = np.asarray(dict(processed.uncertainty.systematic)["y"])
+    assert not np.allclose(shipped, 2.0), (
+        f"u(y) shipped as {shipped.tolist()}, the value propagation from "
+        f"u(x) = 1.0 produces, in place of the declared 5.0. R4-ITA-003: the "
+        f"declaration was consumed before the equation ran and then "
+        f"overwritten by the equation's own propagation."
+    )
+
+
+def test_a_relative_declaration_on_an_existing_target_resolves_against_the_result(
+    tmp_path: Path,
+) -> None:
+    # A relative spec makes the assignment MOMENT visible, not just the
+    # winner: resolved before the equation it would be a percentage of the
+    # frame's stale column, which is a different number rather than a
+    # missing one.
+    path = tmp_path / "relative.itceq"
+    path.write_text(DECLARED_RELATIVE, encoding="utf-8")
+    processor = itc.processor(path)
+    stale = processor(_two_column([3.0, 4.0], [100.0, 100.0]))
+    fresh = processor(itc.load(np.array([[3.0], [4.0]]), names=["x"]))
+    assert stale.uncertainty is not None and fresh.uncertainty is not None
+    got = np.asarray(dict(stale.uncertainty.systematic)["y"], dtype=float)
+    want = np.asarray(dict(fresh.uncertainty.systematic)["y"], dtype=float)
+    assert got == pytest.approx(want), (
+        f"a 10 percent declaration on an existing target resolved to "
+        f"{got.tolist()} against a frame carrying y = 100, and to "
+        f"{want.tolist()} against a frame that did not carry y at all. The "
+        f"percentage is of what the file writes, so the input column must "
+        f"not enter it (R4-ITA-003)."
+    )
+    assert got == pytest.approx([0.6, 0.8]), (
+        f"u(y) resolved to {got.tolist()}; 10 percent of the equation's own "
+        f"output [6.0, 8.0] is [0.6, 0.8]"
+    )
+
+
+def test_a_declared_uncertainty_on_an_input_still_precedes_every_equation(
+    tmp_path: Path,
+) -> None:
+    # The other half of the classification, and the falsifier for moving it:
+    # `x` is read and never written, so its declaration must be in place
+    # before the first equation, or nothing propagates into `y` at all. A
+    # repair that sent every declaration down the after-the-equation path
+    # would pass every test above and break this one.
+    path = tmp_path / "input.itceq"
+    path.write_text(
+        '[meta]\nname = "input"\n\n[uncertainties]\nx = 1.0\n\n'
+        '[equations]\ny = "2*x"\n',
+        encoding="utf-8",
+    )
+    processed = itc.processor(path)(itc.load(np.array([[3.0], [4.0]]), names=["x"]))
+    assert processed.uncertainty is not None, (
+        "no uncertainty reached the result, so the declared u(x) was not in "
+        "place when the equation read x"
+    )
+    assert np.asarray(dict(processed.uncertainty.systematic)["y"]) == pytest.approx(2.0)
+
+
 def test_a_file_without_constants_runs_its_expressions_unchanged(
     tmp_path: Path, db: VarFrame
 ) -> None:

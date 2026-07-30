@@ -163,6 +163,24 @@ own data was affected.
 
 ### Fixed
 
+* **A declared `[uncertainties]` value could be replaced by a different
+  one, silently** (`R4-ITA-003`, SRS document 0.2.4). A processor sorted
+  its declarations by whether the incoming VarFrame already carried the
+  name, when the rule is whether the *file* produces it. A target the
+  frame happened to carry was therefore assigned before the equations ran
+  and then overwritten by its own equation's propagation. With
+  `[uncertainties] x = 1.0, y = 5.0` and `[equations] y = "2*x"`, the
+  frame shipped `u(y) = 2.0`, which is what `u(x)` propagates to, where
+  the file declares `5.0`. With `y = 5.0` declared alone the frame shipped
+  no uncertainty at all, and a relative declaration such as `"10%"`
+  resolved against the stale input column instead of against what the
+  equation wrote. **The numbers change:** if you applied a processor to a
+  frame that already carried one of the file's targets, the uncertainty on
+  that target was wrong, and every quantity derived from it after that
+  point was wrong with it. The declaration now wins in every case, so one
+  `.itceq` gives one answer regardless of the shape of the input. The
+  moment a declaration takes effect was unspecified in the SRS, which is
+  why the fix amends Section 4.6 rather than only the code.
 * A negative `.itceq` `[constants]` value kept its sign under a power
   (`CHK1-002`). Substitution round-tripped through `ast.unparse`, which
   writes a negative float as the bare token `-0.25`; re-parsed in the
