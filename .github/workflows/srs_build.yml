@@ -60,6 +60,14 @@ jobs:
       # would be an undeclared dependency), and `lang-english`, because
       # \usepackage[american]{babel} needs english.ldf, which is a Recommends
       # that --no-install-recommends drops.
+      #
+      # `plain-generic` was added by the RUNNER rather than by reading: the
+      # first run of this job failed with
+      # `newtxtext.sty:25: File 'binhex.tex' not found`, because newtx inputs
+      # the plain-TeX macro file `binhex`, which lives under tex/generic and
+      # ships in no package above. That is the whole argument for this job
+      # existing, applied to the job itself: the gap was invisible to a local
+      # build on a full TeX install, and the failure named the missing file.
       - name: Install TeX Live
         run: |
           sudo apt-get update
@@ -71,7 +79,8 @@ jobs:
             texlive-fonts-extra \
             texlive-bibtex-extra \
             texlive-pictures \
-            texlive-lang-english
+            texlive-lang-english \
+            texlive-plain-generic
       - name: Build the SRS
         working-directory: docs/srs
         run: latexmk -pdf -file-line-error -interaction=nonstopmode main.tex
