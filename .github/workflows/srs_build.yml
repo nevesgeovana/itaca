@@ -61,17 +61,26 @@ jobs:
       # \usepackage[american]{babel} needs english.ldf, which is a Recommends
       # that --no-install-recommends drops.
       #
-      # `plain-generic` was added by the RUNNER rather than by reading: the
-      # first run of this job failed with
-      # `newtxtext.sty:25: File 'binhex.tex' not found`, because newtx inputs
-      # the plain-TeX macro file `binhex`, which lives under tex/generic and
-      # ships in no package above. That is the whole argument for this job
-      # existing, applied to the job itself: the gap was invisible to a local
-      # build on a full TeX install, and the failure named the missing file.
+      # `--no-install-recommends` IS DELIBERATELY ABSENT, and that is the
+      # substance of this step rather than the package list. It was present
+      # for two runs and it is what made the list wrong three times: it drops
+      # exactly the companion-dependency class a TeX distribution relies on.
+      # First it dropped `english.ldf`, caught by a reviewer reading the
+      # preamble; then the runner found `binhex.tex`, which newtx inputs from
+      # tex/generic; then a TeX Gyre font metric, `ts1-qtmr`, which newtx
+      # builds its text face on. Each was a different package, each was
+      # invisible to a local build on a full TeX install, and pursuing them
+      # one CI round at a time is chasing a symptom. Letting apt install these
+      # packages the way they are packaged fixes the class.
+      #
+      # The cost is accepted and named: a larger install and a slower job. The
+      # alternative that is genuinely bounded, `texlive-full`, is several
+      # gigabytes on every push and pull request, which is a bigger price for
+      # a document gate than this.
       - name: Install TeX Live
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get install -y \
             latexmk \
             texlive-latex-recommended \
             texlive-latex-extra \
