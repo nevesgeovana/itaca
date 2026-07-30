@@ -19,14 +19,19 @@ Two things are pinned here:
 - the guard itself: its mutation companion must pass, so a guard that
   silently stopped failing is caught here rather than in production.
 
-itaca currently declares no side-effecting skill. All four skills (audit,
-handoff, plan, role-review) are model-invocable by design: none publishes
-a tag, spends a licensed run, or bumps a version, and role-review in
-particular MUST stay model-invocable because the development rules have
-the model invoke it to close a work item and write the push attestation.
-So the guard runs green today with zero declarations; its value is
-forward-looking, and the mutation companion proves it fires the moment a
-future side-effecting skill forgets the human-only flag.
+itaca declares exactly one side-effecting skill, ``develop``: it writes
+source, tests and ledger entries and it commits, so it carries
+``side-effects`` and ``disable-model-invocation: true`` together and the
+implication above holds on it. The other four (audit, handoff, plan,
+role-review) are model-invocable by design: none publishes a tag, spends
+a licensed run, or bumps a version, and role-review in particular MUST
+stay model-invocable because the development rules have the model invoke
+it to close a work item and write the push attestation.
+
+The live run below is therefore no longer vacuous on the declaration
+side: one skill exercises the implication rather than zero. The mutation
+companion still carries the other half, proving the guard fires when a
+side-effecting skill forgets the human-only flag.
 
 The guard and its mutation companion are vendored kit copies under
 ``.claude/kit``; ``tests/test_kit_drift.py`` pins their bodies to the kit
