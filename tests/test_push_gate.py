@@ -25,6 +25,7 @@ stdout.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -34,7 +35,28 @@ from conftest import child_env  # tests/ is on sys.path under pytest prepend mod
 
 HOOK = Path(__file__).resolve().parents[1] / ".claude" / "hooks" / "role_review_gate.py"
 ATTESTATION = Path(".claude") / ".role_review_attestation.json"
-LEDGER_ENV = "ITACA_INCIDENT_LEDGER"
+
+
+def _ledger_env_of_the_gate() -> str:
+    """The ledger variable the vendored gate actually resolves.
+
+    READ from the gate rather than written here. A literal in this file was a
+    second copy of one fact, and when kit 0.2.8 renamed the variable
+    (COORD_INCIDENT_LEDGER, author decision LEDGER-ENVVAR) this module went on
+    exporting the old name: five cases then set a variable the gate does not
+    read, so the gate saw an unset ledger and denied, and the failures
+    reported nothing about what they test.
+    """
+    source = HOOK.read_text(encoding="utf-8")
+    match = re.search(r'^LEDGER_ENV = "([A-Z_]+)"', source, re.MULTILINE)
+    assert match is not None, (
+        f"could not read LEDGER_ENV out of {HOOK}. This module must resolve "
+        f"the same variable the gate does; do not reintroduce a literal here."
+    )
+    return match.group(1)
+
+
+LEDGER_ENV = _ledger_env_of_the_gate()
 # Built by concatenation so this file never contains the literal command
 # it tests; the gate scans command text and would flag work on this file.
 PUSH = "git" + " push"
@@ -48,26 +70,52 @@ def git(repo: Path, *args: str) -> str:
     return done.stdout.strip()
 
 
+#: The default for ``ledger=``: a CLEAN stub ledger built beside the
+#: throwaway repository. Distinct from ``None``, which means the variable is
+#: genuinely unset, because kit 0.2.8 made those two different answers: an
+#: absent ledger now DENIES. Before 0.2.8 an unset variable read as "the
+#: check does not apply", so stripping it was both hermetic and neutral, and
+#: one default served every case. It is no longer neutral, and a test about
+#: ref scoping must not deny because of a variable it never mentions.
+_CLEAN = object()
+
+
 def hook_env(ledger: str | None = None) -> dict[str, str]:
     """The environment a hook subprocess runs in.
 
-    ``child_env`` (tests/conftest.py) strips coverage measurement; the
-    incident ledger variable is dropped here so the suite is hermetic,
-    because inheriting it would make every case depend on the state of
-    a ledger outside the repository.
+    ``child_env`` (tests/conftest.py) strips coverage measurement. The
+    incident ledger variable is set to whatever the caller resolved, never
+    inherited, so no case depends on the state of a ledger outside the
+    repository.
     """
     return child_env(**{LEDGER_ENV: ledger})
 
 
-def judge(repo: Path, command: str, ledger: str | None = None) -> tuple[str, str]:
+def _resolve_ledger(repo: Path, ledger: str | None | object) -> str | None:
+    """Turn the ``ledger=`` argument into an environment value.
+
+    ``_CLEAN`` builds a stub that runs and reports no blocking incident, so
+    the incident half of the gate is CONFIGURED and quiet. ``None`` leaves
+    the variable unset, which since kit 0.2.8 is itself a denial.
+    """
+    if ledger is _CLEAN:
+        return stub_ledger(repo.parent / "clean_ledger", 0, "clean for")
+    assert ledger is None or isinstance(ledger, str)
+    return ledger
+
+
+def judge(
+    repo: Path, command: str, ledger: str | None | object = _CLEAN
+) -> tuple[str, str]:
     """Run the hook on ``command`` and return (decision, reason).
 
-    The incident ledger variable is stripped by default so the suite is
-    hermetic: inheriting it would make every case depend on the state of
-    a ledger outside the repository, and a real open incident would then
-    fail tests that are not about incidents at all.
+    The incident ledger is a clean stub by default, never the real one, so
+    the suite stays hermetic: inheriting the author's ledger would make every
+    case depend on state outside the repository, and a real open incident
+    would fail tests that are not about incidents at all. Pass ``None``
+    explicitly to test the unset variable, which is a denial in its own right.
     """
-    env = hook_env(ledger)
+    env = hook_env(_resolve_ledger(repo, ledger))
     done = subprocess.run(
         [sys.executable, str(HOOK)],
         input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}}),
@@ -82,12 +130,12 @@ def judge(repo: Path, command: str, ledger: str | None = None) -> tuple[str, str
     return str(out["permissionDecision"]), str(out.get("permissionDecisionReason", ""))
 
 
-def decide(repo: Path, command: str, ledger: str | None = None) -> str:
+def decide(repo: Path, command: str, ledger: str | None | object = _CLEAN) -> str:
     """Run the hook on ``command`` and return its permission decision."""
     return judge(repo, command, ledger)[0]
 
 
-def stderr_of(repo: Path, command: str, ledger: str | None = None) -> str:
+def stderr_of(repo: Path, command: str, ledger: str | None | object = _CLEAN) -> str:
     """Run the hook on ``command`` and return what it wrote to stderr.
 
     The permission decision travels on stdout; the gate's observability
@@ -101,7 +149,7 @@ def stderr_of(repo: Path, command: str, ledger: str | None = None) -> str:
         capture_output=True,
         text=True,
         cwd=repo,
-        env=hook_env(ledger),
+        env=hook_env(_resolve_ledger(repo, ledger)),
     )
     return done.stderr
 
@@ -222,14 +270,50 @@ def test_a_configured_but_unreadable_ledger_blocks(repo: Path, tmp_path: Path) -
     )
 
 
-def test_an_unconfigured_ledger_does_not_block_a_fork(repo: Path) -> None:
-    """Without the environment variable the incident gate does not apply.
+def test_an_unconfigured_ledger_denies_rather_than_failing_open(repo: Path) -> None:
+    """An absent ledger DENIES. Kit 0.2.8, author decision LEDGER-ENVVAR.
 
-    The shared ledger is one author's local artifact. A clone that never
-    configured it must still be able to push once its work is reviewed.
+    THIS TEST USED TO ASSERT THE OPPOSITE, and the inversion is the point.
+    It read "without the environment variable the incident gate does not
+    apply", on the reasoning that the shared ledger is one author's local
+    artifact and a clone that never configured it must still be able to push.
+    That reasoning is what failed: an unset variable read as permission, so
+    the coordination repository, the level that WRITES the incidents, pushed
+    past a blocking incident it had itself recorded, because the variable it
+    derived had never existed. Measured there on 2026-07-29 with a blocking
+    incident open: itaca blocked, pyflightstream blocked, the hub NOT.
+
+    A guard that treats its own missing configuration as permission is not a
+    guard. So absence is now a refusal, and a repository that genuinely has
+    no ledger says so by pointing the variable at one.
+
+    The remedy is one export, which is why the deny carries its own
+    ``[config]`` sub-kind rather than the ledger-repair or run-the-analyst
+    wording: a message that does not say "export this" turns a deployment
+    step into a mystery.
+
+    itaca ran kit 0.2.6 until 2026-07-30 and therefore carried the fail-open
+    branch for a day after the fix existed (``ITC-20260730-0215``).
     """
     head = add_commit(repo, "one")
     attest(repo, [head])
+    decision, reason = judge(repo, f"{PUSH} origin main", ledger=None)
+    assert decision == "deny", (
+        f"an unset {LEDGER_ENV} allowed a push, so the incident gate can fail "
+        f"open: on a clone that configured nothing, a blocking incident is "
+        f"never consulted and the push proceeds. Reason: {reason!r}"
+    )
+    assert "[config]" in reason, (
+        f"the unset-ledger deny does not carry the [config] sub-kind, so it "
+        f"reads as a ledger or review problem rather than as one missing "
+        f"export: {reason!r}"
+    )
+    assert LEDGER_ENV in reason, (
+        f"the deny does not name the variable to set, which is the whole "
+        f"remedy: {reason!r}"
+    )
+    # And the attestation is not what is holding it: the same push with a
+    # configured clean ledger goes through, so this case isolates the ledger.
     assert decide(repo, f"{PUSH} origin main") == "allow"
 
 

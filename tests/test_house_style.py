@@ -436,27 +436,31 @@ def test_every_document_naming_the_srs_version_names_the_same_one() -> None:
     )
 
 
-def test_the_ledger_variable_divergence_is_the_one_this_repository_declares() -> None:
-    """Kit 0.2.10 renamed the variable in the charter and not in the gate.
+def test_one_ledger_variable_is_named_by_the_gate_and_by_the_locator_table() -> None:
+    """The gate, the vendored charter and CLAUDE.md name ONE variable.
 
     Author decision LEDGER-ENVVAR made ``COORD_INCIDENT_LEDGER`` the single
-    name for the shared incident ledger, and kit 0.2.8 put it into the
-    ``incident-analyst`` charter. The push gate this repository vendors is at
-    0.2.6 and still reads ``ITACA_INCIDENT_LEDGER``, which is also the name
-    ``CLAUDE.md``'s locator table declares and the name three test modules
-    resolve. So adopting 0.2.10 left one artifact naming a variable no
-    mechanism here reads.
+    name for every workspace sharing the incident ledger. Kit 0.2.8 carried it
+    into the push gate, together with the change that matters more: an ABSENT
+    ledger denies rather than reading as does-not-apply.
 
-    On this machine both are set to the same path, which is exactly why this
-    needs a guard rather than a note: the divergence is invisible until a
-    clone sets one of the two, and then either the analyst is sent to an unset
-    path or the gate is. Prose in ``CLAUDE.md`` is not a guard by this
-    repository's own rule.
+    This test began life pinning a DIVERGENCE. itaca ran kit 0.2.6 while the
+    vendored charter had already moved to 0.2.10, so for a day the gate read
+    the old name and, worse, could FAIL OPEN: on a clone that configured
+    nothing, the incident half of the gate did not gate. Both are closed by
+    the 0.2.8 re-vendor (``ITC-20260730-0215``), so the assertion is now a
+    convergence: whatever literal the gate assigns to ``LEDGER_ENV`` is the
+    one variable the locator table declares, and no other.
 
-    The assertion pins the divergence AS IT STANDS, in both directions, so the
-    day the kit ships a gate reading the new name this test fails and forces
-    ``CLAUDE.md``, the locator table and the three modules to move with it.
-    Registered as ``ITC-20260730-0215``; the gate half is the kit's.
+    Reading the literal OUT of the gate is the load-bearing part. Asserting a
+    name would pass in the state that actually misconfigures a clone, which is
+    the gate renamed and the table not, and a substring test over the row
+    passed for EITHER name while the row mentioned both. Falsified in three
+    directions: the gate renamed alone, the table renamed alone, and a second
+    variable name smuggled into the row.
+
+    The refusal itself is pinned by ``tests/test_push_gate.py``; this pins
+    that the documentation a reader configures from cannot drift from it.
     """
     charter = (_ROOT / ".claude" / "agents" / "incident-analyst.md").read_text(
         encoding="utf-8"
@@ -466,12 +470,6 @@ def test_the_ledger_variable_divergence_is_the_one_this_repository_declares() ->
     )
     claude_md = (_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
 
-    assert "COORD_INCIDENT_LEDGER" in charter, (
-        "the vendored incident-analyst charter no longer names "
-        "COORD_INCIDENT_LEDGER. If the kit reverted the LEDGER-ENVVAR rename, "
-        "or the charter was hand-edited, reconcile this test with it; do not "
-        "edit the vendored copy."
-    )
     # Read the gate's variable out of the gate rather than asserting a
     # literal. Asserting the old name would pass in the one state that
     # actually misconfigures a clone: the gate keeps reading ITACA_ while
@@ -514,13 +512,14 @@ def test_the_ledger_variable_divergence_is_the_one_this_repository_declares() ->
         f"tests/test_plan_validator.py and tests/test_push_gate.py "
         f"(ITC-20260730-0215)."
     )
-    assert "COORD_INCIDENT_LEDGER" in claude_md, (
-        "CLAUDE.md does not mention COORD_INCIDENT_LEDGER, so a reader "
-        "following the incident-analyst charter would configure a variable no "
-        "mechanism in this repository reads, and a reader following CLAUDE.md "
-        "would leave the charter's variable unset. While the two names differ, "
-        "this repository must say so where the locator rule lives "
-        "(ITC-20260730-0215)."
+    # And the vendored charter names the same one, so a future kit version that
+    # moved only one of the two is caught here rather than by a reader.
+    assert reads in charter, (
+        f"the push gate resolves {reads} and the vendored incident-analyst "
+        f"charter does not name it, so the analyst and the gate would read "
+        f"different variables. The charter is a kit body and may not be "
+        f"hand-edited: route the divergence up and re-vendor "
+        f"(ITC-20260730-0215 is the precedent)."
     )
 
 

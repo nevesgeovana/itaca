@@ -95,8 +95,9 @@ the management root below, never committed here). The plan ledger is
 validated by the
 checker named in the `ITACA_PLAN_VALIDATOR` environment variable (the
 plan skill holds the mechanism): unset skips validation, set but
-unreachable is a configuration error, exactly as `ITACA_INCIDENT_LEDGER`
-locates the incident checker.
+unreachable is a configuration error. `COORD_INCIDENT_LEDGER` locates the
+incident checker the same way, with one difference that matters: unset
+SKIPS validation there and DENIES a push here.
 
 Mandatory push and release gate (adopted 2026-07-23, after a
 pyflightstream release ran paraphrased manual checks instead of the
@@ -146,7 +147,7 @@ it; where one appears to, this file wins.
 
 The root is named by the `ITACA_MANAGEMENT_ROOT` environment variable,
 never by a literal path in a versioned file, for the same reason
-`ITACA_INCIDENT_LEDGER` and `ITACA_PLAN_VALIDATOR` are: this repository
+`COORD_INCIDENT_LEDGER` and `ITACA_PLAN_VALIDATOR` are: this repository
 is public, and a hard-coded personal path publishes one machine's layout
 and is wrong on every other clone.
 
@@ -154,13 +155,7 @@ and is wrong on every other clone.
 |---|---|---|---|---|---|
 | `ITACA_MANAGEMENT_ROOT` | the session-document root | use `_private/` if it still holds the documents, else stop | stop and report | the skills | `tests/test_management_root.py` |
 | `ITACA_PLAN_VALIDATOR` | `check_plan_kit.py`, or its directory | skip validation, say so | stop and report | the plan skill | `tests/test_plan_validator.py` |
-| `ITACA_INCIDENT_LEDGER` [^ledger] | `check_incidents.py`, or its directory | check does not apply, silently | push gate denies | `.claude/hooks/role_review_gate.py` | `tests/test_push_gate.py`, `tests/test_kit_drift.py`, `tests/test_house_style.py` |
-
-[^ledger]: A second name for this one variable exists right now: the
-vendored `incident-analyst` charter reads `COORD_INCIDENT_LEDGER`. Set
-both, and see "Incidents" below for why and for how long. The name in the
-cell is the one every mechanism here resolves, which is what a guard reads
-it as, so it stays one name.
+| `COORD_INCIDENT_LEDGER` | `check_incidents.py`, or its directory | **push gate DENIES** | push gate denies | `.claude/hooks/role_review_gate.py` | `tests/test_push_gate.py`, `tests/test_kit_drift.py`, `tests/test_house_style.py` |
 
 Unset never blocks a clone that configured nothing, which is the point
 of the branch, but it does not mean the same thing across the family:
@@ -243,35 +238,47 @@ blocks the original failure when re-run. That headline is kept here so a
 clone reads the rule without leaving the repository; the full policy
 statement, including why documentation is not a guard and why a guard
 must be proven by mutation, lives in the shared ledger's own README
-(located by `ITACA_INCIDENT_LEDGER`), the cross-repo authority both
+(located by `COORD_INCIDENT_LEDGER`), the cross-repo authority both
 libraries point at. This section keeps only the headline and defers the
 policy detail there rather than restating it.
 
 Incidents are recorded in the shared ledger with the sister
-repository, located by the `ITACA_INCIDENT_LEDGER` environment
+repository, located by the `COORD_INCIDENT_LEDGER` environment
 variable, never by a literal path in a versioned file. The variable
 names the directory holding `check_incidents.py` (or the checker
-itself); unset means the check does not apply, so a clone that never
-configured it can still push, while set but unreachable blocks every
-push by design. The `incident-analyst` agent (charter in
+itself). **Unset DENIES a push**, and so does set but unreachable: this
+is the one member of the locator family whose absence is a refusal rather
+than a skip, because a guard that reads its own missing configuration as
+permission is not a guard. Export it before working in a fresh clone.
+
+The `incident-analyst` agent (charter in
 `.claude/agents/`) drafts the record: symptom, proximate cause,
 structural cause, guard, guard evidence, cross-repository impact.
 Whether an incident blocks is Geovana's call, and while one marked
 blocking is open the gate denies. No new work ships on top of a defect
 whose structural cause is still unfixed.
 
-**Two names for that ledger exist right now, and the divergence is
-declared rather than tidied away.** Author decision LEDGER-ENVVAR made
-`COORD_INCIDENT_LEDGER` the single name, and kit 0.2.8 put it into the
-`incident-analyst` charter, which this repository vendors and may not
-edit. Every mechanism here still reads `ITACA_INCIDENT_LEDGER`: the push
-gate (vendored at kit 0.2.6), the locator table above, the plan skill and
-three test modules. So set BOTH until the gate adopts the rename; setting
-only one leaves either the analyst or the gate pointed at nothing.
-`tests/test_house_style.py` pins the divergence in both directions, so the
-day a gate reading the new name is vendored, that test fails and forces
-this file and the three modules to move with it. The gate half belongs to
-the kit and is registered as `ITC-20260730-0215`.
+**One name, and how it got there.** Author decision LEDGER-ENVVAR made
+`COORD_INCIDENT_LEDGER` the single name for every workspace sharing this
+ledger, and kit 0.2.8 carried it into the push gate together with the change
+that matters more: an ABSENT ledger now denies instead of reading as
+does-not-apply. itaca ran kit 0.2.6 until 2026-07-30 and so carried the
+fail-open branch for a day after the fix existed, which the coordination
+level measured and routed back here (`ITC-20260730-0215`, closed by the
+re-vendor). On a clone that had configured nothing, the incident half of the
+gate did not gate.
+
+`tests/test_house_style.py` reads the variable out of the vendored gate and
+requires the locator table to name exactly that one, in both directions, so
+the two cannot be renamed apart again. `tests/test_push_gate.py` pins the
+refusal itself: the test that used to assert an unset ledger allows a push
+now asserts it denies, and names the `[config]` sub-kind, because the remedy
+is one export and a message that does not say so turns a deployment step
+into a mystery.
+
+`docs/DECISIONS.md` still names the old variable inside DD-31. DD entries are
+frozen and append-only, so it is left as written; this section is the
+operative rule.
 
 ## What Claude should do here
 

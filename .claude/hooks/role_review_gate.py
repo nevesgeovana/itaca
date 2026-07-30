@@ -1,8 +1,8 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.6
+# kit-version: 0.2.8
 # artifact: role_review_gate.py
-# body-sha256: 889b8647b704394b28b48a87b473cacdc02d0222ee458e754c47726c8f7e5585
-# canonical-source: itaca hardened basis. The coordination flavor (ClaudeProjects/.claude/hooks/role_review_gate.py) is a DOCUMENTED SUPERSET, not drift: it swaps the single LEDGER_ENV constant for a per-target LEDGER_ENV_BY_REPO map so one gate can resolve the right ledger var when it targets either repo via git -C <repo>. A repo vendoring this canonical body uses its own single ledger var.
+# body-sha256: 21095fd67f9ed2fe9986f11c4efd21ba1e3ac5cfc535b115f9fe1b2919fd6c05
+# canonical-source: itaca hardened basis, and at 0.2.8 the per-target LEDGER_ENV_BY_REPO superset is RETIRED rather than documented: author decision LEDGER-ENVVAR gives every workspace ONE variable, COORD_INCIDENT_LEDGER, and an absent one now DENIES. There is no coordination flavor left to diverge, so a vendored copy and this master differ in nothing at all. Measured cause: the derived-name fallback meant the coordination repository resolved a variable that had never existed, and unset read as does-not-apply, so the level that writes the incidents was the only one of three this gate did not stop.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # END KIT PROVENANCE (body verbatim below)
 #!/usr/bin/env python3
@@ -75,9 +75,53 @@ ATTESTATION = ".claude/.role_review_attestation.json"
 # The shared incident ledger is located by environment variable, never by
 # a literal path in a committed file: a hard-coded personal path would
 # publish a local layout and deny every push from any other clone, with a
-# remedy the reader cannot perform. Unset means the check does not apply;
-# set but unreadable blocks.
-LEDGER_ENV = "ITACA_INCIDENT_LEDGER"
+# remedy the reader cannot perform.
+# ONE variable for every workspace that shares this ledger, and ABSENT DENIES.
+# Until 0.2.8 the sentence here read "unset means the check does not apply",
+# which is the defect LEDGER-ENVVAR removed and which survived the promotion
+# that removed it, sitting one line above its own replacement. Caught by the
+# architecture lens of the 0.2.8 push review, while no repository outside the
+# coordination level had vendored this body: one day later it would have been
+# a body change, a new hash and a re-vendor in three repositories.
+# Author decision LEDGER-ENVVAR, 2026-07-29 (kit 0.2.8).
+#
+# What it replaces, and why the replacement is not cosmetic. The coordination
+# flavor of this gate carried a per-target MAP from repository name to variable
+# name, with a fallback that derived one from the name. An unset variable
+# returned "not blocked", so a repository whose derived name nobody had ever
+# exported read as "no ledger applies here" and pushed freely.
+#
+# Measured by executing this module rather than by reading it, on 2026-07-29,
+# with a blocking shared incident open in the ledger:
+#
+#     itaca              ITACA_...              set    blocked=True
+#     pyflightstream     PYFS_...               set    blocked=True
+#     ClaudeCoordinator  CLAUDECOORDINATOR_...  UNSET  blocked=False
+#
+# The three names are abbreviated on purpose. A scaffolded project rewrites
+# every literal matching the ledger-variable shape in this body to its own,
+# so spelling the retired names in full would make them mutate on vendoring
+# and change the body hash. A comment that cannot survive being vendored is a
+# comment that will be wrong in every copy but this one.
+#
+# The workspace that WRITES the incidents and SHIPS this gate was the only one
+# of the three it did not stop. Nothing was misconfigured and nothing raised:
+# the name was derived, the variable had never existed, and absence read as
+# does-not-apply. That is the same shape as every other entry in
+# INC-20260729-0854-shared, one level down: a well-formed green answer over a
+# question that was never asked.
+#
+# One name cannot be derived wrongly, and absent-denies cannot read as absent-
+# does-not-apply. A repository that genuinely has no ledger says so by pointing
+# the variable at one; it does not say so by silence.
+#
+# DEPLOYMENT, and it comes BEFORE the vendor rather than after. This variable
+# exists nowhere until someone exports it, and this gate runs as a PreToolUse
+# hook on every shell command. So a copy vendored before the variable is set
+# denies every command in that repository until it is. Export it first, in
+# every workspace that vendors this body, then vendor. Recoverable in one
+# export either way, but recovering is not the same as planning.
+LEDGER_ENV = "COORD_INCIDENT_LEDGER"
 CHECKER_NAME = "check_incidents.py"
 # A version tag argument: v followed by a digit, then version-ish
 # characters (covers v0.3.0 and pre-releases like v0.3.0rc1, matching
@@ -376,7 +420,18 @@ def _blocking_incidents(repo_name: str) -> tuple[bool, str, str]:
     """
     configured = os.environ.get(LEDGER_ENV, "").strip()
     if not configured:
-        return False, "", ""
+        # ABSENT DENIES. It used to return "not blocked", which is how the
+        # coordination repository pushed past a blocking incident it had
+        # itself written: the variable it derived had never existed, and
+        # unset read as does-not-apply. A guard that treats its own missing
+        # configuration as permission is not a guard.
+        return (
+            True,
+            "unconfigured",
+            f"{LEDGER_ENV} is not set, so the shared incident ledger was never "
+            f"consulted and this push is refused rather than allowed on a "
+            f"question nobody asked",
+        )
     checker = Path(configured)
     if checker.is_dir():
         checker = checker / CHECKER_NAME
@@ -768,6 +823,24 @@ def main() -> None:
         # answer, and allow.
         repo_name = _repo_identity(root)
         blocked, kind, detail = _blocking_incidents(repo_name)
+        if blocked and kind == "unconfigured":
+            # Its own bracketed sub-kind, because the remedy is neither
+            # "repair the ledger" nor "run the analyst": it is one export,
+            # and a message that does not say so turns a deployment step
+            # into a mystery on every shell command.
+            _decide(
+                "deny",
+                f"{GATE_PREFIX} [config] {detail}.\n"
+                f"Set {LEDGER_ENV} to the shared incident ledger directory (the "
+                f"one holding {CHECKER_NAME}), in this machine's environment or "
+                f"in the agent settings that carry it, then retry. It is machine "
+                f"configuration and never a literal in a committed file, which is "
+                f"why this gate cannot default it for you.\n"
+                f"This denial is EXPECTED the first time a repository vendors kit "
+                f"0.2.8 without exporting the variable first. Absent used to read "
+                f"as does-not-apply, and the workspace whose variable had never "
+                f"existed pushed past a blocking incident it had written itself.",
+            )
         if blocked and kind == "unreachable":
             _decide(
                 "deny",
@@ -837,11 +910,19 @@ def main() -> None:
                 f"{GATE_PREFIX} [review] {len(missing)} of the {len(in_scope)} "
                 f"commit(s) in scope for this push are not covered by any "
                 f"role-review attestation: "
-                f"{listed}{more}. Run the role-review skill (this repository's own "
-                "specialist agents as applicable: architect, QA, V&V, tech writer, "
-                "API designer; plus the numerical-analyst and integration-reviewer "
-                "lenses at the coordination level, where a change is numerical or "
-                "crosses repositories) over the "
+                f"{listed}{more}. Run the role-review skill. "
+                "This is the PUSH moment of the review policy "
+                "(kit review-policy.md), so the expected lenses here are "
+                "architect, QA and V&V, in ONE round, asking only whether the "
+                "code does what its message says it does; a text finding is "
+                "registered and does not stop this push. The tech writer and "
+                "API designer lenses belong to RELEASE, before a tag, not "
+                "here. Add the "
+                "numerical-analyst and integration-reviewer lenses at the "
+                "coordination level where a change is numerical or crosses "
+                "repositories. The three moments are GATE, PUSH and RELEASE; "
+                "kit review-policy.md says why they are named that and not "
+                "otherwise. Review the "
                 f"WHOLE pushed range, which is `{span}`, not only the tip; read "
                 f"it with `git log --oneline {span}`. Fix or register every "
                 "finding, then attest with `python .claude/hooks/"
@@ -876,7 +957,11 @@ def main() -> None:
                     "attestation does not cover "
                     f"{len(rel_missing)} of the {len(in_scope)} commit(s) being "
                     "released, including the tagged commit itself when the branch was "
-                    "pushed first. Run the role-review skill over the whole release "
+                    "pushed first. This is the RELEASE moment of the review policy "
+                    "(kit review-policy.md): the FULL panel, every lens including "
+                    "tech writer and API designer, the artifact boundary, and a "
+                    "review OF the guards rather than only through them. Run the "
+                    "role-review skill over the whole release "
                     "diff (every applicable pass, full scope, not the last item only), "
                     "fix or register every finding, then write the release attestation "
                     "with `python .claude/hooks/write_attestation.py release "

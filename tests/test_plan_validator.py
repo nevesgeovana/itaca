@@ -9,7 +9,7 @@ The plan ledger is validated by the shared-kit checker ``check_plan_kit.py``
 (Option C: the strict guards of the old ``check_plan_entries.py`` plus the
 union vocabulary), resolved from the ``ITACA_PLAN_VALIDATOR`` environment
 variable exactly as the incident checker is resolved from
-``ITACA_INCIDENT_LEDGER``. A validator that cannot fail the case it exists
+``COORD_INCIDENT_LEDGER``. A validator that cannot fail the case it exists
 to catch manufactures confidence, so its mutation companion runs here.
 
 Resolution mirrors the plan skill and the incident-ledger philosophy:

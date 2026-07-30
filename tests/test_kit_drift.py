@@ -99,9 +99,14 @@ Two vendoring shapes are covered:
   a stamped-copy check into a hash-only one; and
 - shared tools located by an environment variable (the incident checker
   and the kit plan checker) are checked when configured and skipped when
-  not, exactly as the incident gate skips an unset ledger, so a clone
-  with no configuration still runs a green suite. These may legitimately
-  be deployed raw, so the stamp requirement above is not applied to them.
+  not, so a clone with no configuration still runs a green suite. These
+  may legitimately be deployed raw, so the stamp requirement above is not
+  applied to them. This skip is NOT the same rule the push gate follows:
+  since kit 0.2.8 an unset ``COORD_INCIDENT_LEDGER`` DENIES a push, while
+  an unset locator here only means this suite cannot check that pin. A
+  suite that refused to run on an unconfigured clone would gate nothing
+  and stop everything; a gate that allowed a push on one gated nothing
+  and stopped nothing.
 
 ``snap.sh``, the snapshot script for the ``_private`` trees, has no
 locator variable of its own, so it is drift-checked best-effort where it
@@ -157,8 +162,17 @@ class Pin:
 # verbatim copy of the manifest of record and must not be resynced from
 # it wholesale.
 MANIFEST: dict[str, Pin] = {
+    # 0.2.8, author decision LEDGER-ENVVAR, and the reason this pin moved at
+    # the last moment before a tag. itaca sat at 0.2.6, whose ledger check
+    # returns "not blocked" when the variable is unset, so on a clone that
+    # configured nothing the incident half of this gate did not gate: it
+    # could FAIL OPEN. 0.2.8 gives every workspace one variable,
+    # COORD_INCIDENT_LEDGER, and an ABSENT one denies. The rename is the
+    # visible half and the fail-open removal is the load-bearing one.
+    #
+    # The declared value agreed with the master body on recomputation.
     "role_review_gate.py": Pin(
-        "889b8647b704394b28b48a87b473cacdc02d0222ee458e754c47726c8f7e5585", "0.2.6"
+        "21095fd67f9ed2fe9986f11c4efd21ba1e3ac5cfc535b115f9fe1b2919fd6c05", "0.2.8"
     ),
     # 0.2.9, the INC-20260729-2355 guard: the attestation refuses while
     # TRACKED files carry uncommitted changes, and reports untracked paths
@@ -435,10 +449,12 @@ def test_the_runtime_agent_body_matches_the_of_record_copy() -> None:
 def _env_located() -> list[tuple[str, Path]]:
     """(manifest key, path) for shared tools that MUST exist when configured.
 
-    Skipped entirely when neither variable is configured, mirroring the
-    incident gate: a clone that never set them still runs a green suite.
+    Skipped entirely when neither variable is configured: a clone that
+    never set them still runs a green suite. Note the asymmetry with the
+    push gate, which since kit 0.2.8 DENIES on an unset ledger; the
+    module docstring says why the two differ.
     Each tool is located by its OWN variable: the incident checker by
-    ITACA_INCIDENT_LEDGER, the plan checker (and its companion) by
+    COORD_INCIDENT_LEDGER, the plan checker (and its companion) by
     ITACA_PLAN_VALIDATOR. snap.sh is deliberately NOT here: it has no
     locator variable of its own, so binding it to the plan-validator
     directory would be a false coupling (a correctly configured plan
@@ -448,7 +464,7 @@ def _env_located() -> list[tuple[str, Path]]:
     it is a registered kit item.
     """
     located: list[tuple[str, Path]] = []
-    ledger = os.environ.get("ITACA_INCIDENT_LEDGER")
+    ledger = os.environ.get("COORD_INCIDENT_LEDGER")
     if ledger:
         base = Path(ledger)
         checker = base if base.suffix == ".py" else base / "check_incidents.py"
@@ -512,7 +528,7 @@ def test_env_located_shared_tools_match_the_manifest() -> None:
     located = _env_located()
     if not located:
         pytest.skip(
-            "neither ITACA_INCIDENT_LEDGER nor ITACA_PLAN_VALIDATOR is set; "
+            "neither COORD_INCIDENT_LEDGER nor ITACA_PLAN_VALIDATOR is set; "
             "env-located kit tools are not configured here"
         )
     for key, path in located:
@@ -552,7 +568,7 @@ def test_the_derivation_never_reinterprets_a_py_value_as_its_parent(
         if exists:
             configured.write_text("# real file, wrong checker\n", encoding="utf-8")
         monkeypatch.setenv("ITACA_PLAN_VALIDATOR", str(configured))
-        monkeypatch.delenv("ITACA_INCIDENT_LEDGER", raising=False)
+        monkeypatch.delenv("COORD_INCIDENT_LEDGER", raising=False)
         located = dict(_env_located())
         assert located["check_plan_kit.py"] == configured, (
             f"the derivation resolved ITACA_PLAN_VALIDATOR={configured} to "
@@ -592,7 +608,7 @@ def test_a_configured_locator_names_something_that_exists() -> None:
     configured = [
         (name, Path(value))
         for name in (
-            "ITACA_INCIDENT_LEDGER",
+            "COORD_INCIDENT_LEDGER",
             "ITACA_PLAN_VALIDATOR",
             "ITACA_MANAGEMENT_ROOT",
         )
@@ -600,7 +616,7 @@ def test_a_configured_locator_names_something_that_exists() -> None:
     ]
     if not configured:
         pytest.skip(
-            "no member of the locator family is set (ITACA_INCIDENT_LEDGER, "
+            "no member of the locator family is set (COORD_INCIDENT_LEDGER, "
             "ITACA_PLAN_VALIDATOR, ITACA_MANAGEMENT_ROOT); there is no "
             "configured locator to check"
         )

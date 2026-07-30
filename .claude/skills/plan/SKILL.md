@@ -100,7 +100,7 @@ entry still validates.
 
 Resolve the checker from configuration, never from a machine-absolute
 literal in this committed file. This mirrors exactly how the incident
-ledger is located by `ITACA_INCIDENT_LEDGER` (CLAUDE.md, Incidents; and
+ledger is located by `COORD_INCIDENT_LEDGER` (CLAUDE.md, Incidents; and
 `.claude/hooks/role_review_gate.py`): a hard-coded personal path would
 publish one machine's layout into a public repository and be wrong on
 every other clone, with a remedy the reader cannot perform.
@@ -112,10 +112,13 @@ assume a path.
   file itself. If it points at a directory, look for `check_plan_kit.py`
   inside it.
 - **Unset means the check is skipped**, not failed: a clone that never
-  configured the validator can still work, exactly as an unset incident
-  ledger does not apply. Say plainly in the session record that the
-  ledger was written but not machine-validated, so the skipped check is
-  visible and not mistaken for a pass.
+  configured the validator can still work. Say plainly in the session
+  record that the ledger was written but not machine-validated, so the
+  skipped check is visible and not mistaken for a pass. This is NOT how
+  the incident ledger behaves: since kit 0.2.8 an unset
+  `COORD_INCIDENT_LEDGER` DENIES a push. Skipping a validation and
+  allowing a push are different stakes, so the two variables answer
+  differently and CLAUDE.md's locator table is where that is recorded.
 - Set but pointing at no readable checker is a configuration error to
   report to the author, not a silent skip.
 
