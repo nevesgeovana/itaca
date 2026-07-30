@@ -132,20 +132,37 @@ class EquationProcessor:
             )
         if self.spec.uncertainties:
             # Say WHEN each one takes effect, not only what it is. The
-            # moment is normative (SRS Section 4.6) and depends on the
-            # frame as well as the file, so a flat list of numbers hides
-            # exactly the thing R4-ITA-003 turned on. "when applied"
-            # cannot be resolved here without a frame, so what is shown
-            # is the half the file decides.
+            # moment is normative (SRS Section 4.6) and it is what two
+            # shipped defects turned on, so a flat list of numbers hides
+            # exactly the thing a reader needs.
+            #
+            # Three cases, not two, and the first version of this got two
+            # of them wrong by labelling from `targets` alone. `info` has
+            # no frame, but the file decides more than it looks: a
+            # declared name in `required_variables` is guaranteed carried,
+            # because `validate` refuses otherwise, so "twice" is known;
+            # a declared name the file does not write is known to be
+            # once-before. Only "written and not required" depends on the
+            # frame, and that is the one whose label says so.
             written = set(self.spec.targets)
+            required = set(self.spec.required_variables)
+
+            def moment(key: str) -> str:
+                if key not in written:
+                    return "  (applied before the first line)"
+                if key in required:
+                    return (
+                        "  (applied twice: before the first line, and again "
+                        "after the line that writes it)"
+                    )
+                return (
+                    "  (applied after the line that writes it, and also "
+                    "before it if the frame carries the name)"
+                )
+
             lines.append("  uncertainties (systematic component):")
             lines.extend(
-                f"    {key} = {value}"
-                + (
-                    "  (reapplied after the line that writes it)"
-                    if key in written
-                    else "  (applied before the first line)"
-                )
+                f"    {key} = {value}{moment(key)}"
                 for key, value in self.spec.uncertainties.items()
             )
         for stage, equations in (
@@ -408,10 +425,40 @@ class EquationProcessor:
         # So the partition is not a partition. `validate` refuses a
         # declaration that is neither carried nor produced (REQ-45), so
         # every declared name answers yes to at least one question and no
-        # declaration goes unapplied; the assertion after the loop is
-        # what holds that claim to account rather than assuming it.
+        # declaration goes unapplied. That claim is CHECKED below rather
+        # than assumed, and it is checked on the set that can actually be
+        # violated.
         setup = {key: declared[key] for key in declared if key in work.vars}
         pending = {key: declared[key] for key in declared if key in produced}
+        # A name answering NO to both questions would be applied nowhere,
+        # and nothing downstream would say so. Refused HERE, before the
+        # first equation runs, for the reason `validate`'s own docstring
+        # gives for its two collision checks: a refusal arriving after the
+        # loop lands once earlier lines have already been written.
+        #
+        # The first version of this guard checked `pending` after the loop
+        # instead, which three reviewer passes measured as unreachable:
+        # `pending` is keyed on `spec.targets`, and `spec.targets` is built
+        # from exactly the tuple the loop iterates and pops, so it always
+        # drains. Worse, it guarded the wrong direction. This commit's
+        # `setup` filters on `key in work.vars`, so the unknown name that
+        # the previous code passed into `set_uncertainty` (where it raised
+        # UncertaintyKeyError, naming the wrong operation but at least
+        # loudly) is now filtered out silently. This is the guard that
+        # closes that.
+        unapplied = sorted(set(declared) - set(setup) - set(pending))
+        if unapplied:
+            raise ProcessorError(
+                f"processor '{self.name}'",
+                f"its [uncertainties] section declares {unapplied}, which the "
+                f"VarFrame does not carry and no equation or correction "
+                f"writes, so the declaration would be applied nowhere",
+                f"remove the entry, correct its name, or add an equation that "
+                f"produces it; the frame carries {sorted(work.vars)} and the "
+                f"file writes {sorted(produced)}. validate refuses this before "
+                f"the call reaches here, so seeing this message means validate "
+                f"was bypassed (REQ-45, SRS Section 4.6)",
+            )
         if setup:
             work = work.set_uncertainty(setup, history=True, comment=signature)
         for equation in (*self.spec.equations, *self.spec.corrections):

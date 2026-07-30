@@ -9,7 +9,7 @@ convention: `import itaca as itc`. Tagline: From data to wisdom.
 
 ## Authority chain
 
-1. `docs/srs/` is the authoritative specification (document 0.2.4,
+1. `docs/srs/` is the authoritative specification (document 0.2.5,
    2026-07-30; baseline 0.1.0 was the first workspace-tracked
    version). The SRS describes desired
    behavior; code is verified against the SRS, and the SRS is changed only
@@ -154,7 +154,13 @@ and is wrong on every other clone.
 |---|---|---|---|---|---|
 | `ITACA_MANAGEMENT_ROOT` | the session-document root | use `_private/` if it still holds the documents, else stop | stop and report | the skills | `tests/test_management_root.py` |
 | `ITACA_PLAN_VALIDATOR` | `check_plan_kit.py`, or its directory | skip validation, say so | stop and report | the plan skill | `tests/test_plan_validator.py` |
-| `ITACA_INCIDENT_LEDGER` (the vendored analyst charter reads `COORD_INCIDENT_LEDGER`; see Incidents) | `check_incidents.py`, or its directory | check does not apply, silently | push gate denies | `.claude/hooks/role_review_gate.py` | `tests/test_push_gate.py`, `tests/test_kit_drift.py` |
+| `ITACA_INCIDENT_LEDGER` [^ledger] | `check_incidents.py`, or its directory | check does not apply, silently | push gate denies | `.claude/hooks/role_review_gate.py` | `tests/test_push_gate.py`, `tests/test_kit_drift.py`, `tests/test_house_style.py` |
+
+[^ledger]: A second name for this one variable exists right now: the
+vendored `incident-analyst` charter reads `COORD_INCIDENT_LEDGER`. Set
+both, and see "Incidents" below for why and for how long. The name in the
+cell is the one every mechanism here resolves, which is what a guard reads
+it as, so it stays one name.
 
 Unset never blocks a clone that configured nothing, which is the point
 of the branch, but it does not mean the same thing across the family:

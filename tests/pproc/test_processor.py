@@ -817,33 +817,67 @@ def test_the_mid_loop_declaration_records_itself_in_history(tmp_path: Path) -> N
     processor = itc.processor(path)
     processed = processor(_two_column([3.0, 4.0], [6.0, 8.0]))
     operations = [entry.operation for entry in processed.history]
+    # MEMBERSHIP, not a prefix. The first version matched
+    # startswith("set_uncertainty(vars=['y']") and so missed the pre-loop
+    # entry, which lists ['x', 'y'] because this frame carries both: it then
+    # asserted a count of one and passed for the wrong reason, while its own
+    # message claimed something false about the frame. `y` really is assigned
+    # twice here, and that is the rule, so the count asserted is two.
     assign = [
         index
         for index, text in enumerate(operations)
-        if text.startswith("set_uncertainty(vars=['y']")
+        if text.startswith("set_uncertainty(vars=") and "'y'" in text
     ]
-    assert len(assign) == 1, (
+    assert len(assign) == 2, (
         f"the declared u(y) is recorded {len(assign)} times in History, "
-        f"expected once. Recorded operations: {operations}"
+        f"expected twice for a frame that carries y AND a file that writes "
+        f"it: once before the first line and once after the writing line. "
+        f"Recorded operations: {operations}"
     )
     wrote = next(i for i, text in enumerate(operations) if "'y = 2*x'" in text)
     read = next(i for i, text in enumerate(operations) if "'z = y + 1'" in text)
-    assert wrote < assign[0] < read, (
-        f"the declared u(y) is recorded at position {assign[0]}, outside the "
-        f"window between writing y ({wrote}) and reading it ({read}). The "
-        f"assignment is mid-loop precisely so a dependent propagates from "
-        f"the declared value; History must show that it did. Recorded "
-        f"operations: {operations}"
+    before, after = assign
+    assert before < wrote < after < read, (
+        f"the declared u(y) is recorded at positions {assign}, and the rule "
+        f"requires one BEFORE the line that writes y ({wrote}) and one "
+        f"between that line and the line that reads y ({read}). The second is "
+        f"why the assignment is mid-loop: a dependent must propagate from the "
+        f"declared value. Recorded operations: {operations}"
     )
     signed = [
         entry.comment
         for entry in processed.history
-        if entry.operation.startswith("set_uncertainty(vars=['y']")
+        if entry.operation.startswith("set_uncertainty(vars=")
+        and "'y'" in entry.operation
     ]
-    assert signed == [processor.signature], (
-        f"the mid-loop declaration carries comment {signed}, not the "
-        f"processor signature {processor.signature!r}, so a reader landing "
-        f"on that entry cannot tell which workflow wrote it (REQ-19, DD-35)"
+    assert signed == [processor.signature, processor.signature], (
+        f"the declarations carry comments {signed}, not the processor "
+        f"signature {processor.signature!r} on each, so a reader landing on "
+        f"either entry cannot tell which workflow wrote it (REQ-19, DD-35)"
+    )
+
+
+def test_a_declaration_on_a_target_alone_is_recorded_once(tmp_path: Path) -> None:
+    """The single-assignment case, pinned beside the double one.
+
+    `y` is written by the file and NOT carried by the frame, so it answers
+    yes to one question only and must be recorded once. Without this beside
+    the test above, the count two could be hardcoded and a rule that assigned
+    everything twice would pass.
+    """
+    path = tmp_path / "once.itceq"
+    path.write_text(DECLARED_ON_A_TARGET_ONLY, encoding="utf-8")
+    processed = itc.processor(path)(itc.load(np.array([[3.0], [4.0]]), names=["x"]))
+    assign = [
+        entry.operation
+        for entry in processed.history
+        if entry.operation.startswith("set_uncertainty(vars=")
+        and "'y'" in entry.operation
+    ]
+    assert len(assign) == 1, (
+        f"the declared u(y) is recorded {len(assign)} times for a frame that "
+        f"does not carry y, expected once (the frame cannot be assigned a "
+        f"value for a variable it does not have). Entries: {assign}"
     )
 
 
@@ -852,16 +886,20 @@ def test_a_declaration_naming_nothing_the_file_reads_or_writes_is_refused(
 ) -> None:
     """`validate`'s third absence check, which the whole rule rests on.
 
-    SRS Section 4.6 says every declaration is applied exactly once because
+    SRS Section 4.6 says every declaration is applied at LEAST once because
     `validate` refuses a declared name that is neither carried by the frame
     nor written by the file. That claim was load-bearing and untested:
-    replacing the condition with `if False` left the entire suite green, and
-    the caller then met `UncertaintyKeyError` naming `set_uncertainty`
-    instead of a three-part `ProcessorValidationError` naming the `.itceq`.
+    replacing the condition with `if False` left the entire suite green.
 
     Both message clauses are pinned separately, because coverage showed
     every existing test reaching this refusal with BOTH clauses true, so
     neither shape was ever produced alone.
+
+    What the caller met with the check disabled is measured in
+    ``test_a_declaration_applied_nowhere_is_refused_before_anything_runs``
+    below, and it is nothing: a silent drop. An earlier docstring here said
+    ``UncertaintyKeyError``, which was true of a previous revision and false
+    of this one.
     """
     unknown = tmp_path / "unknown.itceq"
     unknown.write_text(
@@ -891,6 +929,167 @@ def test_a_declaration_naming_nothing_the_file_reads_or_writes_is_refused(
     assert "[uncertainties]" not in message, (
         f"the equations-only refusal also reported an uncertainties clause: {message}"
     )
+
+
+def test_a_declaration_does_not_touch_the_random_component(tmp_path: Path) -> None:
+    """The declaration overrides the SYSTEMATIC component and only that.
+
+    REQ-99 gives an uncertainty two components, and `set_uncertainty`
+    defaults to `systematic`, which is what the `.itceq` section declares
+    (SRS Chapter 8). So a frame arriving with a RANDOM component keeps it,
+    and it propagates into every dependent untouched.
+
+    Pinned because the whole new block reads only `.systematic`, so the
+    random half was structurally invisible to it, and because SRS Section 4.6
+    said "no uncertainty the frame arrived with is ever read for a name the
+    file declares", which is false as stated: measured on this file, the
+    arriving `u_random(CL) = 99.0` propagates to `u_random(CD) = 198.0`. That
+    sentence is now qualified to the systematic component and this test is
+    what holds it to the qualification.
+
+    Whether a declaration SHOULD also override the random component, or a
+    file be required to declare both, is a numerical-analyst question and is
+    OQ-45. This test pins today's answer so the direction cannot change
+    unannounced; it is not an argument that today's answer is the right one.
+    """
+    path = tmp_path / "components.itceq"
+    path.write_text(CARRIED_AND_CORRECTED, encoding="utf-8")
+    frame = itc.load(np.array([[3.0], [4.0]]), names=["CL"]).set_uncertainty(
+        {"CL": 99.0}, component="random"
+    )
+    processed = itc.processor(path)(frame)
+    assert processed.uncertainty is not None
+    systematic = dict(processed.uncertainty.systematic)
+    random = dict(processed.uncertainty.random)
+    assert np.asarray(systematic["CL"], dtype=float) == pytest.approx(0.01), (
+        f"the declaration did not win the systematic component: "
+        f"{np.asarray(systematic['CL']).tolist()}"
+    )
+    assert np.asarray(random["CL"], dtype=float) == pytest.approx(99.0 * 1.02), (
+        f"the arriving random component was altered by the declaration or "
+        f"lost: u_random(CL) = {np.asarray(random['CL']).tolist()}, where "
+        f"99.0 propagated through the correction CL * 1.02 is 100.98. A "
+        f"declaration is a systematic-component statement (REQ-99, OQ-45)."
+    )
+    assert np.asarray(random["CD"], dtype=float) == pytest.approx(198.0), (
+        f"u_random(CD) = {np.asarray(random['CD']).tolist()}, where "
+        f"CD = CL * 2 over an arriving u_random(CL) = 99.0 gives 198.0. If "
+        f"this changed, the declaration started overriding the random "
+        f"component too, which is OQ-45 and not an implementation choice."
+    )
+
+
+def test_info_names_the_moment_each_declaration_applies(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`info()` is public output (REQ-45), so its labels are asserted.
+
+    Three cases, and the first version of this labelling got two of them
+    wrong by reading `spec.targets` alone: it printed "reapplied after the
+    line that writes it" for a name the file writes ONCE and never applies
+    earlier, and printed only the later moment for a name applied twice,
+    which reads as confirmation of the pre-fix behavior to anyone debugging
+    the mirror defect.
+
+    `info()` has no frame, but the file decides more than it looks:
+    `required_variables` means the frame must carry the name, since
+    `validate` refuses otherwise, so "twice" is knowable. Only
+    written-and-not-required genuinely depends on the frame, and that label
+    says so rather than asserting one moment.
+    """
+    both = tmp_path / "both.itceq"
+    both.write_text(CARRIED_AND_CORRECTED, encoding="utf-8")
+    itc.processor(both).info()
+    printed = capsys.readouterr().out
+    assert "CL = 0.01  (applied twice: before the first line, and again" in printed, (
+        f"CL is read by an equation and rewritten by a correction, so it is "
+        f"required AND written and is applied twice. Printed:\n{printed}"
+    )
+
+    produced = tmp_path / "produced.itceq"
+    produced.write_text(PRODUCED_BY_A_CORRECTION, encoding="utf-8")
+    itc.processor(produced).info()
+    printed = capsys.readouterr().out
+    assert "w = 0.5  (applied after the line that writes it, and also" in printed, (
+        f"w is written by the file and is not a required input, so whether it "
+        f"is also applied before depends on the frame and the label must say "
+        f"so. Printed:\n{printed}"
+    )
+
+    inputs = tmp_path / "inputs.itceq"
+    inputs.write_text(
+        '[meta]\nname = "inputs"\n\n[uncertainties]\nx = 1.0\n\n'
+        '[equations]\ny = "2*x"\n',
+        encoding="utf-8",
+    )
+    itc.processor(inputs).info()
+    printed = capsys.readouterr().out
+    assert "x = 1.0  (applied before the first line)" in printed, (
+        f"x is read and never written, so it has exactly one moment. "
+        f"Printed:\n{printed}"
+    )
+
+
+def test_a_declaration_applied_nowhere_is_refused_before_anything_runs(
+    tmp_path: Path,
+) -> None:
+    """The second line of defense, reachable and asserted.
+
+    `validate` refuses a declaration naming neither a carried nor a written
+    name, and SRS Section 4.6's "jointly exhaustive" claim rests on that
+    refusal. `__call__` checks it again, because the consequence of the claim
+    being false is SILENT: the declaration is applied nowhere and the frame
+    ships without it.
+
+    The first version of this guard checked the wrong set. It asserted that
+    `pending` was drained AFTER the loop, and three reviewer passes measured
+    that as structurally unreachable: `pending` is keyed on `spec.targets`,
+    which is built from exactly the tuple the loop iterates and pops. Worse,
+    the commit that added it had just made the reachable failure quieter:
+    `setup` began filtering on `key in work.vars`, so an unknown name that
+    the previous revision passed into `set_uncertainty` (raising
+    `UncertaintyKeyError`, the wrong message but a loud one) was now dropped
+    without a sound. Measured with `validate`'s clause disabled: no
+    exception, `uncertainty is None`.
+
+    So the check moved to the set that can be violated, and before the first
+    `compute` rather than after the last, which is the placement `validate`'s
+    own docstring argues for: a refusal arriving mid-application lands once
+    earlier lines have already been written.
+
+    Reached here through a subclass whose `validate` does nothing, which is
+    the only way to reach it, and that is the honest description of the
+    guard: a redundant check whose redundancy is the point. The subclass is
+    also the falsifier for `validate` itself, since it measures what the
+    absence of that refusal costs.
+    """
+
+    class Unvalidated(EquationProcessor):
+        def validate(self, db: VarFrame) -> None:
+            return None
+
+    path = tmp_path / "nowhere.itceq"
+    path.write_text(
+        '[meta]\nname = "nowhere"\n\n[uncertainties]\nw = 0.5\n\n'
+        '[equations]\ny = "2*x"\n',
+        encoding="utf-8",
+    )
+    processor = Unvalidated(parse_itceq(path))
+    frame = itc.load(np.array([[3.0], [4.0]]), names=["x"])
+    with pytest.raises(ProcessorError) as caught:
+        processor(frame)
+    message = str(caught.value)
+    for part in (
+        f"processor '{processor.name}'",
+        "declares ['w']",
+        "applied nowhere",
+        "remove the entry",
+    ):
+        assert part in message, f"the refusal does not name {part!r}: {message}"
+    # And the ordinary path still refuses it earlier, so the redundancy is
+    # redundancy and not a relocation.
+    with pytest.raises(ProcessorValidationError):
+        itc.processor(path)(frame)
 
 
 def test_a_file_without_constants_runs_its_expressions_unchanged(

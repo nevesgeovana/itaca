@@ -1,6 +1,6 @@
 # ITACA SRS: LaTeX sources
 
-Authoritative specification of ITACA, document version 0.2.4
+Authoritative specification of ITACA, document version 0.2.5
 (2026-07-30, the declared-uncertainty application moment; baseline 0.1.0 was
 the first workspace-tracked version,
 research-workspace snapshot id DLV-008). Companions: `../DECISIONS.md`

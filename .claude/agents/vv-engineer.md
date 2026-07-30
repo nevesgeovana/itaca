@@ -38,9 +38,10 @@ makes the revert impossible. The mechanism this repository does have is
 `tests/test_house_style.py`, which fails when a charter granting `Bash` does
 not carry this section, so the rule cannot be dropped silently; running each
 lens in its own worktree is the stronger mechanism and is not in place. The
-vendored `incident-analyst` charter also holds `Bash` and does not carry
-this section, because itaca cannot edit a hash-pinned kit body; that gap is
-routed as `ITC-20260730-0180`.
+vendored `incident-analyst` charter holds `Bash` too, and kit 0.2.10 gave it
+the same prohibition in its own words, so the by-name exemption that guard
+used to carry is gone and every Bash-holding seat is covered by it
+(`ITC-20260730-0180`, closed).
 
 If `Bash` turns out to be unavailable to you at runtime, say so in your
 report and name which of your claims went unmeasured as a result. A pass

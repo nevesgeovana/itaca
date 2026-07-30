@@ -197,11 +197,45 @@ def test_every_srs_label_is_reached_by_a_real_latex_command() -> None:
 # itaca's own three say FORBIDDEN; the kit's incident-analyst master says
 # "may NEVER use it to mutate git state". Matching one exact sentence is what
 # forced a by-name exemption for the vendored charter even after the kit
-# shipped the rule, so the guard now matches the RULE in either wording and
-# the exemption is gone.
+# shipped the rule, so the guard matches the RULE in either wording and the
+# exemption is gone.
+#
+# Each wording is paired with the SECTION HEADING it must appear under. A
+# reviewer measured the sentence alone as satisfiable by prose that negates
+# it: "you are not FORBIDDEN to run any command that mutates git state"
+# passed. Requiring the heading too does not make the check airtight, and
+# nothing short of reading the charter would, but it removes the two forms an
+# ordinary edit can produce: a negation, and a passing mention of the rule
+# in text that is about something else.
 _PROHIBITIONS = (
-    "FORBIDDEN to run any command that mutates git state",
-    "NEVER use it to mutate git state",
+    (
+        "## Bash is granted to observe, and never to mutate git state",
+        "You are FORBIDDEN to run any command that mutates git state.",
+    ),
+    (
+        "## You hold Bash, and you may NEVER use it to mutate git state",
+        "you may NEVER use it to mutate git state",
+    ),
+)
+# Words that turn the sentence into its opposite while leaving every pinned
+# token in place. Measured: "You are not FORBIDDEN to run any command that
+# mutates git state." passed a version of this guard that matched the
+# predicate alone, so the subject is now part of the pinned phrase AND the
+# text immediately before it is checked. Neither is airtight; together they
+# remove the forms an ordinary edit produces.
+_NEGATIONS = ("not", "never", "no longer", "untrue", "unless")
+# The Bash-holding seats today: the three PUSH lenses and the vendored
+# analyst. Asserted as a SET rather than a count, so a charter that stops
+# granting Bash fails with "the roster changed" instead of with the
+# anti-vacuity message, which is a different cause and was the advice the
+# sibling assertion gave.
+_BASH_HOLDERS = frozenset(
+    {
+        "architect-reviewer.md",
+        "incident-analyst.md",
+        "qa-engineer.md",
+        "vv-engineer.md",
+    }
 )
 
 
@@ -252,32 +286,55 @@ def test_every_bash_holding_charter_carries_the_git_prohibition() -> None:
         f"{_ROOT / '.claude' / 'agents'}; a walk that finds nothing would "
         f"otherwise report green."
     )
-    holders: list[str] = []
+    holders: set[str] = set()
     offenders: list[str] = []
+    negated: list[str] = []
     for path in charters:
         text = path.read_text(encoding="utf-8")
         if "Bash" not in _charter_tools(text):
             continue
-        holders.append(path.name)
-        if not any(wording in text for wording in _PROHIBITIONS):
+        holders.add(path.name)
+        carried = [
+            (head, rule)
+            for head, rule in _PROHIBITIONS
+            if head in text and rule in text
+        ]
+        if not carried:
             offenders.append(path.name)
+            continue
+        # The pinned sentence is present. Is it still a prohibition? A
+        # negation word in the clause immediately before it inverts the
+        # meaning while every token this guard reads stays put.
+        for _, rule in carried:
+            head_text = text[: text.index(rule)]
+            clause = head_text.rsplit(".", 1)[-1].lower()
+            if any(word in clause.split() for word in _NEGATIONS):
+                negated.append(f"{path.name}: ...{clause.strip()[-40:]!r}")
     assert not offenders, (
         f"these charters grant Bash without carrying the git-mutation "
-        f"prohibition in any accepted wording: {offenders}. A lens that can "
-        f"execute can destroy uncommitted work, which is "
-        f"INC-20260729-2355-itaca. Add the section, or remove Bash from the "
-        f"charter. For a VENDORED charter the fix belongs to the kit and the "
-        f"copy may not be hand-edited: route it up and re-vendor "
-        f"(ITC-20260730-0180 is the precedent)."
+        f"prohibition, under its own section heading, in any accepted "
+        f"wording: {offenders}. A lens that can execute can destroy "
+        f"uncommitted work, which is INC-20260729-2355-itaca. Add the section, "
+        f"or remove Bash from the charter. For a VENDORED charter the fix "
+        f"belongs to the kit and the copy may not be hand-edited: route it up "
+        f"and re-vendor (ITC-20260730-0180 is the precedent)."
     )
-    # The walk must actually have found the Bash-holding seats, or an empty
-    # offenders list means nothing. Four today: the three PUSH lenses and the
-    # vendored analyst.
-    assert len(holders) >= 4, (
-        f"only {holders} were found to grant Bash, where four charters do "
-        f"(architect-reviewer, qa-engineer, vv-engineer, incident-analyst). A "
-        f"frontmatter reformat that broke _charter_tools would empty this walk "
-        f"and green the test."
+    assert not negated, (
+        f"a charter carries the prohibition sentence with a negation in the "
+        f"clause before it, so the pinned text is present and the rule is "
+        f"reversed: {negated}. This is the shape a phrase-matching guard "
+        f"cannot see and it is why the subject is part of the pinned phrase."
+    )
+    # The roster, so an empty or shrunken walk cannot green this. Asserted as
+    # a set and not a count, so removing Bash from a charter (which the
+    # message above offers as a fix) fails HERE with its own cause named
+    # instead of being reported as a broken frontmatter parse.
+    assert holders == set(_BASH_HOLDERS), (
+        f"the set of Bash-holding charters is {sorted(holders)}, where "
+        f"{sorted(_BASH_HOLDERS)} is recorded. If a seat gained or lost Bash "
+        f"deliberately, update _BASH_HOLDERS in the same commit. If this is "
+        f"empty or short, _charter_tools stopped parsing the frontmatter and "
+        f"the assertion above proves nothing."
     )
 
 
@@ -308,11 +365,27 @@ _SRS_VERSION_SITES = (
         re.compile(r"the authoritative specification \(document (\d+\.\d+\.\d+)"),
     ),
     ("docs/M1_EXECUTION_PLAN.md", re.compile(r"Authority: SRS (\d+\.\d+\.\d+)")),
+    # The NEWEST revision-history row, which is not a live declaration but
+    # must agree with them: a bump with NO revision entry is exactly the
+    # partial change the workspace rule ("revision history plus Chapter 11
+    # updated together") is written against, and the six sites above cannot
+    # see it. Anchored to the first data row after the doubled \midrule, so
+    # it reads the newest entry and not every historical one.
+    (
+        "docs/srs/frontmatter/revision_history.tex",
+        re.compile(r"\\midrule\s*\\midrule\s*(\d+\.\d+\.\d+) &"),
+    ),
 )
+# The floor, so deleting a tuple entry cannot quietly narrow the guard. The
+# import policy discovers rather than enumerates for exactly this reason;
+# here the sites are genuinely heterogeneous (three LaTeX shapes, three prose
+# shapes, one table row), so the list stays explicit and the count is pinned
+# instead.
+_SRS_VERSION_SITE_COUNT = 7
 
 
 def test_every_document_naming_the_srs_version_names_the_same_one() -> None:
-    """One SRS document version, stated in six places, agreeing.
+    """One SRS document version, stated in seven places, agreeing.
 
     ``ITC-20260730-0165``. Four documents named four different versions at
     once (0.2.2, 0.2.1, 0.2.0, 0.2.0), because the workspace rule that every
@@ -322,10 +395,28 @@ def test_every_document_naming_the_srs_version_names_the_same_one() -> None:
 
     Repairing the content is not the fix. The rule needs a mechanism, or the
     next amendment diverges the same way, which is the shape this repository
-    refuses everywhere else. The revision history and Chapter 11 are NOT in
-    this list: they are append-only records of past versions, so the newest
-    entry there is checked by a reader, not by a regex over the whole file.
+    refuses everywhere else.
+
+    WHAT IS AND IS NOT A SITE, since the distinction is the rule a future
+    author needs. A site is a LIVE declaration of the current version, and
+    all six of those are here. The newest revision-history ROW is here too,
+    though it is a record rather than a declaration, because a bump with no
+    revision entry is the partial change the workspace rule most cares about
+    and no live site can see it. Everything else that names a version is a
+    DATED REFERENCE to a past one, and belongs nowhere near this list: the
+    older revision-history rows, every Chapter 11 section, and the version
+    citations in ``CHANGELOG.md`` and ``docs/OPEN_QUESTIONS.md``.
+
+    This does NOT check that a normative change was accompanied by a bump,
+    which is the other half of ``ITC-20260730-0165`` and needs a definition
+    of "normative change" that the document does not yet give.
     """
+    assert len(_SRS_VERSION_SITES) == _SRS_VERSION_SITE_COUNT, (
+        f"_SRS_VERSION_SITES holds {len(_SRS_VERSION_SITES)} entries, where "
+        f"{_SRS_VERSION_SITE_COUNT} is recorded. Deleting one narrows this "
+        f"guard silently, which is how the divergence it exists to catch got "
+        f"in. Add or remove the count in the same commit, with the reason."
+    )
     found: dict[str, list[str]] = {}
     for relative, pattern in _SRS_VERSION_SITES:
         text = (_ROOT / relative).read_text(encoding="utf-8")
@@ -394,9 +485,9 @@ def test_the_ledger_variable_divergence_is_the_one_this_repository_declares() ->
         "(ITC-20260730-0215)."
     )
     reads = declared.group(1)
-    # Whatever the gate reads must be documented in CLAUDE.md's locator table
-    # row for the gate, so the two cannot be renamed apart in either
-    # direction. The row is found by the guard file it names.
+    # Whatever the gate reads must be the variable CLAUDE.md's locator table
+    # declares, so the two cannot be renamed apart in either direction. The
+    # row is found by the guard file it names.
     table_row = [
         line
         for line in claude_md.splitlines()
@@ -408,14 +499,20 @@ def test_the_ledger_variable_divergence_is_the_one_this_repository_declares() ->
         f"configures the variable, so this test needs to find it "
         f"(ITC-20260730-0215)."
     )
-    assert reads in table_row[0], (
-        f"the push gate resolves {reads} and CLAUDE.md's locator table row for "
-        f"it does not name that variable: {table_row[0].strip()!r}. If the kit "
-        f"adopted the LEDGER-ENVVAR rename in the gate, the divergence this "
-        f"test pins is OVER: rename the variable in that row, in the Incidents "
-        f"section, in .claude/skills/plan/SKILL.md, and in "
-        f"tests/test_kit_drift.py, tests/test_plan_validator.py and "
-        f"tests/test_push_gate.py (ITC-20260730-0215)."
+    # EXACT, not a substring of the row. A substring test passed for EITHER
+    # name once the row itself was rewritten to mention both, which is the one
+    # state that misconfigures a clone: the gate renamed and the row not. The
+    # second name lives in a footnote, which this deliberately does not read.
+    declared_names = re.findall(r"`([A-Z_]+_LEDGER)`", table_row[0])
+    assert declared_names == [reads], (
+        f"the push gate resolves {reads} and CLAUDE.md's locator-table row "
+        f"declares {declared_names}: {table_row[0].strip()!r}. The row must "
+        f"name exactly the one variable the gate reads. If the kit adopted the "
+        f"LEDGER-ENVVAR rename in the gate, the divergence this test pins is "
+        f"OVER: rename the variable in that row, in the Incidents section, in "
+        f".claude/skills/plan/SKILL.md, and in tests/test_kit_drift.py, "
+        f"tests/test_plan_validator.py and tests/test_push_gate.py "
+        f"(ITC-20260730-0215)."
     )
     assert "COORD_INCIDENT_LEDGER" in claude_md, (
         "CLAUDE.md does not mention COORD_INCIDENT_LEDGER, so a reader "

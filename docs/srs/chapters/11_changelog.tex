@@ -12,6 +12,54 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.5, 2026-07-30, The Application Moment, Corrected}
+
+A PATCH revision correcting 0.2.4 below, which was written the same day and
+in the same unpushed lane. It is a separate entry rather than an edit to
+that one, because Chapter~1's rule that every change increments the document
+version does not carve out an unpublished revision, and rewriting a
+revision entry to say something it did not say is the thing the revision
+history exists to prevent. That both entries describe one amendment's two
+attempts is a cost of the rule as written, and whether an unpublished
+revision may instead be amended in place is part of what
+\code{ITC-20260730-0165} asks.
+
+\paragraph{Changed (Section~\ref{sec:itceq}; bears on REQ-41, REQ-45,
+REQ-99).} 0.2.4 stated the rule as ONE question, keyed on what the file
+produces. Review found that wrong in the mirror direction before release: a
+name the VarFrame carries and a \code{[corrections]} line rewrites had its
+declaration withheld from the \code{[equations]} lines that READ it, so a
+quantity derived from it propagated from the frame's own value. Measured,
+with \code{CL = 0.01} declared, \code{CD = "CL * 2"} and a correction
+\code{CL = "CL * 1.02"} against a frame carrying a stale
+\code{u(CL) = 99}: \code{u(CD)} shipped as \code{198.0} where \code{0.02}
+is correct, in a frame that simultaneously reported \code{u(CL) = 0.01}.
+
+The rule is now TWO independent questions, and a name may answer yes to
+both, in which case the declaration is applied twice. Neither
+single-question form is correct, because a name can be both read and
+written.
+
+\paragraph{Changed (Section~\ref{sec:itceq}, the component a declaration
+speaks for).} 0.2.4 said no uncertainty the frame arrived with is ever read
+for a declared name. That is true of the SYSTEMATIC component and false of
+the random one: a declaration is assigned as the systematic component, so an
+arriving random component is kept and propagates untouched. Measured on the
+file above with \code{u\_random(CL) = 99.0}: \code{u\_random(CD) = 198.0}.
+The sentence is qualified, and whether an \code{.itceq} file should be able
+to speak for both components is OQ-45.
+
+\paragraph{Added (two open questions cited from the section).} The overlap
+the two-question rule introduces has two consequences the section now names
+rather than deciding: a name written more than once takes the declaration
+after the FIRST write, so a later line propagates over it (OQ-43); and a
+RELATIVE declaration on a name assigned twice resolves twice, so one
+declaration yields two numbers and a line evaluated between them propagates
+from the first (OQ-44). Measured for OQ-44: \code{CL = "10\%"} with
+\code{CD = "CL * 2"} and \code{CL = "CL + 90"} against \code{CL = [10, 10]}
+ships \code{u(CL) = 10.0}, ten percent of the corrected value, beside
+\code{u(CD) = 2.0}, twice ten percent of the input.
+
 \section*{Document 0.2.4, 2026-07-30, When a Declared Uncertainty Applies}
 
 A PATCH revision by chapter~9's rule: it adds no requirement and withdraws

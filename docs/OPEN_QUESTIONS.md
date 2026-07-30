@@ -1033,3 +1033,115 @@ winner silently.
 
 **SRS:** Section 4.6 (`[uncertainties]` application moment, stated at
 document 0.2.4), REQ-41, REQ-99.
+
+---
+
+## OQ-44: What does a relative declaration resolve against when it is applied twice?
+
+**Raised:** 2026-07-30 (lane ITA-2C, round-2 V&V pass on the R4-ITA-003
+fix)
+**Status:** open
+**Question:** an `[uncertainties]` value may be a relative spec such as
+`"10%"`, resolved against the variable's own values at the moment it is
+assigned. Under the rule stated at SRS document 0.2.5, a name the frame
+CARRIES and the file also WRITES is assigned twice, so a relative spec
+resolves twice, against two different sets of values. One declaration then
+produces two numbers, and lines evaluated between the two assignments
+propagate from the first.
+
+**Measured, 2026-07-30, at the fixed tree.** File:
+
+```
+[uncertainties] CL = "10%"
+[equations]     CD = "CL * 2"
+[corrections]   CL = "CL + 90"
+```
+
+against a frame carrying `CL = [10, 10]`:
+
+```
+CL  value [100, 100]   u(CL) = [10.0, 10.0]   ten percent of the CORRECTED value
+CD  value [20, 20]     u(CD) = [2.0, 2.0]     two times ten percent of the INPUT
+```
+
+Both numbers are defensible in isolation and the pair is not: the shipped
+frame reports `u(CL) = 10` beside `CD = CL * 2` in History, where 20 would
+follow from the reported value. A reader reconciling the two cannot.
+
+**Why an absolute declaration does not have this problem.** `5.0` is `5.0`
+at both moments, so the second assignment is idempotent and the question
+does not arise. The ambiguity is created entirely by resolution against
+data that the file itself changes in between. A non-scaling correction is
+what exposes it; with `CL = "CL * 1.02"` the two resolutions coincide
+numerically and nothing looks wrong.
+
+**Not OQ-43.** That question is about a name written MORE than once, where
+the second write propagates over the declaration. Here `CL` is written
+once. This is the carried-and-written overlap, which is the case the
+two-question rule introduced deliberately.
+
+**The readings, and what each costs.** (A) Resolve once, at the first
+assignment, and reuse the resolved absolute value at the second: the two
+numbers agree, and `u(CL)` is then ten percent of a value `CL` no longer
+has. (B) Resolve at each assignment, which is today's behavior: each number
+is ten percent of the value it is attached to at that moment, and the pair
+is inconsistent. (C) Refuse a relative declaration on a name that is both
+carried and written, symmetric with DD-37 and DD-39, which already refuse
+two other collisions rather than choosing a winner silently.
+
+**Who decides:** the numerical analyst, with the domain expert. The choice
+is about what a percentage in an `.itceq` file MEANS, which is not an
+implementation detail.
+
+**SRS:** Section 4.6 (the application moment, document 0.2.5), REQ-39,
+REQ-99.
+
+---
+
+## OQ-45: Should a declared uncertainty override the random component too?
+
+**Raised:** 2026-07-30 (lane ITA-2C, round-2 QA and V&V passes,
+independently)
+**Status:** open
+**Question:** an `.itceq` `[uncertainties]` entry is assigned as the
+SYSTEMATIC component, which is what `set_uncertainty` defaults to and what
+SRS Chapter 8 describes. A frame arriving with a RANDOM component for the
+same variable therefore keeps it, and it propagates into everything derived
+from that variable. So the sentence "no uncertainty the frame arrived with
+is ever read for a name the file declares" is true of one component and
+false of the other.
+
+**Measured, 2026-07-30, at the fixed tree.** File declaring
+`CL = 0.01`, with `[equations] CD = "CL * 2"` and
+`[corrections] CL = "CL * 1.02"`, against a frame carrying
+`u_random(CL) = 99.0`:
+
+```
+u_systematic  CL = 0.01     CD = 0.02      the declaration, and its propagation
+u_random      CL = 100.98   CD = 198.0     the frame's own value, propagated
+```
+
+The 198.0 is the same shape of number this lane closed on the systematic
+side: finite, plausible, and selected by what the caller's frame happened to
+carry rather than by anything the file says.
+
+**Three readings.** (A) Today's: a declaration is a systematic-component
+statement and the random component is the caller's, untouched. Defensible,
+and consistent with REQ-99's separation, but it means a file cannot fully
+specify the uncertainty of a variable it declares. (B) A declaration
+overrides both components, zeroing the random one unless the file says
+otherwise. Simple, and destroys information the caller may have measured.
+(C) The section gains an explicit component, so
+`CL = { systematic = 0.01, random = 0.002 }` or similar, and a bare value
+keeps meaning (A). Most expressive, and a file-format change.
+
+**Why it is registered rather than decided.** Which components an
+`.itceq` file may speak for is a measurement-semantics question, not an
+implementation one, and (B) discards data. Today's behavior is pinned by
+`tests/pproc/test_processor.py::test_a_declaration_does_not_touch_the_random_component`
+so the direction cannot change unannounced; that test pins the answer, it
+does not argue for it.
+
+**Who decides:** the numerical analyst and the domain expert.
+
+**SRS:** Section 4.6 (document 0.2.5), REQ-39, REQ-99, Chapter 8.

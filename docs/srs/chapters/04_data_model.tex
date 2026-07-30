@@ -438,12 +438,19 @@ CL_corr  = "CL * blockage"
 
     Does the VarFrame CARRY the name? Then the declaration is applied
     before the first line runs, so every line reading that name propagates
-    from the declared value and no uncertainty the frame arrived with is
-    ever read for a name the file declares. Does the FILE WRITE the name,
-    as an equation target or a correction target? Then the declaration is
-    applied again once the first line that writes it has run, overriding
-    the value propagation gave it, so the frame does not ship a
-    declaration as the propagation of itself (REQ-41, REQ-99).
+    from the declared SYSTEMATIC value rather than from whatever systematic
+    component the frame arrived with. Does the FILE WRITE the name, as an
+    equation target or a correction target? Then the declaration is applied
+    again once the first line that writes it has run, overriding the value
+    propagation gave it, so the frame does not ship a declaration as the
+    propagation of itself (REQ-41, REQ-99).
+
+    A declaration speaks for the SYSTEMATIC component alone, which is what
+    \code{set\_uncertainty} assigns by default and what Chapter~8
+    describes. A random component the frame arrived with is therefore kept
+    and propagates untouched, so an \code{.itceq} file cannot presently
+    specify the whole uncertainty of a name it declares. Whether it should
+    be able to is OQ-45.
 
     The two are NOT exclusive, and the overlap is the case that decides
     the rule: a name the frame carries and the file also writes is
@@ -465,10 +472,16 @@ CL_corr  = "CL * blockage"
     propagated from the frame's own value, which the declaration
     overrides.
 
-    What remains open is a name written MORE than once, by an equation and
-    then by a correction. The declaration is applied after the FIRST line
-    that writes it, so a later line rewriting the same name propagates
-    over it; whether that is the right reading is OQ-43.
+    Two consequences of the overlap are open questions rather than settled
+    rules, and both are named here so the section is not read as deciding
+    them. A name written MORE than once, by an equation and then by a
+    correction, takes the declaration after the FIRST line that writes it,
+    so a later line rewriting the same name propagates over it (OQ-43). And
+    a RELATIVE declaration on a name assigned twice resolves twice, against
+    the values the name holds at each moment, so one declaration yields two
+    numbers and a line evaluated between the two propagates from the first
+    (OQ-44). Both are reachable through legal files; neither is a rule this
+    section asserts.
   \item \code{[equations]}: evaluated in dependency order (topologically
     sorted at parse time when the optional \code{auto\_sort=True} flag is
     set, with a feedback message reporting the resolved order; otherwise

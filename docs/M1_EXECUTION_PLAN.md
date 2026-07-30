@@ -2,7 +2,7 @@
 
 Status: approved by Geovana 2026-07-23 (ultraplan Batch A, decision
 queue entries Q-001 and Q-003).
-Authority: SRS 0.2.4 (`docs/srs/`, Chapter 10 scope, Chapters 6 and 7
+Authority: SRS 0.2.5 (`docs/srs/`, Chapter 10 scope, Chapters 6 and 7
 requirements), DD-01 to DD-25, OQ catalog. Where this plan and the
 SRS disagree, the SRS wins and the discrepancy is reported, not
 patched. The Chapter 10 amendment of Section 2 was applied through

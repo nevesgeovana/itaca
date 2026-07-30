@@ -180,15 +180,29 @@ own data was affected.
   The rule is now two independent questions, and a name may answer yes to
   both: applied before the first line when the frame carries the name, so
   every line reading it propagates from the declared value, and applied
-  again after the first line that writes it, so a declaration is never
+  again after the first line that writes it, so a declaration is not
   shipped as the propagation of itself. The moment was unspecified in the
   SRS, which is why the fix amends Section 4.6 rather than only the code.
-  **Known limitation:** a name written *more than once*, by an equation and
-  then by a correction, takes the declaration after the FIRST write, so the
-  correction propagates over it. With `CL = 0.01` declared,
-  `[equations] CL = "2*x"` and `[corrections] CL = "CL * 2"`, the frame
-  ships `u(CL) = 0.02`. Whether that is right is OQ-43, open, and a
-  numerical-analyst decision.
+  **Three known limitations, all of them reachable through legal files and
+  none of them decided:**
+  * a name written *more than once*, by an equation and then by a
+    correction, takes the declaration after the FIRST write, so the
+    correction propagates over it. With `CL = 0.01` declared,
+    `[equations] CL = "2*x"` and `[corrections] CL = "CL * 2"`, the frame
+    ships `u(CL) = 0.02` (OQ-43);
+  * a *relative* declaration on a name that is both carried and written is
+    resolved twice, against the values it holds at each moment, so one
+    declaration yields two numbers. With `CL = "10%"`,
+    `[equations] CD = "CL * 2"` and `[corrections] CL = "CL + 90"` against
+    `CL = [10, 10]`, the frame ships `u(CL) = 10.0` beside `u(CD) = 2.0`
+    (OQ-44);
+  * a declaration speaks for the **systematic** component only, so a random
+    component your frame already carries is kept and propagates untouched.
+    An `.itceq` file cannot currently specify the whole uncertainty of a
+    name it declares (OQ-45).
+
+  All three are numerical-analyst decisions and all three are pinned by
+  tests, so the answers cannot change without saying so.
 * A negative `.itceq` `[constants]` value kept its sign under a power
   (`CHK1-002`). Substitution round-tripped through `ast.unparse`, which
   writes a negative float as the bare token `-0.25`; re-parsed in the

@@ -195,6 +195,17 @@ def classify(returncode: int, output: str) -> tuple[str, str]:
     and the run did not refuse.
     """
     lowered = output.lower()
+    # A crash first, because a traceback carries no recognizable shape and
+    # would otherwise be reported as wording drift, sending the reader to
+    # edit this guard. Same hole the missing-directory assertion below
+    # already closes for itself.
+    if "traceback (most recent call last)" in lowered:
+        return (
+            "checker-crashed",
+            "the checker raised rather than reporting; nothing was validated "
+            "and the traceback names the cause. Fix the checker or the input "
+            "it choked on, not this guard",
+        )
     if "config error" in lowered or "legacy_ids.txt" in lowered:
         return (
             "config-error",
@@ -425,10 +436,19 @@ def test_the_plan_checker_refuses_an_empty_ledger_folder(tmp_path: Path) -> None
 
 
 # (returncode, output) -> the outcome `classify` must report. Every branch is
-# here, including the two the deployed checker can no longer produce, so
+# here, including the ones the deployed checker can no longer produce, so
 # deleting any of them fails rather than going unnoticed.
+#
+# EACH DISJUNCT GETS ITS OWN ROW. A reviewer measured that four sub-branch
+# deletions survived an earlier version of this table, because the synthetic
+# output for the empty walk matched BOTH halves of that branch and the config
+# output matched both halves of its own. A branch tested only through an
+# input that satisfies every disjunct at once is a branch whose disjuncts are
+# untested.
 _SHAPES = [
     ("kit 0.2.10 empty walk", 2, "CANNOT VERIFY C:/x/plan: holds no entries", "empty"),
+    # The refusal wording without the count wording, and vice versa.
+    ("cannot verify alone", 2, "CANNOT VERIFY C:/x/plan: refusing", "empty"),
     ("pre-0.2.10 empty walk", 0, "no entries in C:/x/plan", "empty"),
     ("missing directory", 1, "not a directory: C:/x/plan", "no-such-directory"),
     (
@@ -438,7 +458,29 @@ _SHAPES = [
         "could not be read (UnicodeDecodeError: ...)",
         "config-error",
     ),
+    # The two halves of the config branch, each alone.
+    ("config error not naming the file", 2, "CONFIG ERROR: unreadable", "config-error"),
+    (
+        "legacy ids named without the CONFIG ERROR prefix",
+        2,
+        "cannot read legacy_ids.txt at C:/x/plan",
+        "config-error",
+    ),
     ("usage error", 2, "usage: check_plan_kit.py <plan-directory>", "bad-invocation"),
+    # A usage line with a code OTHER than 2 must not be read as the usage
+    # branch, which is what the returncode conjunct is for.
+    (
+        "usage wording with a different code",
+        0,
+        "usage: check_plan_kit.py <plan-directory>",
+        "unreadable-report",
+    ),
+    (
+        "a crashed checker",
+        1,
+        "Traceback (most recent call last):\n  KeyError: 'id'",
+        "checker-crashed",
+    ),
     ("wording drift", 0, "validated 12 files, all good", "unreadable-report"),
     ("zero count reported as a pass", 0, "0 entries checked (), 0 bad", "zero-count"),
     ("bad entries", 1, "12 entries checked (open: 12), 3 bad", "bad-entries"),
