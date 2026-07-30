@@ -23,7 +23,7 @@ COMPLETENESS is enforced where the checker pins \emph{Parameters} and
 \emph{Returns} of REQ-79's four, so two are machine-checked by nothing.
 Chapter~\ref{ch:roadmap} named \code{ops/fitvalue.py}, which does not
 exist. All three were correct when written and became false without anyone
-editing them, which is what a full-surface review is for.
+editing them, which is what a full-surface review is for. Chapter~\ref{ch:introduction} claimed the same PROV export capability in the present tense without naming the method, so the widened guard could not see that either: a guard keyed on a symbol does not cover the class of claims about capability.
 \\[4pt]
 0.2.5 & 2026-07-30 & Geovana Neves &
 The application moment, corrected. A PATCH revision correcting 0.2.4 below,
@@ -44,8 +44,15 @@ and a relative declaration resolved at two moments (OQ-44).
 \\[4pt]
 0.2.4 & 2026-07-30 & Geovana Neves &
 When a declared uncertainty applies. A PATCH revision adding no requirement
-and withdrawing none; bears on REQ-41, REQ-45 and REQ-99. SUPERSEDED the
-same day by 0.2.5 above, which corrects the rule stated here.
+and withdrawing none; bears on REQ-41, REQ-45 and REQ-99.
+Section~\ref{sec:itceq} states the moment an \code{[uncertainties]}
+declaration takes effect, which it had left unspecified: before the first
+equation for a name the file does not produce, and immediately after the
+writing equation for a name it does, keyed on what the FILE produces and
+never on what the VarFrame carried on the way in. SUPERSEDED the same day by
+0.2.5 above, which corrects that rule; what this row states is what THIS
+revision stated, unedited, because a revision entry rewritten to say
+something it did not say is what this table exists to prevent.
 Section~\ref{sec:itceq} now states the moment an \code{[uncertainties]}
 declaration takes effect, which it had left unspecified, as two independent
 questions rather than one classification: applied before the first line when

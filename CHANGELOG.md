@@ -123,11 +123,12 @@ failure, and whoever fixed it has to come and remove the marker.
 
 **The wider population.** The independent review REV-004 (2026-07-29)
 returned 26 findings, all 26 reproduced. Its two blockers and the release
-blockers found since are fixed and are described under Fixed above. What
+blockers found since are fixed and are described under Fixed below. What
 remains is roughly 71 items at P1 and 42 at P2, tracked in the project's
 working ledger outside this repository, together with the open design
-questions `OQ-18`, `OQ-24`, `OQ-40`, `OQ-42`, `OQ-43`, `OQ-44` and
-`OQ-45`, several of which are what would lift the five uncertainty
+questions recorded in `docs/OPEN_QUESTIONS.md`, which ships in the
+source distribution and is the single home of that list. Among them,
+`OQ-18`, `OQ-24` and `OQ-42` are what would lift the five uncertainty
 refusals above. None of them is a wrong number produced silently; that
 class is enumerated in full at the top of this block.
 
@@ -434,7 +435,7 @@ own data was affected.
   is the direction the SRS's own note says is not supposed to happen and
   the reason this was a tag blocker.
 
-* **The source distribution now contains the whole repository**, not
+* **The source distribution now contains the repository**, not
   only the package: `pip download itaca --no-binary :all:` delivers
   `tests/`, `docs/`, `examples/` and the workspace configuration
   alongside `itaca/`. This follows from deriving the version with
@@ -514,10 +515,10 @@ own data was affected.
   It said SECTION COMPLETENESS is enforced; the checker pins `Parameters`
   and `Returns`, and REQ-79 names four sections, so `Raises` and
   `Examples` completeness is machine-checked by nothing. Stated as it is.
-* **Four `rotate` refusals now name `db.drop_correlation`**, the method
-  this release added so that their prescribed remedy would exist. They
-  still said "drop the declaration", which is the state the method was
-  introduced to end.
+* **The fourth `rotate` refusal now names `db.drop_correlation`.** Three
+  were updated when the method was added, for the reason recorded
+  below; this one still said "drop the declaration", which is the state
+  the method was introduced to end. All four name the call now.
 * **Two refusals stopped promising a fix in the version that ships them.**
   `smooth` and `diff` said "the rule freezes during v0.2.0", in v0.2.0.
   Both now cite OQ-18, which is what actually lifts them, as their three
@@ -529,12 +530,13 @@ own data was affected.
   docstring, which is what a user reads, had not.
 * **The published sdist no longer carries `.claude/`.** setuptools-scm
   ships every tracked file, which is deliberate for `tests/`, `docs/` and
-  `examples/` and wrong for eleven agent charters, six skills, the
-  vendored process kit and the push-gate hooks. `MANIFEST.in` prunes it and
+  `examples/` and wrong for the agent charters, the skills, the vendored
+  process kit and the push-gate hooks. `MANIFEST.in` prunes it and
   `tests/test_release_integrity.py` reads a real built sdist to check.
 
 * **A declared `[uncertainties]` value could be replaced by a different
-  one, silently** (`R4-ITA-003`, SRS document 0.2.4). A processor decided
+  one, silently** (`R3-ITA-006`, reopened as `R4-ITA-003`; SRS documents
+  0.2.4 and 0.2.5). A processor decided
   when to apply each declaration from a single question, whether the
   incoming VarFrame already carried the name. A name the file *writes* and
   the frame happened to carry was therefore assigned before the equations
@@ -863,10 +865,12 @@ own data was affected.
   check: `interpolate`, `fill` (both the moving-window path and the
   `global_fit` path, the second of which was a silent no-op that
   recorded `deg=-1` in History), `diff`, `smooth` and `fitmodel`.
-  **Shipped in v0.1.0.** `fill(..., deg=-1, global_fit=True)` was a
-  no-op that recorded `deg=-1`, and `interpolate(..., 'polyfit', -1)`
-  returned zeros over real data; both are wrong numbers with a
-  provenance record that looks correct.
+  **Shipped in v0.1.0, the `fill` half only.**
+  `fill(..., deg=-1, global_fit=True)` was a no-op that recorded
+  `deg=-1` in History, a wrong number with a provenance record that
+  looks correct; re-derive anything filled that way. The `interpolate`,
+  `diff`, `smooth` and `fitmodel` degree checks are new in this release
+  and never shipped.
 
 * **The version is derived from the repository instead of written in a
   file** (`ITACA-004`, DD-38, REQ-92). `itaca/core/version.py` held

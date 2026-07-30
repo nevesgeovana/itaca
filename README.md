@@ -75,12 +75,20 @@ revalidation.
 moment transfer, replayable pipelines and `.itc_pipe`, and reusable
 processors defined by an `.itceq` equation file.
 
-**Read the release notes in `CHANGELOG.md` before you rely on
-uncertainty.** Five operations REFUSE to propagate it rather than guessing:
-`smooth`, `diff`, `fitmodel`, `fitvalue`, and `fill(method="polyfit")`.
-Each raises when the frame carries an uncertainty, because its propagation
-rule is not yet frozen. The notes also list the defects known open in this
-release, several of which produce a wrong number silently.
+**Read the [release
+notes](https://github.com/nevesgeovana/itaca/blob/main/CHANGELOG.md) before
+you rely on uncertainty.** Five operations REFUSE to propagate it rather than
+guessing: `smooth`, `diff`, `fitmodel`, `fitvalue`, and
+`fill(method="polyfit")`. Each raises when the frame carries an uncertainty,
+because its propagation rule is not yet frozen. The notes also carry a
+`Known open` section listing the defects known open in this release, several
+of which produce a wrong number silently.
+
+**Upgrading from v0.1.0**, two things will bite first. Python 3.11 is now the
+floor. And an `.itc` archive written by v0.1.0 whose dimensions or variables
+carry a `unit`, `description` or `long_name` no longer verifies, because the
+state hash now covers that metadata; re-export those archives from their
+source data. Both are in the release notes with the reasoning.
 
 The SRS is versioned in `docs/srs/`; its document version and revision
 are stated on the SRS title page and in the revision history table.

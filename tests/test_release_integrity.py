@@ -150,6 +150,65 @@ def test_the_release_gate_checker_had_something_to_check() -> None:
     assert "scanned 0 workflow file(s)" not in done.stdout, done.stdout
 
 
+def test_the_citation_record_matches_the_release_it_describes() -> None:
+    """`CITATION.cff` is what Zenodo reads, so it must not lag the tag.
+
+    Asked for by the RELEASE review, which found this file at
+    `version: 0.1.0` with `date-released: 2026-07-22` and the v0.1.0 DOI
+    while the v0.2.0 tag was being prepared. There is no `.zenodo.json`, so
+    Zenodo falls back to this file for deposit metadata: the archive record
+    would have been labelled 0.1.0, carried the previous release's DOI, and
+    its abstract would have called processors "roadmapped rather than
+    released" in the release whose largest feature they are. A minted DOI
+    does not come back.
+
+    Repairing the content is not the fix; nothing read the file. This is the
+    mechanism, and it is deliberately conditional: on a development tree the
+    version carries a `.dev` suffix and there is nothing to compare against,
+    so the check applies exactly when it matters, at a tag.
+
+    A per-release `doi:` key must NOT be present. Whatever value could be
+    written before the tag is by construction the previous release's, which
+    is precisely the defect. The concept DOI lives under `identifiers`.
+    """
+    text = (_ROOT / "CITATION.cff").read_text(encoding="utf-8")
+    fields = {}
+    for line in text.splitlines():
+        if line.startswith(("version:", "date-released:", "doi:")):
+            key, _, value = line.partition(":")
+            fields[key.strip()] = value.strip()
+
+    assert "doi" not in fields, (
+        f"CITATION.cff carries a top-level doi: {fields.get('doi')!r}. Any "
+        f"value written before the tag is the PREVIOUS release's DOI, which "
+        f"is the defect the release review found. Cite the concept DOI under "
+        f"identifiers instead."
+    )
+    assert "version" in fields and "date-released" in fields, (
+        f"CITATION.cff is missing version or date-released: {sorted(fields)}"
+    )
+
+    packaged = importlib.metadata.version("itaca")
+    if ".dev" in packaged or "+" in packaged:
+        pytest.skip(
+            f"the installed version is {packaged}, a development build, so "
+            f"there is no released version for CITATION.cff to match. This "
+            f"check applies at a tag, which is when it matters."
+        )
+    assert fields["version"] == packaged, (
+        f"CITATION.cff says version {fields['version']} and the package "
+        f"reports {packaged}. Zenodo reads this file, and a minted DOI "
+        f"labelled with the wrong version does not come back."
+    )
+    changelog = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    heading = f"## [{packaged}] - {fields['date-released']}"
+    assert heading in changelog, (
+        f"CITATION.cff dates the release {fields['date-released']} and "
+        f"CHANGELOG.md has no {heading!r} section. The archive record and the "
+        f"release notes must agree on what was released and when."
+    )
+
+
 def test_no_tracked_file_carries_a_byte_order_mark() -> None:
     """No tracked file may start with `EF BB BF`, anywhere in the tree.
 
@@ -517,9 +576,14 @@ class TestBuiltArtifactIdentity:
         """`.claude/` is pruned from the published artifact, and it is READ.
 
         Author decision 2026-07-30, taken when the release review measured
-        that the v0.2.0 sdist would carry the whole of `.claude/`: eleven
-        agent charters, six skills, the vendored shared-process kit and the
-        push-gate hooks. setuptools-scm supplies the file list from git, so
+        that the v0.2.0 sdist would carry the whole of `.claude/`: the agent
+        charters, the skills, the vendored shared-process kit and the
+        push-gate hooks. No count is written here, deliberately: the first
+        version of this docstring carried one, it was the RETIRED
+        container's count rather than this repository's, and a count in a
+        docstring goes stale on the next charter added.
+
+        setuptools-scm supplies the file list from git, so
         every tracked file ships by default, which is right for `tests/`,
         `docs/` and `examples/` (DD-38) and wrong for process machinery. None
         of it is the library, none of it runs for a user, and a gate hook
