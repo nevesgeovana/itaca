@@ -164,23 +164,31 @@ own data was affected.
 ### Fixed
 
 * **A declared `[uncertainties]` value could be replaced by a different
-  one, silently** (`R4-ITA-003`, SRS document 0.2.4). A processor sorted
-  its declarations by whether the incoming VarFrame already carried the
-  name, when the rule is whether the *file* produces it. A target the
-  frame happened to carry was therefore assigned before the equations ran
-  and then overwritten by its own equation's propagation. With
+  one, silently** (`R4-ITA-003`, SRS document 0.2.4). A processor decided
+  when to apply each declaration from a single question, whether the
+  incoming VarFrame already carried the name. A name the file *writes* and
+  the frame happened to carry was therefore assigned before the equations
+  ran and then overwritten by its own equation's propagation. With
   `[uncertainties] x = 1.0, y = 5.0` and `[equations] y = "2*x"`, the
   frame shipped `u(y) = 2.0`, which is what `u(x)` propagates to, where
-  the file declares `5.0`. With `y = 5.0` declared alone the frame shipped
-  no uncertainty at all, and a relative declaration such as `"10%"`
-  resolved against the stale input column instead of against what the
-  equation wrote. **The numbers change:** if you applied a processor to a
-  frame that already carried one of the file's targets, the uncertainty on
-  that target was wrong, and every quantity derived from it after that
-  point was wrong with it. The declaration now wins in every case, so one
-  `.itceq` gives one answer regardless of the shape of the input. The
-  moment a declaration takes effect was unspecified in the SRS, which is
-  why the fix amends Section 4.6 rather than only the code.
+  the file declares `5.0`. With `y = 5.0` declared alone, or declared
+  relatively as `"10%"`, the frame shipped no uncertainty at all.
+  **Never shipped:** `itc.processor` is new in this release, so no
+  published build produced these numbers; if you are running a development
+  build, re-apply the processor and re-derive anything downstream of the
+  affected target.
+  The rule is now two independent questions, and a name may answer yes to
+  both: applied before the first line when the frame carries the name, so
+  every line reading it propagates from the declared value, and applied
+  again after the first line that writes it, so a declaration is never
+  shipped as the propagation of itself. The moment was unspecified in the
+  SRS, which is why the fix amends Section 4.6 rather than only the code.
+  **Known limitation:** a name written *more than once*, by an equation and
+  then by a correction, takes the declaration after the FIRST write, so the
+  correction propagates over it. With `CL = 0.01` declared,
+  `[equations] CL = "2*x"` and `[corrections] CL = "CL * 2"`, the frame
+  ships `u(CL) = 0.02`. Whether that is right is OQ-43, open, and a
+  numerical-analyst decision.
 * A negative `.itceq` `[constants]` value kept its sign under a power
   (`CHK1-002`). Substitution round-tripped through `ast.unparse`, which
   writes a negative float as the bare token `-0.25`; re-parsed in the

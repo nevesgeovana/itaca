@@ -22,7 +22,8 @@ Every walk here asks git what belongs to the repository, and then
 reports what it scanned. A discovery that silently returns nothing
 passes every check vacuously, which is the shape this repository already
 refuses for the import policy and for the plan and incident checkers,
-where an empty folder exits zero; and a walk of the working tree instead
+both of which now refuse an empty folder rather than reporting a clean
+one (`ITC-20260727-1612`); and a walk of the working tree instead
 would take its verdict from build output and from one machine's
 absolute paths.
 """
@@ -192,8 +193,16 @@ def test_every_srs_label_is_reached_by_a_real_latex_command() -> None:
     assert not offenders, f"label reached without a reference command: {offenders}"
 
 
-_PROHIBITION = "FORBIDDEN to run any command that mutates git state"
-_VENDORED_CHARTERS = ("incident-analyst.md",)
+# Two accepted wordings, not one, because two authors write these charters.
+# itaca's own three say FORBIDDEN; the kit's incident-analyst master says
+# "may NEVER use it to mutate git state". Matching one exact sentence is what
+# forced a by-name exemption for the vendored charter even after the kit
+# shipped the rule, so the guard now matches the RULE in either wording and
+# the exemption is gone.
+_PROHIBITIONS = (
+    "FORBIDDEN to run any command that mutates git state",
+    "NEVER use it to mutate git state",
+)
 
 
 def _charter_tools(text: str) -> list[str]:
@@ -221,14 +230,21 @@ def test_every_bash_holding_charter_carries_the_git_prohibition() -> None:
     prohibition. A new reviewer seat inherits it by failing this test rather
     than by someone remembering.
 
-    ``incident-analyst.md`` is exempted BY NAME and the exemption is the
-    finding, not a shrug: it is a vendored kit body whose sha256 is pinned by
-    ``tests/test_kit_drift.py``, so itaca cannot add the section without
-    reddening the drift test, and the fix belongs to the kit and to the sister
-    repository that runs the same charter. It is the seat most likely to
-    reconstruct state while reproducing a failure, which is what makes the gap
-    worth naming here rather than leaving to the commit log. Routed as
-    ``ITC-20260730-0180``.
+    NO CHARTER IS EXEMPT ANY MORE, and the removal of the exemption is the
+    point. ``incident-analyst.md`` was exempted BY NAME while it was a
+    vendored kit body carrying ``Bash`` without the rule, since itaca cannot
+    hand-edit a hash-pinned copy. Kit 0.2.10 shipped the rule to that master,
+    adopted here, so the gap is closed at its source and
+    ``ITC-20260730-0180`` is done.
+
+    The exemption did not notice that, which is the lesson worth keeping: it
+    tested only that the exempt name was still a Bash-holding vendored
+    charter, never that the exemption was still NECESSARY, so it stayed green
+    through the very promotion its own failure message told the reader to
+    watch for. The kit writes the rule in different words from itaca's three
+    charters, so an exact-sentence match would have kept the exemption alive
+    on wording alone. Both wordings are accepted above, and a charter holding
+    ``Bash`` with neither now fails whoever owns it.
     """
     charters = sorted((_ROOT / ".claude" / "agents").glob("*.md"))
     assert len(charters) >= 5, (
@@ -236,28 +252,96 @@ def test_every_bash_holding_charter_carries_the_git_prohibition() -> None:
         f"{_ROOT / '.claude' / 'agents'}; a walk that finds nothing would "
         f"otherwise report green."
     )
+    holders: list[str] = []
     offenders: list[str] = []
-    exempt_seen: list[str] = []
     for path in charters:
         text = path.read_text(encoding="utf-8")
         if "Bash" not in _charter_tools(text):
             continue
-        if path.name in _VENDORED_CHARTERS:
-            exempt_seen.append(path.name)
-            continue
-        if _PROHIBITION not in text:
+        holders.append(path.name)
+        if not any(wording in text for wording in _PROHIBITIONS):
             offenders.append(path.name)
     assert not offenders, (
         f"these charters grant Bash without carrying the git-mutation "
-        f"prohibition: {offenders}. A lens that can execute can destroy "
-        f"uncommitted work, which is INC-20260729-2355-itaca. Add the section, "
-        f"or remove Bash from the charter."
+        f"prohibition in any accepted wording: {offenders}. A lens that can "
+        f"execute can destroy uncommitted work, which is "
+        f"INC-20260729-2355-itaca. Add the section, or remove Bash from the "
+        f"charter. For a VENDORED charter the fix belongs to the kit and the "
+        f"copy may not be hand-edited: route it up and re-vendor "
+        f"(ITC-20260730-0180 is the precedent)."
     )
-    assert exempt_seen == list(_VENDORED_CHARTERS), (
-        f"the vendored-charter exemption names {list(_VENDORED_CHARTERS)} but "
-        f"{exempt_seen} were the Bash-holding vendored charters found. If a "
-        f"vendored charter stopped granting Bash, or the kit shipped the "
-        f"prohibition, remove it from the exemption so the gap closes here too."
+    # The walk must actually have found the Bash-holding seats, or an empty
+    # offenders list means nothing. Four today: the three PUSH lenses and the
+    # vendored analyst.
+    assert len(holders) >= 4, (
+        f"only {holders} were found to grant Bash, where four charters do "
+        f"(architect-reviewer, qa-engineer, vv-engineer, incident-analyst). A "
+        f"frontmatter reformat that broke _charter_tools would empty this walk "
+        f"and green the test."
+    )
+
+
+_SRS_VERSION_SITES = (
+    # Deliberately unanchored. The anchored form matched ZERO times, because
+    # the file is CRLF and `$` sits before the carriage return, and a pattern
+    # matching nothing is how a guard like this goes vacuous. The `== 1`
+    # assertion below is what caught it.
+    ("docs/srs/main.tex", re.compile(r"% Version (\d+\.\d+\.\d+), Living Document")),
+    (
+        "docs/srs/main.tex",
+        re.compile(
+            r"pdftitle=\{ITACA Software Requirements Specification v(\d+\.\d+\.\d+)\}"
+        ),
+    ),
+    (
+        "docs/srs/main.tex",
+        re.compile(r"\\textit\{Document version\} & \\textbf\{(\d+\.\d+\.\d+)\}"),
+    ),
+    (
+        "docs/srs/README.md",
+        re.compile(
+            r"Authoritative specification of ITACA, document version (\d+\.\d+\.\d+)"
+        ),
+    ),
+    (
+        "CLAUDE.md",
+        re.compile(r"the authoritative specification \(document (\d+\.\d+\.\d+)"),
+    ),
+    ("docs/M1_EXECUTION_PLAN.md", re.compile(r"Authority: SRS (\d+\.\d+\.\d+)")),
+)
+
+
+def test_every_document_naming_the_srs_version_names_the_same_one() -> None:
+    """One SRS document version, stated in six places, agreeing.
+
+    ``ITC-20260730-0165``. Four documents named four different versions at
+    once (0.2.2, 0.2.1, 0.2.0, 0.2.0), because the workspace rule that every
+    normative change increments the document version was documentation only:
+    nothing read these sites together, so a partial bump was caught by
+    nothing and each amendment could leave a different subset behind.
+
+    Repairing the content is not the fix. The rule needs a mechanism, or the
+    next amendment diverges the same way, which is the shape this repository
+    refuses everywhere else. The revision history and Chapter 11 are NOT in
+    this list: they are append-only records of past versions, so the newest
+    entry there is checked by a reader, not by a regex over the whole file.
+    """
+    found: dict[str, list[str]] = {}
+    for relative, pattern in _SRS_VERSION_SITES:
+        text = (_ROOT / relative).read_text(encoding="utf-8")
+        matches = pattern.findall(text)
+        assert len(matches) == 1, (
+            f"{relative}: the SRS version pattern {pattern.pattern!r} matched "
+            f"{len(matches)} times, expected once. A pattern that matches "
+            f"nothing makes this guard vacuous, so it fails rather than "
+            f"skipping the site (ITC-20260730-0165)."
+        )
+        found.setdefault(matches[0], []).append(relative)
+    assert len(found) == 1, (
+        f"the SRS document version is stated inconsistently across the "
+        f"documents that name it: {found}. Every normative SRS change "
+        f"increments the version, and every one of these sites moves with it "
+        f"(ITC-20260730-0165)."
     )
 
 
@@ -297,13 +381,41 @@ def test_the_ledger_variable_divergence_is_the_one_this_repository_declares() ->
         "or the charter was hand-edited, reconcile this test with it; do not "
         "edit the vendored copy."
     )
-    assert 'LEDGER_ENV = "ITACA_INCIDENT_LEDGER"' in gate, (
-        "the vendored push gate no longer reads ITACA_INCIDENT_LEDGER. If the "
-        "kit adopted the LEDGER-ENVVAR rename in the gate, the divergence this "
-        "test pins is OVER: rename the variable in CLAUDE.md's locator table, "
-        "in the Incidents section, in .claude/skills/plan/SKILL.md, and in "
-        "tests/test_kit_drift.py, tests/test_plan_validator.py and "
-        "tests/test_push_gate.py, then update this test (ITC-20260730-0215)."
+    # Read the gate's variable out of the gate rather than asserting a
+    # literal. Asserting the old name would pass in the one state that
+    # actually misconfigures a clone: the gate keeps reading ITACA_ while
+    # CLAUDE.md is renamed to COORD_. A reviewer measured exactly that hole
+    # in the first version of this test.
+    declared = re.search(r'LEDGER_ENV = "([A-Z_]+)"', gate)
+    assert declared is not None, (
+        "the vendored push gate no longer assigns LEDGER_ENV to a bare "
+        "variable name, so this test cannot read which locator it resolves. "
+        "Re-read role_review_gate.py and this assertion together "
+        "(ITC-20260730-0215)."
+    )
+    reads = declared.group(1)
+    # Whatever the gate reads must be documented in CLAUDE.md's locator table
+    # row for the gate, so the two cannot be renamed apart in either
+    # direction. The row is found by the guard file it names.
+    table_row = [
+        line
+        for line in claude_md.splitlines()
+        if line.lstrip().startswith("|") and "role_review_gate.py" in line
+    ]
+    assert len(table_row) == 1, (
+        f"expected exactly one locator-table row naming role_review_gate.py "
+        f"in CLAUDE.md, found {len(table_row)}. The table is where a reader "
+        f"configures the variable, so this test needs to find it "
+        f"(ITC-20260730-0215)."
+    )
+    assert reads in table_row[0], (
+        f"the push gate resolves {reads} and CLAUDE.md's locator table row for "
+        f"it does not name that variable: {table_row[0].strip()!r}. If the kit "
+        f"adopted the LEDGER-ENVVAR rename in the gate, the divergence this "
+        f"test pins is OVER: rename the variable in that row, in the Incidents "
+        f"section, in .claude/skills/plan/SKILL.md, and in "
+        f"tests/test_kit_drift.py, tests/test_plan_validator.py and "
+        f"tests/test_push_gate.py (ITC-20260730-0215)."
     )
     assert "COORD_INCIDENT_LEDGER" in claude_md, (
         "CLAUDE.md does not mention COORD_INCIDENT_LEDGER, so a reader "

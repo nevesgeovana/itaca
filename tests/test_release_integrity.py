@@ -141,8 +141,9 @@ def test_the_release_gate_checker_had_something_to_check() -> None:
     The checker exits 0 when it finds no ungated publisher, which is also
     what it would do against an empty or mis-pointed directory. Read the
     count, not only the exit code: the same failure this repository names
-    for the incident and plan checkers, where an empty folder reports `no
-    entries` and exits zero.
+    for the incident and plan checkers, both of which now refuse an empty
+    folder rather than reporting a clean one (`ITC-20260727-1612`). This
+    checker does not, which is why the count is read here.
     """
     done = _run(str(_RELEASE_GATE_CHECK), "--workflows", str(_WORKFLOWS))
     assert "publishing job(s) found    : 0" not in done.stdout, done.stdout

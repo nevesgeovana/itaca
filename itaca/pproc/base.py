@@ -131,9 +131,22 @@ class EquationProcessor:
                 for key, value in self.constants.items()
             )
         if self.spec.uncertainties:
+            # Say WHEN each one takes effect, not only what it is. The
+            # moment is normative (SRS Section 4.6) and depends on the
+            # frame as well as the file, so a flat list of numbers hides
+            # exactly the thing R4-ITA-003 turned on. "when applied"
+            # cannot be resolved here without a frame, so what is shown
+            # is the half the file decides.
+            written = set(self.spec.targets)
             lines.append("  uncertainties (systematic component):")
             lines.extend(
-                f"    {key} = {value}" for key, value in self.spec.uncertainties.items()
+                f"    {key} = {value}"
+                + (
+                    "  (reapplied after the line that writes it)"
+                    if key in written
+                    else "  (applied before the first line)"
+                )
+                for key, value in self.spec.uncertainties.items()
             )
         for stage, equations in (
             ("equations", self.spec.equations),
@@ -290,12 +303,20 @@ class EquationProcessor:
     ) -> VarFrame:
         """Apply the workflow, returning a new VarFrame (REQ-45, REQ-18).
 
-        Assigns the declared ``[uncertainties]`` as the systematic
-        component (SRS Chapter 8, REQ-99), then evaluates
-        ``[equations]`` and ``[corrections]`` in the order the parse
-        resolved. Each equation is an ordinary recorded operation, so
-        uncertainty propagates automatically (REQ-41) and the whole
+        Evaluates ``[equations]`` and ``[corrections]`` in the order the
+        parse resolved. Each equation is an ordinary recorded operation,
+        so uncertainty propagates automatically (REQ-41) and the whole
         application is replayable.
+
+        Each declared ``[uncertainties]`` value is assigned as the
+        systematic component (SRS Section 4.6, REQ-99) at the moment the
+        file's own use of the name requires, which is twice for a name
+        that is both read and written: before the first line runs when
+        the frame carries the name, so every line reading it propagates
+        from the declared value, and again once the first line that
+        writes it has run, so the declaration is not left as the
+        propagation of itself. Whether a LATER line rewriting the same
+        name should propagate over the declaration is OQ-43.
 
         Parameters
         ----------
@@ -360,25 +381,37 @@ class EquationProcessor:
             signature = f"{signature}: {comment}"
 
         work = db
-        pending = dict(self.spec.uncertainties)
-        # Split the declarations by WHAT THE FILE PRODUCES, never by what
-        # the incoming frame happens to already carry. An INPUT is
-        # assigned here, before anything reads it, so the first equation
-        # propagates from the declared value. A TARGET is left pending
-        # and assigned once its equation has run, below.
-        #
-        # Classifying by presence in the frame was R4-ITA-003
-        # (ITC-20260730-0105). A target the frame already carried was
-        # assigned here and then OVERWRITTEN by its own equation's
-        # propagation, so the same file gave a different u() depending on
-        # the shape of the input: with `x = 1.0, y = 5.0` and
-        # `y = "2*x"`, u(y) shipped as 2.0 where the file declares 5.0.
-        # Not an absent uncertainty, a silently different one, selected
-        # by nothing the caller can see. `validate` has already refused
-        # any declaration that is neither a target nor a carried
-        # variable, so every key sorted here is assigned exactly once.
+        declared = self.spec.uncertainties
         produced = set(self.spec.targets)
-        setup = {key: pending.pop(key) for key in list(pending) if key not in produced}
+        # TWO questions, asked separately, because a name can answer yes
+        # to both and the two answers want different moments. Does the
+        # incoming frame CARRY the name? Then the declaration is assigned
+        # here, before any line reads it. Does the FILE WRITE the name?
+        # Then it is assigned again after the first line that writes it,
+        # because that line's propagation would otherwise replace it.
+        #
+        # Both wrong answers have shipped. Sorting only by what the frame
+        # carried was R4-ITA-003 (ITC-20260730-0105): a target the frame
+        # carried was assigned here and then OVERWRITTEN by its own
+        # equation's propagation, so with `x = 1.0, y = 5.0` and
+        # `y = "2*x"` the frame shipped u(y) = 2.0 against a declared
+        # 5.0. Sorting only by what the file produces was the first
+        # repair, and three reviewer passes found it regressed the
+        # mirror case: a declared name the frame carries and a
+        # `[corrections]` line rewrites was withheld from the
+        # `[equations]` lines that READ it, so with `CL = 0.01`,
+        # `[equations] CD = "CL * 2"` and `[corrections] CL = "CL*1.02"`
+        # against a frame carrying a stale u(CL) = 99, u(CD) shipped as
+        # 198.0 where 0.02 is correct. Same failure mode, mirrored: a
+        # finite plausible number chosen by the shape of the input.
+        #
+        # So the partition is not a partition. `validate` refuses a
+        # declaration that is neither carried nor produced (REQ-45), so
+        # every declared name answers yes to at least one question and no
+        # declaration goes unapplied; the assertion after the loop is
+        # what holds that claim to account rather than assuming it.
+        setup = {key: declared[key] for key in declared if key in work.vars}
+        pending = {key: declared[key] for key in declared if key in produced}
         if setup:
             work = work.set_uncertainty(setup, history=True, comment=signature)
         for equation in (*self.spec.equations, *self.spec.corrections):
@@ -387,18 +420,37 @@ class EquationProcessor:
                 history=True,
                 comment=signature,
             )
-            # A declared uncertainty on a variable the file produces is
-            # assigned the moment that variable exists, never at the
+            # A declared uncertainty on a variable the file writes is
+            # assigned the moment that variable is written, never at the
             # end: a dependent equation evaluated in between would
             # propagate from an uncertainty this file overrides, and the
             # frame would ship u(dependent) inconsistent with the
-            # u(input) it reports (REQ-41, REQ-99).
+            # u(input) it reports (REQ-41, REQ-99). After the FIRST write
+            # only, so a later line rewriting the same name propagates
+            # over it; whether that is right is OQ-43, open.
             if equation.target in pending:
                 work = work.set_uncertainty(
                     {equation.target: pending.pop(equation.target)},
                     history=True,
                     comment=signature,
                 )
+        # Every declared name was carried, or written, or both, so both
+        # dicts are exhausted. Asserted rather than trusted: this is the
+        # exact claim the SRS rule rests on, and the two ways it has been
+        # got wrong both showed up as a declaration that was applied and
+        # then lost, which is silent. An unapplied one would be silent
+        # too, so it is made loud here.
+        if pending:
+            raise ProcessorError(
+                f"processor '{self.name}'",
+                f"the declared uncertainties {sorted(pending)} were never "
+                f"applied: each names a variable the file's targets include, "
+                f"yet no evaluated line wrote it",
+                "this is an internal inconsistency between the parsed "
+                "targets and the lines that were evaluated, not something a "
+                "caller can cause; report it with the .itceq file (REQ-45, "
+                "SRS Section 4.6)",
+            )
         return work
 
     # -- internals ----------------------------------------------------------

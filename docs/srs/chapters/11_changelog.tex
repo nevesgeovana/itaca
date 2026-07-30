@@ -14,34 +14,51 @@ it adds or modifies.
 
 \section*{Document 0.2.4, 2026-07-30, When a Declared Uncertainty Applies}
 
-A PATCH revision by chapter~9's rule: a clarification, adding no
-requirement and withdrawing none.
+A PATCH revision by chapter~9's rule: it adds no requirement and withdraws
+none, and states in Chapter~\ref{ch:datamodel} a behavior the document had
+left unspecified. Whether stating a previously unstated rule is a
+clarification or an addition is the standing question of
+\code{ITC-20260730-0165} and is the author's to settle; classified PATCH
+here for consistency with the 0.2.3 entry below, which recorded a shipped
+refusal the same way.
 
-\paragraph{Changed (Section~\ref{sec:itceq}, the \code{[uncertainties]}
-application moment).} The section rules now state WHEN a declared
-uncertainty is applied: before the first equation for a name the file does
-not produce, and immediately after the writing equation for a name it
-does. The rule keys on what the file produces and never on what the
-VarFrame carried on the way in.
+\paragraph{Changed (Section~\ref{sec:itceq}; bears on REQ-41, REQ-45,
+REQ-99).} The section rules now state WHEN a declared uncertainty is
+applied, as two independent questions rather than one classification.
+Applied before the first line when the VarFrame CARRIES the name, so every
+line reading it propagates from the declared value; applied again after the
+first line that WRITES it, so the frame does not ship a declaration as the
+propagation of itself. A name answering yes to both is assigned twice. The
+two are jointly exhaustive because \code{validate} refuses a declared name
+that is neither (REQ-45).
 
 The document had said only that the values are absolute or relative and
-per-variable, so the ordering was unspecified and the implementation had
-adopted the other rule: it sorted by whether the incoming frame already
-carried the name. A target the frame carried was therefore assigned before
-the loop and then overwritten by its own equation's propagation. With
-\code{[uncertainties] y = 5.0} alone, the declaration was lost and the
-frame shipped no uncertainty at all; with \code{x = 1.0} beside it, the
-same file shipped \code{u(y) = 2.0}, the value \code{u(x) = 1.0}
-propagates to through \code{y = "2*x"}, where the file declares
-\code{5.0}. A relative declaration was resolved against the stale input
-column rather than against what the equation wrote.
+per-variable, so the moment was unspecified and the implementation had
+adopted a single-question rule: it sorted by whether the incoming frame
+already carried the name. A written name the frame carried was therefore
+assigned before the loop and then overwritten by its own equation's
+propagation. With \code{[uncertainties] y = 5.0} alone, the declaration was
+lost and the frame shipped no uncertainty at all; with \code{x = 1.0}
+beside it, the same file shipped \code{u(y) = 2.0}, which is what
+\code{u(x) = 1.0} propagates to through \code{y = "2*x"}, where the file
+declares \code{5.0}. A relative declaration such as \code{"10\%"} on a
+carried target was lost the same way, since the value the equation
+overwrote took the declaration with it.
 
 The wrong-value branch is why this is stated in the specification and not
-only fixed in code. A lost declaration is a visible gap a reader can
-notice. A different, finite, plausible uncertainty, chosen by whether the
-input frame happened to carry a column, is a number no reader can check,
-which is this library's worst failure mode
+only fixed in code. A lost declaration is a visible gap. A different,
+finite, plausible uncertainty, chosen by whether the input frame happened
+to carry a column, is a number a reader has no reason to question, which is
+this library's worst failure mode
 (\code{R4-ITA-003}, \code{REV-004}, \code{ITC-20260730-0105}).
+
+Stating the rule as one question was itself wrong in the mirror direction,
+found by review before release and recorded here because the specification
+text is what the mirror case turns on: a carried name that
+\code{[corrections]} rewrites, read by an \code{[equations]} line in
+between, had its declaration withheld from that line, so a derived quantity
+propagated from the frame's own value instead. A name written more than
+once remains open as OQ-43, cited from the section itself.
 
 \section*{Document 0.2.3, 2026-07-30, The Sixth Refusal and the Build}
 

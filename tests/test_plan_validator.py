@@ -24,17 +24,17 @@ Resolution mirrors the plan skill and the incident-ledger philosophy:
 - set but resolving to a file that is not ``check_plan_kit.py`` -> also a
   configuration error, since the directory beside it holds the sister
   repository's ``check_plan.py`` and one typo reaches it;
-- resolving correctly but reporting ZERO entries -> a failure here whatever
-  the exit code was, because a run against the wrong path would otherwise
-  read as a pass.
+- resolving correctly but validating NOTHING -> a failure here whatever the
+  exit code was, because a run against the wrong path would otherwise read
+  as a pass.
 
 That last one is kept as a check on itaca's own CONSUMPTION even though the
 checker itself now refuses the case (kit 0.2.10: ``CANNOT VERIFY``, exit
-2). Two reasons it is not redundant. The count assertion also catches a
+2). Two reasons it is not redundant. ``classify`` below also catches a
 checker whose output wording changed, which is a way for this guard to go
 blind that no exit code reports. And the two live at different levels: the
-kit decides what an empty walk means to a checker, and this decides what a
-zero-entry REPORT means to itaca, which would still be a silent pass if
+kit decides what an empty walk means to a checker, and this decides what
+validating nothing means to itaca, which would still be a silent pass if
 some future caller here read the exit code alone.
 
 As of kit 0.2.2 the companion resolves the checker as a sibling
@@ -174,6 +174,76 @@ def _entry_count(output: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def classify(returncode: int, output: str) -> tuple[str, str]:
+    """What a plan-checker run actually says, and the fix each answer wants.
+
+    Extracted from the assertion it serves so every branch can be exercised
+    over synthetic shapes rather than only through whichever shape the
+    deployed checker happens to produce today. Two branches were otherwise
+    unreachable and one fired with the wrong explanation.
+
+    Diagnosis is by output SHAPE first and exit code second. Reading the code
+    alone was the defect: kit 0.2.10's exit 2 covers three different causes
+    (an empty walk, an unreadable ``legacy_ids.txt``, and a usage error), and
+    exit 1 covers two (bad entries, and a path that is not a directory), so a
+    message keyed on a code names one cause and sends the reader elsewhere for
+    the others. And a checker regressed to the pre-0.2.10 shape prints
+    ``no entries`` while exiting ZERO, which must be reported as an empty
+    ledger and not as a wording change.
+
+    Returns ``("validated", "")`` only when a positive entry count was read
+    and the run did not refuse.
+    """
+    lowered = output.lower()
+    if "config error" in lowered or "legacy_ids.txt" in lowered:
+        return (
+            "config-error",
+            "the checker refused because something it needs could not be read, "
+            "and its output names the file; fix that file rather than the "
+            "ledger path",
+        )
+    if "usage:" in lowered and returncode == 2:
+        return (
+            "bad-invocation",
+            "the checker rejected the invocation itself, so no path was walked",
+        )
+    if "not a directory" in lowered:
+        return (
+            "no-such-directory",
+            "the resolved ledger path is not a directory; check ITACA_MANAGEMENT_ROOT",
+        )
+    if "cannot verify" in lowered or "no entries" in lowered:
+        return (
+            "empty",
+            "the checker found no entries, so nothing was validated; either "
+            "the resolved path is wrong or the ledger is genuinely empty. "
+            "Check ITACA_MANAGEMENT_ROOT and that the tree is synced. Note "
+            "that a checker older than kit 0.2.10 reports this while exiting "
+            "ZERO, which is why the wording is read and not the code",
+        )
+    count = _entry_count(output)
+    if count is None:
+        return (
+            "unreadable-report",
+            "no '<N> entries checked' line and no recognized refusal, so the "
+            "checker's output format has moved under this guard; re-read "
+            "check_plan_kit.py and update _entry_count and classify",
+        )
+    if count == 0:
+        return (
+            "zero-count",
+            "the checker reported zero entries WITHOUT refusing, which reads "
+            "as a pass while nothing was validated",
+        )
+    if returncode != 0:
+        return (
+            "bad-entries",
+            f"{count} entries were read and the checker rejected some of them; "
+            f"its output names each file and the failing check",
+        )
+    return "validated", ""
+
+
 def test_a_zero_entry_ledger_report_is_a_failure_here() -> None:
     """Read the checker's entry COUNT, not only its exit code.
 
@@ -196,14 +266,16 @@ def test_a_zero_entry_ledger_report_is_a_failure_here() -> None:
     some caller here read the exit code alone. It also catches a checker
     whose output wording drifts, which no exit code reports.
 
-    THREE outcomes, told apart, because they want three different fixes and
-    the first version of this test conflated two of them. Once the kit
-    refused the empty case, an empty ledger stopped printing a count line at
-    all, so the "no count line" branch fired with the message "the output
-    format changed" for a run where nothing had changed: a reader following
-    it would have gone to re-read ``_entry_count`` while the real cause was
-    a ledger with no entries in it. The checker's own refusal is therefore
-    read first, and only an unexplained missing count is reported as drift.
+    The diagnosis lives in ``classify`` beside this test, not inline, and it
+    keys on the output SHAPE rather than the exit code. Two rounds of review
+    landed there. Once the kit refused the empty case, an empty ledger
+    stopped printing a count line, so an inline "no count line" branch fired
+    with the message "the output format changed" for a run where nothing had
+    changed. Keying on the code instead was no better: kit 0.2.10 exits 2 for
+    three different causes and 1 for two, so any message tied to a code names
+    one and misdirects the rest. Extracting it also made the zero-count
+    branch, which the deployed checker can no longer produce, reachable by a
+    test rather than only by a mutation.
     """
     resolved = _resolve()
     if resolved is None:
@@ -225,37 +297,11 @@ def test_a_zero_entry_ledger_report_is_a_failure_here() -> None:
         env=child_env(),
     )
     output = done.stdout + done.stderr
-    count = _entry_count(output)
     where = f"{ledger} (resolved by the {branch} branch), exit {done.returncode}"
-    # 1. The checker itself said it could not verify. Since kit 0.2.10 that is
-    #    what an empty walk looks like, and it prints no count line, so this
-    #    must be read BEFORE the missing-count branch or an empty ledger is
-    #    misreported as a wording change.
-    assert not (done.returncode == 2 or "CANNOT VERIFY" in output), (
-        f"the plan checker refused to verify the ledger at {where}. Since kit "
-        f"0.2.10 that is what an EMPTY plan directory produces, so either the "
-        f"resolved path is wrong or the ledger is genuinely empty; check "
-        f"ITACA_MANAGEMENT_ROOT and that the tree is synced. Nothing was "
-        f"validated (ITC-20260727-1612). Output: {output.strip()!r}"
-    )
-    # 2. No count line and no refusal: the wording this guard reads has moved.
-    assert count is not None, (
-        f"the plan checker's output carried no '<N> entries checked' line and "
-        f"did not refuse either, so its entry count could not be read at all. "
-        f"That means the checker's output format changed and this guard can no "
-        f"longer see what it exists to see (ITC-20260727-1612). Re-read "
-        f"check_plan_kit.py and update _entry_count. Ledger: {where}. "
-        f"Output: {output.strip()!r}"
-    )
-    # 3. A count of zero reported as a SUCCESS, which is the original defect
-    #    and remains itaca's own failure mode if a future checker regresses.
-    assert count > 0, (
-        f"the plan checker reported {count} entries for the ledger at {where}, "
-        f"without refusing. A zero-entry report reads as a pass while nothing "
-        f"was validated, which is ITC-20260727-1612 whatever the exit code "
-        f"was. Either the resolved ledger path is wrong or the ledger is "
-        f"genuinely empty; check ITACA_MANAGEMENT_ROOT. "
-        f"Output: {output.strip()!r}"
+    outcome, detail = classify(done.returncode, output)
+    assert outcome == "validated", (
+        f"the plan ledger at {where} was not validated: {detail} "
+        f"(ITC-20260727-1612). Output: {output.strip()!r}"
     )
 
 
@@ -353,9 +399,9 @@ def test_the_plan_checker_refuses_an_empty_ledger_folder(tmp_path: Path) -> None
     # caller the ledger's contents are bad, when nothing was read at all.
     assert done.returncode == 2, (
         f"an empty ledger folder exited {done.returncode}, and the kit reserves "
-        f"1 for a validation failure (the entries were read and some were bad) "
-        f"and 2 for CANNOT VERIFY. An empty walk is the second. Output: "
-        f"{output.strip()!r}"
+        f"2 for CANNOT VERIFY, meaning nothing was validated. An empty walk is "
+        f"that. Exit 1 covers a path the checker refused with a cause: bad "
+        f"entries, or a path that is not a directory. Output: {output.strip()!r}"
     )
     # And a MISSING directory keeps its own answer, so the fix widened the
     # refusal rather than collapsing two different configuration errors into
@@ -366,8 +412,66 @@ def test_the_plan_checker_refuses_an_empty_ledger_folder(tmp_path: Path) -> None
         text=True,
         env=child_env(),
     )
-    assert absent.returncode == 1, (
-        f"a missing plan directory exited {absent.returncode}, where it has "
-        f"always exited 1 with 'not a directory'. Output: "
-        f"{(absent.stdout + absent.stderr).strip()!r}"
+    absent_output = (absent.stdout + absent.stderr).strip()
+    # The message as well as the code: a checker that exited 1 from an
+    # uncaught exception on this path would satisfy the code alone, and this
+    # test would then report a crash as the behavior it pins.
+    assert absent.returncode == 1 and "not a directory" in absent_output.lower(), (
+        f"a missing plan directory exited {absent.returncode} with "
+        f"{absent_output!r}, where it has always exited 1 naming 'not a "
+        f"directory'. A bare exit 1 is also what a crash on this path would "
+        f"give, so the message is required too."
+    )
+
+
+# (returncode, output) -> the outcome `classify` must report. Every branch is
+# here, including the two the deployed checker can no longer produce, so
+# deleting any of them fails rather than going unnoticed.
+_SHAPES = [
+    ("kit 0.2.10 empty walk", 2, "CANNOT VERIFY C:/x/plan: holds no entries", "empty"),
+    ("pre-0.2.10 empty walk", 0, "no entries in C:/x/plan", "empty"),
+    ("missing directory", 1, "not a directory: C:/x/plan", "no-such-directory"),
+    (
+        "unreadable legacy_ids.txt",
+        2,
+        "CONFIG ERROR: legacy_ids.txt exists at C:/x/plan/legacy_ids.txt but "
+        "could not be read (UnicodeDecodeError: ...)",
+        "config-error",
+    ),
+    ("usage error", 2, "usage: check_plan_kit.py <plan-directory>", "bad-invocation"),
+    ("wording drift", 0, "validated 12 files, all good", "unreadable-report"),
+    ("zero count reported as a pass", 0, "0 entries checked (), 0 bad", "zero-count"),
+    ("bad entries", 1, "12 entries checked (open: 12), 3 bad", "bad-entries"),
+    ("a clean ledger", 0, "144 entries checked (open: 112), 0 bad", "validated"),
+]
+
+
+@pytest.mark.parametrize(
+    ("label", "returncode", "output", "expected"),
+    _SHAPES,
+    ids=[shape[0].replace(" ", "-") for shape in _SHAPES],
+)
+def test_the_classifier_names_every_shape_a_plan_run_can_take(
+    label: str, returncode: int, output: str, expected: str
+) -> None:
+    """``ITC-20260727-1612``. Each outcome wants a different fix, so each
+    must be distinguishable, including the two the deployed checker cannot
+    produce today.
+
+    ``pre-0.2.10 empty walk`` is the row that matters most: a checker
+    regressed to printing ``no entries`` and exiting ZERO must be reported as
+    an EMPTY ledger, not as a wording change, which is what an exit-code-first
+    reading did. ``zero count reported as a pass`` is unreachable through the
+    current checker, so without this table it could be deleted from
+    ``classify`` and nothing would notice.
+    """
+    outcome, detail = classify(returncode, output)
+    assert outcome == expected, (
+        f"the {label} shape (exit {returncode}, {output!r}) was classified "
+        f"{outcome!r} with detail {detail!r}, expected {expected!r}"
+    )
+    assert (detail == "") is (expected == "validated"), (
+        f"the {label} shape returned outcome {outcome!r} with detail "
+        f"{detail!r}; every outcome but 'validated' must carry a fix to "
+        f"suggest, and 'validated' must carry none"
     )

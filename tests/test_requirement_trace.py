@@ -210,8 +210,8 @@ def test_itaca_007_no_requirement_silently_stops_being_reached() -> None:
     loses its citation to a refactor would silently join the unreached
     set, the count would move from 26 to 27, and the run would stay
     green. That is the self-skipping evidence this repository names for
-    the plan and incident checkers, where an empty folder reports "no
-    entries" and exits zero.
+    the plan and incident checkers, both of which now refuse an empty
+    folder rather than reporting a clean one (``ITC-20260727-1612``).
 
     The floor below is the measured state at the 0.2.0 lane close. It
     goes UP when a requirement gains an implementation and never down.

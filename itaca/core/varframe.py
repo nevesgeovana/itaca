@@ -974,7 +974,7 @@ class VarFrame:
 
         Raises
         ------
-        DiffWindowError
+        FitDegreeError
             ``window <= deg``.
         DimensionNotFoundError
             ``along`` is absent.

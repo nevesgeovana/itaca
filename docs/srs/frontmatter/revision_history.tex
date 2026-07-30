@@ -11,19 +11,25 @@
 \midrule
 \midrule
 0.2.4 & 2026-07-30 & Geovana Neves &
-When a declared uncertainty applies. A PATCH revision by the rule
-chapter~9 states: a clarification, adding no requirement and withdrawing
-none. Section~\ref{sec:itceq} now states the moment an
-\code{[uncertainties]} declaration takes effect, which it had left
-unspecified: before the first equation for a name the file does not
-produce, and immediately after the writing equation for a name it does,
-keyed on what the FILE produces and never on what the VarFrame carried on
-the way in. The implementation had adopted the other rule, so a target the
-frame already carried was assigned before the loop and then overwritten by
-its own equation's propagation: one file gave two answers, and in the
-worse branch it shipped \code{u(y) = 2.0} where the file declares
-\code{5.0}. A wrong number rather than a missing one, chosen by nothing the
-caller can see (\code{R4-ITA-003}, \code{ITC-20260730-0105}).
+When a declared uncertainty applies. A PATCH revision adding no requirement
+and withdrawing none; bears on REQ-41, REQ-45 and REQ-99.
+Section~\ref{sec:itceq} now states the moment an \code{[uncertainties]}
+declaration takes effect, which it had left unspecified, as two independent
+questions rather than one classification: applied before the first line when
+the VarFrame CARRIES the name, so every line reading it propagates from the
+declared value, and applied again after the first line that WRITES it, so
+the frame never ships a declaration as the propagation of itself. A name
+answering yes to both is assigned twice, and \code{validate} refuses a
+declared name that answers no to both, so none is silently dropped. The
+implementation had used a single question, whether the frame carried the
+name, so a written name the frame carried was assigned before the loop and
+then overwritten by its own equation's propagation: one file gave two
+answers, and in the worse branch shipped \code{u(y) = 2.0} where the file
+declares \code{5.0}. A wrong number rather than a missing one, chosen by
+nothing the caller can see. Stating it as a single question the other way
+round was wrong in the mirror direction, caught by review before release. A
+name written more than once is open as OQ-43
+(\code{R4-ITA-003}, \code{ITC-20260730-0105}).
 \\[4pt]
 0.2.3 & 2026-07-30 & Geovana Neves &
 The sixth CHK-1 refusal, and the build. A PATCH revision by the rule

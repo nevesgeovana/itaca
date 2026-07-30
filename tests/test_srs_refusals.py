@@ -37,7 +37,8 @@ reviewer measured the omission and showed the guard passing on a defect:
 Every parse is asserted to have found something before it is compared. A
 regex that silently matches nothing would make the assertions vacuous,
 which is the shape this repository already refuses for the import policy
-and for the plan and incident checkers, where an empty folder exits zero.
+and for the plan and incident checkers, both of which now refuse an empty
+folder rather than reporting a clean one (``ITC-20260727-1612``).
 """
 
 from __future__ import annotations

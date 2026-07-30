@@ -65,8 +65,11 @@ expected and correct, and the pins below are per file:
   is the fix for ``ITC-20260727-1612``: an empty plan directory now exits
   2 with ``CANNOT VERIFY`` instead of printing ``no entries`` and exiting
   zero. Measured at the deployed path after re-vendoring: empty exits 2,
-  a missing directory still exits 1, the real ledger reports 141 entries
-  and 0 bad, and the companion reports ``0 check(s) could not fail``.
+  a missing directory still exits 1, the real ledger validates with a
+  nonzero entry count and 0 bad, and the companion reports ``0 check(s)
+  could not fail``. The counts themselves are not recorded here: the
+  ledger is outside this repository and grows, so a number written down
+  reads as an expectation and drifts the same day.
 - 0.1.0: ``check_incidents.py``, unchanged.
 
 The rule that decides both of those, stated once so the asymmetry is not
@@ -525,7 +528,7 @@ def test_the_derivation_never_reinterprets_a_py_value_as_its_parent(
 ) -> None:
     """Falsify the derivation fix itself, hermetically.
 
-    ``ITC-20260727-1542``. This is the only BEHAVIOUR change in that repair,
+    ``ITC-20260727-1542``. This is the only BEHAVIOR change in that repair,
     and on this machine the ambient ``ITACA_PLAN_VALIDATOR`` is a directory,
     so the ``.py`` branch never runs and the fix was covered by nothing: a
     reviewer measured the new line as unexecuted and confirmed that deleting

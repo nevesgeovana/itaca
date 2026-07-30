@@ -481,19 +481,63 @@ def test_uncertainty_declared_on_a_derived_variable_is_applied_after(
 # ---------------------------------------------------------------------------
 # R4-ITA-003 / ITC-20260730-0105: when a declared uncertainty is applied.
 #
-# The rule (SRS 4.6, REQ-41, REQ-99): a declared uncertainty on a name the
-# FILE PRODUCES is assigned once the equation that writes it has run, and a
-# declared uncertainty on an INPUT is assigned before any equation reads it.
-# The classification is by what the file produces, never by what the input
-# frame happens to already carry, because the equation overwrites the target
-# either way and a pre-assignment made before it is destroyed by propagation.
+# The rule (SRS 4.6, REQ-41, REQ-99) asks TWO questions, not one, and a name
+# can answer yes to both. Does the frame CARRY it? Then the declaration is
+# assigned before the first line, so every line reading the name propagates
+# from the declared value. Does the FILE WRITE it? Then it is assigned again
+# after the first line that writes it, since that line's propagation would
+# otherwise replace it.
 #
-# Measured before the fix, with `[uncertainties] x = 1.0, y = 5.0` and
-# `[equations] y = "2*x"`: u(y) shipped as 2.0, propagated from u(x), where
-# the file declares 5.0. That is the failure mode this library can least
-# afford, a silently DIFFERENT number rather than an absent one, and it was
-# selected by nothing the user can see.
+# BOTH single-question rules have shipped a wrong number, and the two are
+# mirror images, which is why the tests below come in pairs.
+#
+#   asking only "does the frame carry it" was R4-ITA-003: with
+#   `x = 1.0, y = 5.0` and `y = "2*x"` against a frame carrying y, the frame
+#   shipped u(y) = 2.0 against a declared 5.0;
+#
+#   asking only "does the file write it" was the first repair, and three
+#   reviewer passes found it regressed the mirror: with `CL = 0.01`,
+#   `[equations] CD = "CL * 2"` and `[corrections] CL = "CL * 1.02"` against
+#   a frame carrying a stale u(CL) = 99, u(CD) shipped as 198.0 where 0.02
+#   is correct, because the declaration was withheld from the equation that
+#   READ CL.
+#
+# In both cases the number is finite, plausible, and chosen by the shape of
+# the input, which is the failure mode this library can least afford.
 # ---------------------------------------------------------------------------
+
+# A name the frame CARRIES and a `[corrections]` line rewrites, read by an
+# `[equations]` line in between. This is the shape the first repair broke and
+# that no test covered: `[equations]` runs before `[corrections]`, so CD is
+# computed while CL still holds only whatever the frame brought.
+CARRIED_AND_CORRECTED = """\
+[meta]
+name = "carried and corrected"
+
+[uncertainties]
+CL = 0.01
+
+[equations]
+CD = "CL * 2"
+
+[corrections]
+CL = "CL * 1.02"
+"""
+
+# A name only `[corrections]` produces, which the parser explicitly blesses
+# as an input the frame must supply. Nothing may raise here: the first
+# repair's obvious alternative (classify by equation targets alone) fails
+# this one with an UncertaintyKeyError.
+PRODUCED_BY_A_CORRECTION = """\
+[meta]
+name = "produced by a correction"
+
+[uncertainties]
+w = 0.5
+
+[corrections]
+w = "x * 2"
+"""
 
 # Two targets, so a frame carrying only `y` is not a full reapplication and
 # the REQ-47 idempotence warning stays out of these assertions. `z` also
@@ -549,53 +593,74 @@ def _two_column(x: list[float], y: list[float]) -> VarFrame:
     return itc.load(np.array(rows), names=["x", "y"])
 
 
-@pytest.mark.parametrize("text", [DECLARED_ON_A_TARGET, DECLARED_ON_A_TARGET_ONLY])
+def _systematic(frame: VarFrame, name: str, why: str) -> Any:
+    assert frame.uncertainty is not None, (
+        f"the run shipped no UncFrame at all, so {why} (R4-ITA-003)"
+    )
+    table = dict(frame.uncertainty.systematic)
+    assert name in table, (
+        f"the run shipped an UncFrame carrying {sorted(table)} and no "
+        f"u({name}), so {why} (R4-ITA-003)"
+    )
+    return np.asarray(table[name], dtype=float)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [DECLARED_ON_A_TARGET, DECLARED_ON_A_TARGET_ONLY],
+    ids=["with-input", "alone"],
+)
+@pytest.mark.parametrize("shape", ["absent", "present"])
 def test_a_declared_uncertainty_wins_whether_or_not_the_target_pre_exists(
-    tmp_path: Path, text: str
+    tmp_path: Path, text: str, shape: str
 ) -> None:
-    # The load-bearing assertion of R4-ITA-003. `y` is a target either way,
-    # so the same file must give the same answer against a frame that
-    # happens to carry a `y` column and one that does not.
+    # The load-bearing assertion of R4-ITA-003. `y` is written by the file
+    # either way, so one file must give one answer against a frame that
+    # happens to carry a `y` column and one that does not. Parametrized over
+    # BOTH axes rather than looped, so a failure names which combination
+    # broke instead of stopping at the first.
     path = tmp_path / "declared.itceq"
     path.write_text(text, encoding="utf-8")
-    processor = itc.processor(path)
-    absent = itc.load(np.array([[3.0], [4.0]]), names=["x"])
-    present = _two_column([3.0, 4.0], [6.0, 8.0])
-    for label, frame in (("absent", absent), ("present", present)):
-        processed = processor(frame)
-        assert processed.uncertainty is not None, (
-            f"the {label}-target run shipped no uncertainty at all, so the "
-            f"declared u(y) = 5.0 was dropped (R4-ITA-003)"
-        )
-        systematic = dict(processed.uncertainty.systematic)
-        assert np.asarray(systematic["y"]) == pytest.approx(5.0), (
-            f"the {label}-target run shipped u(y) = "
-            f"{np.asarray(systematic['y']).tolist()} where the file declares "
-            f"5.0. A declared uncertainty is not a starting point for "
-            f"propagation; it is the value the file asserts (R4-ITA-003)."
-        )
-        # The dependent is the reason the assignment is mid-loop: z reads y
-        # AFTER the declaration is in place, so u(z) follows from 5.0.
-        assert np.asarray(systematic["z"]) == pytest.approx(5.0), (
-            f"the {label}-target run propagated u(z) from something other "
-            f"than the declared u(y) = 5.0, so the frame ships a dependent "
-            f"inconsistent with the input uncertainty it reports"
-        )
+    frame = (
+        itc.load(np.array([[3.0], [4.0]]), names=["x"])
+        if shape == "absent"
+        else _two_column([3.0, 4.0], [6.0, 8.0])
+    )
+    processed = itc.processor(path)(frame)
+    shipped = _systematic(
+        processed, "y", f"the declared u(y) = 5.0 was dropped on the {shape} run"
+    )
+    assert shipped == pytest.approx(5.0), (
+        f"the {shape}-target run shipped u(y) = {shipped.tolist()} where the "
+        f"file declares 5.0. A declared uncertainty is not a starting point "
+        f"for propagation; it is the value the file asserts (R4-ITA-003)."
+    )
+    # The dependent is the reason the assignment is mid-loop: z reads y
+    # AFTER the declaration is in place, so u(z) follows from 5.0.
+    dependent = _systematic(
+        processed, "z", f"the dependent lost its uncertainty on the {shape} run"
+    )
+    assert dependent == pytest.approx(5.0), (
+        f"the {shape}-target run shipped u(z) = {dependent.tolist()}, "
+        f"propagated from something other than the declared u(y) = 5.0, so "
+        f"the frame ships a dependent inconsistent with the input "
+        f"uncertainty it reports"
+    )
 
 
 def test_a_declared_uncertainty_on_an_existing_target_is_not_silently_replaced(
     tmp_path: Path,
 ) -> None:
-    # Named separately from the parity test above because this is the
-    # symptom that makes R4-ITA-003 a release blocker rather than a gap: the
-    # shipped number is plausible, finite, and wrong. 2.0 is what u(x) = 1.0
-    # propagates to through y = 2*x, so a reader has no way to tell it from
-    # a number the file asked for.
+    # Named separately from the parity test above, and NOT a second
+    # falsifier: `not allclose(2.0)` cannot fail unless the `approx(5.0)`
+    # there fails first. It exists for its message, which names the number
+    # that made R4-ITA-003 a release blocker rather than a gap. 2.0 is what
+    # u(x) = 1.0 propagates to through y = 2*x, so a reader has no way to
+    # tell it from a number the file asked for.
     path = tmp_path / "replaced.itceq"
     path.write_text(DECLARED_ON_A_TARGET, encoding="utf-8")
     processed = itc.processor(path)(_two_column([3.0, 4.0], [6.0, 8.0]))
-    assert processed.uncertainty is not None
-    shipped = np.asarray(dict(processed.uncertainty.systematic)["y"])
+    shipped = _systematic(processed, "y", "the declaration was dropped entirely")
     assert not np.allclose(shipped, 2.0), (
         f"u(y) shipped as {shipped.tolist()}, the value propagation from "
         f"u(x) = 1.0 produces, in place of the declared 5.0. R4-ITA-003: the "
@@ -607,18 +672,23 @@ def test_a_declared_uncertainty_on_an_existing_target_is_not_silently_replaced(
 def test_a_relative_declaration_on_an_existing_target_resolves_against_the_result(
     tmp_path: Path,
 ) -> None:
-    # A relative spec makes the assignment MOMENT visible, not just the
-    # winner: resolved before the equation it would be a percentage of the
-    # frame's stale column, which is a different number rather than a
-    # missing one.
+    # A relative spec pins the assignment MOMENT and not only the winner:
+    # ten percent of what the equation wrote, never of the input column.
+    #
+    # What the pre-fix tree actually SHIPPED here was `uncertainty is None`,
+    # not a percentage of the stale column. The stale resolution, [10.0,
+    # 10.0], existed only as an intermediate that the equation then
+    # overwrote, so no caller ever saw it. Recorded because the first
+    # version of this comment claimed otherwise, and a test whose stated
+    # defect model is wrong teaches the next reader the wrong thing even
+    # while it passes.
     path = tmp_path / "relative.itceq"
     path.write_text(DECLARED_RELATIVE, encoding="utf-8")
     processor = itc.processor(path)
     stale = processor(_two_column([3.0, 4.0], [100.0, 100.0]))
     fresh = processor(itc.load(np.array([[3.0], [4.0]]), names=["x"]))
-    assert stale.uncertainty is not None and fresh.uncertainty is not None
-    got = np.asarray(dict(stale.uncertainty.systematic)["y"], dtype=float)
-    want = np.asarray(dict(fresh.uncertainty.systematic)["y"], dtype=float)
+    got = _systematic(stale, "y", "the declaration was lost on the stale-frame run")
+    want = _systematic(fresh, "y", "the declaration was lost on the fresh run")
     assert got == pytest.approx(want), (
         f"a 10 percent declaration on an existing target resolved to "
         f"{got.tolist()} against a frame carrying y = 100, and to "
@@ -635,11 +705,11 @@ def test_a_relative_declaration_on_an_existing_target_resolves_against_the_resul
 def test_a_declared_uncertainty_on_an_input_still_precedes_every_equation(
     tmp_path: Path,
 ) -> None:
-    # The other half of the classification, and the falsifier for moving it:
-    # `x` is read and never written, so its declaration must be in place
-    # before the first equation, or nothing propagates into `y` at all. A
-    # repair that sent every declaration down the after-the-equation path
-    # would pass every test above and break this one.
+    # The other half of the rule, and the falsifier for moving it: `x` is
+    # read and never written, so its declaration must be in place before the
+    # first equation, or nothing propagates into `y` at all. A repair that
+    # sent every declaration down the after-the-write path would pass every
+    # test above and break this one.
     path = tmp_path / "input.itceq"
     path.write_text(
         '[meta]\nname = "input"\n\n[uncertainties]\nx = 1.0\n\n'
@@ -647,11 +717,180 @@ def test_a_declared_uncertainty_on_an_input_still_precedes_every_equation(
         encoding="utf-8",
     )
     processed = itc.processor(path)(itc.load(np.array([[3.0], [4.0]]), names=["x"]))
-    assert processed.uncertainty is not None, (
-        "no uncertainty reached the result, so the declared u(x) was not in "
-        "place when the equation read x"
+    shipped = _systematic(
+        processed, "y", "the declared u(x) was not in place when the equation read x"
     )
-    assert np.asarray(dict(processed.uncertainty.systematic)["y"]) == pytest.approx(2.0)
+    assert shipped == pytest.approx(2.0)
+
+
+@pytest.mark.parametrize("stale", [None, 99.0], ids=["no-stale-u", "stale-u-99"])
+def test_a_declaration_reaches_the_equations_that_read_a_corrected_name(
+    tmp_path: Path, stale: float | None
+) -> None:
+    """The mirror of R4-ITA-003, and the case the first repair regressed.
+
+    `CL` is BOTH carried by the frame and rewritten by `[corrections]`, and
+    `[equations]` runs first, so `CD = CL * 2` reads `CL` before any
+    correction. The declaration must therefore already be in place, or the
+    equation propagates from whatever the input frame brought.
+
+    Measured under the first repair, which classified by what the file
+    produces alone: with no stale uncertainty, `u(CD)` was ABSENT, a
+    declared uncertainty silently dropped out of a derived quantity
+    (REQ-98). With a stale `u(CL) = 99` that the file overrides, `u(CD)`
+    shipped as 198.0 where 0.02 is correct, in a frame that simultaneously
+    reported `u(CL) = 0.01`. Same class as the defect being fixed, mirrored:
+    a finite, plausible number selected by the shape of the input.
+
+    The stale parametrization is the one that makes it a WRONG number rather
+    than a missing one, and it is the reason the frame's own uncertainty may
+    never be read for a name the file declares.
+    """
+    path = tmp_path / "corrected.itceq"
+    path.write_text(CARRIED_AND_CORRECTED, encoding="utf-8")
+    frame = itc.load(np.array([[3.0], [4.0]]), names=["CL"])
+    if stale is not None:
+        frame = frame.set_uncertainty({"CL": stale})
+    processed = itc.processor(path)(frame)
+    derived = _systematic(
+        processed,
+        "CD",
+        "the declaration never reached the equation that reads CL, so the "
+        "derived quantity carries no uncertainty at all",
+    )
+    assert derived == pytest.approx(0.02), (
+        f"u(CD) shipped as {derived.tolist()} where CD = CL * 2 and the file "
+        f"declares u(CL) = 0.01, so 0.02 is correct. The equation read a "
+        f"uncertainty other than the declared one; with a stale u(CL) in the "
+        f"frame that is the frame's value, which the file overrides."
+    )
+    declared = _systematic(
+        processed, "CL", "the correction target lost its declaration"
+    )
+    assert declared == pytest.approx(0.01), (
+        f"u(CL) shipped as {declared.tolist()} where the file declares 0.01. "
+        f"A correction is a line that writes the name, so the declaration is "
+        f"reasserted after it (R4-ITA-003)."
+    )
+
+
+def test_a_name_only_a_correction_produces_still_gets_its_declaration(
+    tmp_path: Path,
+) -> None:
+    """A `[corrections]`-only target the frame does not carry.
+
+    The parser blesses this shape explicitly: a name a correction replaces
+    but the file does not otherwise produce is a required input, and here it
+    is produced outright. Nothing may raise. Kept as its own test because
+    the obvious alternative repair (classify by `[equations]` targets alone)
+    passes every other test in this block and fails this one with
+    `UncertaintyKeyError: variable 'w' ... does not match any variable`.
+    """
+    path = tmp_path / "corr_only.itceq"
+    path.write_text(PRODUCED_BY_A_CORRECTION, encoding="utf-8")
+    processed = itc.processor(path)(itc.load(np.array([[3.0], [4.0]]), names=["x"]))
+    shipped = _systematic(processed, "w", "a correction-produced name lost its value")
+    assert shipped == pytest.approx(0.5)
+
+
+def test_the_mid_loop_declaration_records_itself_in_history(tmp_path: Path) -> None:
+    """REQ-18 and REQ-19 for the operation this fix moved into the loop.
+
+    The ORDER is the assertion, not merely the presence: the declaration
+    must sit between the line that writes `y` and the line that reads it,
+    since that is the whole reason it is assigned mid-loop rather than at
+    the end. Falsified by reordering the loop body so the assignment
+    precedes its `compute`.
+
+    ONE THING THIS DOES NOT GUARD, stated because a reviewer proposed it as
+    the mutation and it is inert: passing `history=False` to that call
+    changes nothing here. `VarFrame._derive` records when
+    `self.mode == "production" or history`, and a frame from `itc.load` is
+    in production mode, so the flag only matters for a draft frame. A
+    mutation of the flag leaves the whole suite green because the behavior
+    is unchanged, not because the behavior is uncovered. What IS guarded is
+    the comment: dropping `comment=signature` makes the entry unattributable
+    and fails the last assertion.
+    """
+    path = tmp_path / "history.itceq"
+    path.write_text(DECLARED_ON_A_TARGET, encoding="utf-8")
+    processor = itc.processor(path)
+    processed = processor(_two_column([3.0, 4.0], [6.0, 8.0]))
+    operations = [entry.operation for entry in processed.history]
+    assign = [
+        index
+        for index, text in enumerate(operations)
+        if text.startswith("set_uncertainty(vars=['y']")
+    ]
+    assert len(assign) == 1, (
+        f"the declared u(y) is recorded {len(assign)} times in History, "
+        f"expected once. Recorded operations: {operations}"
+    )
+    wrote = next(i for i, text in enumerate(operations) if "'y = 2*x'" in text)
+    read = next(i for i, text in enumerate(operations) if "'z = y + 1'" in text)
+    assert wrote < assign[0] < read, (
+        f"the declared u(y) is recorded at position {assign[0]}, outside the "
+        f"window between writing y ({wrote}) and reading it ({read}). The "
+        f"assignment is mid-loop precisely so a dependent propagates from "
+        f"the declared value; History must show that it did. Recorded "
+        f"operations: {operations}"
+    )
+    signed = [
+        entry.comment
+        for entry in processed.history
+        if entry.operation.startswith("set_uncertainty(vars=['y']")
+    ]
+    assert signed == [processor.signature], (
+        f"the mid-loop declaration carries comment {signed}, not the "
+        f"processor signature {processor.signature!r}, so a reader landing "
+        f"on that entry cannot tell which workflow wrote it (REQ-19, DD-35)"
+    )
+
+
+def test_a_declaration_naming_nothing_the_file_reads_or_writes_is_refused(
+    tmp_path: Path,
+) -> None:
+    """`validate`'s third absence check, which the whole rule rests on.
+
+    SRS Section 4.6 says every declaration is applied exactly once because
+    `validate` refuses a declared name that is neither carried by the frame
+    nor written by the file. That claim was load-bearing and untested:
+    replacing the condition with `if False` left the entire suite green, and
+    the caller then met `UncertaintyKeyError` naming `set_uncertainty`
+    instead of a three-part `ProcessorValidationError` naming the `.itceq`.
+
+    Both message clauses are pinned separately, because coverage showed
+    every existing test reaching this refusal with BOTH clauses true, so
+    neither shape was ever produced alone.
+    """
+    unknown = tmp_path / "unknown.itceq"
+    unknown.write_text(
+        '[meta]\nname = "unknown"\n\n[uncertainties]\nw = 0.5\n\n'
+        '[equations]\ny = "2*x"\n',
+        encoding="utf-8",
+    )
+    frame = itc.load(np.array([[3.0], [4.0]]), names=["x"])
+    with pytest.raises(ProcessorValidationError) as caught:
+        itc.processor(unknown)(frame)
+    message = str(caught.value)
+    assert "[uncertainties] section names absent variable(s) ['w']" in message, message
+    assert "its equations read absent variable" not in message, (
+        f"the uncertainties-only refusal also reported missing equation "
+        f"variables, so the two clauses are not independent: {message}"
+    )
+
+    # The mirror: equations only, so the other clause is produced alone.
+    missing = tmp_path / "missing.itceq"
+    missing.write_text(
+        '[meta]\nname = "missing"\n\n[equations]\ny = "2*ghost"\n', encoding="utf-8"
+    )
+    with pytest.raises(ProcessorValidationError) as caught:
+        itc.processor(missing)(frame)
+    message = str(caught.value)
+    assert "its equations read absent variable(s) ['ghost']" in message, message
+    assert "[uncertainties]" not in message, (
+        f"the equations-only refusal also reported an uncertainties clause: {message}"
+    )
 
 
 def test_a_file_without_constants_runs_its_expressions_unchanged(
