@@ -195,6 +195,24 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --cov=itaca --cov-report=term-missing --cov-fail-under=90"
+markers = [
+  # The COMMIT tier runs `-m "not slow"`. A marked module does not stop
+  # being mandatory: the pre-push hook runs the whole suite with coverage
+  # and blocks, and CI runs it on every pull request. What the marker
+  # changes is WHERE it runs, never WHETHER.
+  #
+  # Measured 2026-07-30 on the tree that introduced this, with --no-cov:
+  # test_release_integrity.py 539 s and test_push_gate.py 108 s, against
+  # 0.7 to 3.9 s for every other module in the suite. Two modules were
+  # essentially the whole commit gate. Both are process-level: they spawn
+  # a hook or a checker per case and build real sdists and wheels.
+  #
+  # Do not mark a test slow to make a red commit green. The per-test
+  # budget in tests/conftest.py is what keeps the subset fast, and
+  # tests/test_tooling_config.py refuses a marker on the contract modules
+  # the commit tier must keep.
+  "slow: process-level; runs at pre-push and in CI, not at commit time",
+]
 
 [tool.coverage.run]
 branch = true

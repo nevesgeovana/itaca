@@ -49,6 +49,17 @@ import identifiers
 import pytest
 from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
 
+# MEASURED 539 s with --no-cov on 2026-07-30, against 0.7 to 3.9 s for
+# every module outside this one and test_push_gate.py. It builds real
+# sdists and wheels and runs four mutation companions, each spawning a
+# checker per case per mutant. That cost is the point of those guards and
+# is not reducible here, so it moves to the tier that can afford it.
+#
+# NOT weakened by the marker, and the distinction is the whole design: the
+# pre-push hook runs the full suite with coverage and BLOCKS, and CI runs
+# it on every pull request. ITACA-006's checker still gates every push.
+pytestmark = pytest.mark.slow
+
 _ROOT = Path(__file__).resolve().parents[1]
 _KIT = _ROOT / ".claude" / "kit"
 _WORKFLOWS = _ROOT / ".github" / "workflows"

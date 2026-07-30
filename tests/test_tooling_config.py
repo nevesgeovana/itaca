@@ -28,12 +28,16 @@ import importlib.metadata
 import itertools
 import json
 import re
+import subprocess
+import sys
+import time
 import tomllib
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
+from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
@@ -181,6 +185,204 @@ def test_pre_commit_declares_both_ruff_hooks_unnarrowed() -> None:
     )
 
 
+# The contract modules the COMMIT tier must keep. Marking one of these
+# `slow` would buy seconds by moving the repository's own invariants off
+# the gate a developer actually feels, which is the trade this list exists
+# to refuse. Each pins something that is cheap to check and expensive to
+# discover late: the NumPy-only import policy, the vendored kit bodies, the
+# house style and identifier rules, the locator family's resolution, and
+# this file, which pins the tiers themselves.
+_COMMIT_TIER_CONTRACT_MODULES = (
+    "tests/test_import_policy.py",
+    "tests/test_kit_drift.py",
+    "tests/test_house_style.py",
+    "tests/test_management_root.py",
+    "tests/test_tooling_config.py",
+    "tests/test_review_gate.py",
+    "tests/test_side_effect_guard.py",
+)
+
+
+def _local_hook_stages() -> dict[str, list[str]]:
+    """Every local hook id mapped to the stages it declares."""
+    config = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
+    stages: dict[str, list[str]] = {}
+    for repo in config["repos"]:
+        if repo.get("repo") != "local":
+            continue
+        for hook in repo["hooks"]:
+            stages[hook["id"]] = hook.get("stages", [])
+    return stages
+
+
+def test_the_commit_tier_runs_only_the_fast_subset() -> None:
+    """The commit hook must select, or it is the whole suite again.
+
+    BRF-063's diagnosis, and the reason this guard is worth more than the
+    config line it checks: the hook was NAMED `pytest-fast` and ran the
+    entire suite plus a full `mypy --strict` on every commit, because its
+    entry carried no selection at all. A name is not a mechanism, and
+    nothing failed when the two disagreed.
+    """
+    stages = _local_hook_stages()
+    config = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
+    entries = {
+        hook["id"]: hook["entry"]
+        for repo in config["repos"]
+        if repo.get("repo") == "local"
+        for hook in repo["hooks"]
+    }
+    assert "pytest-fast" in entries, (
+        "the commit tier has no pytest hook, so a commit runs no tests at "
+        "all. Restore `pytest-fast` with the `not slow` selection."
+    )
+    entry = entries["pytest-fast"]
+    assert "not slow" in entry, (
+        f"the commit hook runs {entry!r}, with no marker selection, so it "
+        f"runs the FULL suite on every commit. That is the exact defect "
+        f"BRF-063 measured: a hook named fast that was not. Select the "
+        f'subset with -m "not slow".'
+    )
+    assert "--no-cov" in entry, (
+        f"the commit hook runs {entry!r} with coverage on. Coverage is the "
+        f"pre-push tier's job; at commit time it buys nothing and costs "
+        f"every commit."
+    )
+    assert stages.get("pytest-fast") == ["pre-commit"], (
+        f"the commit hook declares stages {stages.get('pytest-fast')!r}. Pin "
+        f"it to pre-commit so it cannot silently become the push tier too."
+    )
+
+
+def test_the_push_tier_runs_the_whole_suite_and_blocks() -> None:
+    """Marking a test `slow` must move it, never excuse it.
+
+    This is the load-bearing half of the tier split. `slow` is only
+    legitimate because everything it removes from the commit gate still
+    runs, with coverage, at a gate that blocks. If the pre-push hook were
+    deleted, `slow` would silently become "does not run locally at all",
+    and the marker would be an exemption rather than a routing decision.
+    """
+    stages = _local_hook_stages()
+    config = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
+    entries = {
+        hook["id"]: hook["entry"]
+        for repo in config["repos"]
+        if repo.get("repo") == "local"
+        for hook in repo["hooks"]
+    }
+    assert "pytest-full" in entries, (
+        "there is no pre-push pytest hook, so nothing local runs the tests "
+        "the `slow` marker removed from the commit tier. Either restore it "
+        "or stop marking tests slow; a marker with no blocking tier behind "
+        "it is an exemption."
+    )
+    assert stages.get("pytest-full") == ["pre-push"], (
+        f"the full-suite hook declares stages {stages.get('pytest-full')!r}; "
+        f"it must be pre-push, or it is back on every commit."
+    )
+    full = entries["pytest-full"]
+    assert "not slow" not in full and "-m" not in full.split(), (
+        f"the pre-push hook runs {full!r}, which SELECTS. It must run the "
+        f"whole suite: it is the only local gate that sees the slow tests."
+    )
+    assert "--no-cov" not in full, (
+        f"the pre-push hook runs {full!r} without coverage, so the 90 "
+        f"percent floor is enforced nowhere locally (REQ-75)."
+    )
+
+
+def test_the_contract_modules_stay_in_the_commit_tier() -> None:
+    """A cheap invariant must not be moved off the gate developers feel.
+
+    The `slow` marker is a routing decision and it is available to any
+    module, which makes it available as a way to make a red commit green.
+    These modules are the ones where that trade is refused: each is under
+    four seconds and each pins something the repository cannot afford to
+    discover at push time.
+    """
+    for relative in _COMMIT_TIER_CONTRACT_MODULES:
+        path = ROOT / relative
+        assert path.is_file(), (
+            f"{relative} is named as a commit-tier contract module but does "
+            f"not exist; either it was renamed, in which case update this "
+            f"list deliberately, or a guard was deleted."
+        )
+        # MODULE-level only, and the distinction is not pedantry: a single
+        # slow test inside a fast module is legitimate and this file is the
+        # example, carrying the aggregate measurement that must not run at
+        # commit time. What the contract forbids is the whole module
+        # leaving the commit tier. An earlier version of this assertion
+        # searched the source for the marker as a substring and failed
+        # against its own text, which is a guard measuring a mention rather
+        # than the carrier.
+        module_marked = re.search(
+            r"^pytestmark\s*=.*\bslow\b", path.read_text(encoding="utf-8"), flags=re.M
+        )
+        assert not module_marked, (
+            f"{relative} sets a module-level `pytestmark` marking it slow, "
+            f"so none of it runs at commit time. It is on the contract list "
+            f"precisely because it is cheap and load-bearing. If it became "
+            f"genuinely slow, that is the finding: make it fast again, or "
+            f"take it off this list deliberately and say why. Marking one "
+            f"test inside it slow is fine and is not what this refuses."
+        )
+
+
+@pytest.mark.slow
+def test_the_commit_tier_subset_is_actually_fast() -> None:
+    """Measure the aggregate, because no per-test rule can see it.
+
+    `tests/conftest.py` bounds each unmarked test at three seconds, which
+    stops one slow test from landing unmarked. It cannot see a thousand
+    fast tests adding up to a slow tier, and that is the shape this budget
+    would actually drift into.
+
+    So this runs the real commit-tier selection in a subprocess and
+    measures it. It is itself marked `slow`, for two reasons: it costs
+    about what the subset costs, and a fast-tier test that runs the fast
+    tier would recurse.
+
+    The budget here is the WALL time of one run against the p95 target of
+    30 seconds. A single sample is not a p95, and this test does not
+    pretend otherwise: it is a ceiling that catches drift, and the p95 is
+    measured deliberately when the tiers change. The margin is generous
+    for that reason.
+    """
+    # `child_env()` strips the COV_CORE_* variables. Without it the nested
+    # run inherits the parent's coverage subprocess hooks, which is how a
+    # spawned pytest has aborted here AFTER every test passed; the whole
+    # suite is under coverage when this test runs, and this is the one
+    # test in the file that spawns pytest rather than a checker.
+    # The argument list is built FIRST so that `env=` sits within a few
+    # lines of `subprocess.run(`. That is not cosmetic:
+    # `test_push_gate.py::test_no_spawn_site_bypasses_child_env` scans a
+    # 14-line window from each spawn site and reported this call as
+    # bypassing the helper when the arguments were inlined, because
+    # `env=child_env()` fell outside the window. The guard was right to be
+    # tight and the call is what moved; widening its window to fit this
+    # code would have loosened the check that caught it.
+    argv = [
+        sys.executable, "-m", "pytest",
+        "-m", "not slow", "-q", "--no-cov", "-p", "no:cacheprovider",
+    ]  # fmt: skip
+    started = time.monotonic()
+    done = subprocess.run(
+        argv, capture_output=True, text=True, cwd=str(ROOT), env=child_env()
+    )
+    elapsed = time.monotonic() - started
+    assert done.returncode == 0, (
+        f"the commit-tier subset does not pass on its own:\n{done.stdout[-3000:]}"
+    )
+    assert elapsed < 60.0, (
+        f"the commit-tier subset took {elapsed:.1f}s in this run, against a "
+        f"p95 target of 30 s and a drift ceiling of 60 s. The subset has "
+        f"grown into the tier it was split out of. Find what got slow "
+        f'(pytest --durations=25 -m "not slow") and mark it or fix it; '
+        f"do not raise this ceiling."
+    )
+
+
 def test_pre_commit_declares_no_global_skip() -> None:
     text = PRE_COMMIT.read_text(encoding="utf-8")
     skipping = sorted(set(re.findall(r"^(exclude|files):", text, flags=re.M)))
@@ -259,7 +461,14 @@ def test_every_module_the_suite_spawns_is_declared_in_the_dev_extra() -> None:
     # shape, so a tool spawned as a console script or through a variable
     # is invisible to it while the floor stays satisfied by the two sites
     # already here. A difference either way is a deliberate edit.
-    assert set(spawned) == {"mypy", "build"}, (
+    # `pytest` joined the set on 2026-07-30 with the tier split: the
+    # aggregate commit-tier measurement in this file spawns the fast subset
+    # in a subprocess, because wall time is the thing it exists to measure
+    # and it cannot measure that from inside the same run. It is the
+    # deliberate edit this assertion's own message asks for, not a
+    # widening: the docstring above already exempted pytest from the
+    # installation half, since whatever ran this file provides it.
+    assert set(spawned) == {"mypy", "build", "pytest"}, (
         f"the spawn-site scan found {spawned}; if a tool was added, declare "
         "it in the [dev] extra and add it here, and if one moved out of the "
         "recognized shape, widen the pattern rather than the exemption"

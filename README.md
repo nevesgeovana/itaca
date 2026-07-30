@@ -106,6 +106,9 @@ milestone ships on PyPI with a Zenodo DOI.
 * `docs/SISTER_PYFLIGHTSTREAM.md`: the co-developed sister library
   (DD-22, DD-23): division of labor, the cross-requirement
   convention, and the shared review process.
+* `RELEASING.md`: how a release is cut, and the one piece of
+  configuration that lives on PyPI rather than in this repository, so no
+  test here can check it (DD-45).
 
 ## Core convictions
 

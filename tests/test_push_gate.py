@@ -34,6 +34,16 @@ import pytest
 from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
 from gate_locator import ledger_env  # one reader of the gate's ledger variable
 
+# MEASURED 108 s on 2026-07-30, and the cost is in SETUP rather than in the
+# assertions: 42 cases each build a scratch git repository and spawn the
+# hook as a subprocess, at 1.1 to 2.5 s apiece.
+#
+# NOT weakened by the marker. This module pins a gate that must not fail
+# open, so it runs at pre-push, where it blocks, and in CI on every pull
+# request. What it stops doing is running 42 subprocess spawns on a commit
+# that touched a docstring.
+pytestmark = pytest.mark.slow
+
 HOOK = Path(__file__).resolve().parents[1] / ".claude" / "hooks" / "role_review_gate.py"
 ATTESTATION = Path(".claude") / ".role_review_attestation.json"
 

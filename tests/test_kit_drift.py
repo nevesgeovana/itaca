@@ -306,6 +306,19 @@ MANIFEST: dict[str, Pin] = {
     "incident-analyst.md": Pin(
         "74030b585008c3ab57b1c9893b5fea00b3b7bbc2bbaca478a6b62d2f9556bd9a", "0.2.10"
     ),
+    # 0.2.11, and it is an ADOPTION rather than a lagging pin moving: this
+    # repository had never vendored this artifact at all, which
+    # `ITC-20260730-2140` recorded as the one row of three that was an
+    # absence and not staleness. It is the isolation mechanism for
+    # REV007-003: one detached worktree per reviewer lens, so a lens never
+    # receives the live tree as cwd. Two recorded failures share that
+    # structural cause, a reviewer running `git restore` in the live tree
+    # and destroying a lane's uncommitted edits, and two Bash-holding
+    # lenses corrupting each other's measurements (`ITC-20260730-0250`).
+    # The declared value agreed with the master body on recomputation.
+    "review_runner.py": Pin(
+        "22c48be54b18c73c80d632d0d178d7b94d6f7321d60824d8695b10c79ac278ca", "0.2.11"
+    ),
     "check_side_effect_guard.py": Pin(
         "ba9007941dcc44887e31d70dc74be8efe409f51a249d2b79398e66c276e9810c", "0.2.2"
     ),
@@ -365,6 +378,7 @@ COMMITTED: list[tuple[str, str]] = [
         ".claude/kit/check_probe_closure_mutations.py",
     ),
     ("review-policy.md", ".claude/kit/review-policy.md"),
+    ("review_runner.py", ".claude/kit/review_runner.py"),
 ]
 
 

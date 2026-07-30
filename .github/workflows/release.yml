@@ -263,6 +263,23 @@ jobs:
             echo "| version | \`$VERSION\` |"
             echo "| gated on | \`$GATED_SHA\` |"
             echo "| tag | \`${{ github.ref_name }}\` |"
+            echo
+            echo "### The publisher this run requires"
+            echo
+            echo "PyPI must carry a trusted publisher for the project"
+            echo "\`itaca\` configured as:"
+            echo
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| owner | \`${{ github.repository_owner }}\` |"
+            echo "| repository | \`${{ github.event.repository.name }}\` |"
+            echo "| workflow | \`release.yml\` |"
+            echo "| environment | \`pypi\` |"
+            echo
+            echo "This job cannot verify that from here: the configuration"
+            echo "lives on PyPI, not in this repository. If the publish step"
+            echo "below fails with \`invalid-publisher\`, that table is what"
+            echo "to check first, and \`RELEASING.md\` carries the rest."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "publishing $ARTIFACT ($VERSION) gated on $GATED_SHA"
       - name: Download the sealed artifact
@@ -276,4 +293,56 @@ jobs:
         # Pinned by commit SHA, with the tag recorded beside it so the pin can
         # be re-derived; `release/v1` is a BRANCH and moves, which is why the
         # previous form pinned nothing at all. No API token is stored here.
+        id: upload
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+      - name: If the token was refused, say what to fix
+        # STEP-level `if:`, never job-level. A job-level condition would
+        # defeat `needs` (a job conditioned on always() runs after its
+        # dependencies FAIL), and tests/test_house_style.py refuses one on
+        # this job for exactly that reason. A step condition changes nothing
+        # about what gated this job, and this step exits 0 without altering
+        # the failed conclusion above.
+        #
+        # WHY IT EXISTS. The configuration this job depends on lives on PyPI
+        # and no file here can enforce it, so the only thing this repository
+        # controls is what a maintainer READS at the moment it is wrong. What
+        # the action prints on its own is `invalid-publisher`, which names
+        # neither the workflow file, nor the environment, nor the decision
+        # that chose them, and the correct fix is one setting on another
+        # website. This step is the three-part error message the rest of this
+        # repository is required to write: the object, the operation, the fix.
+        if: failure() && steps.upload.outcome == 'failure'
+        run: |
+          {
+            echo "## The upload failed. Read this before re-running."
+            echo
+            echo "If the log above says \`invalid-publisher\`, nothing in"
+            echo "this repository is broken and re-running will fail the"
+            echo "same way. PyPI refused the identity token because no"
+            echo "trusted publisher matches this workflow."
+            echo
+            echo "**Fix it on PyPI, not here.** Under Manage project,"
+            echo "Publishing, the \`itaca\` publisher must name:"
+            echo
+            echo "    owner        ${{ github.repository_owner }}"
+            echo "    repository   ${{ github.event.repository.name }}"
+            echo "    workflow     release.yml"
+            echo "    environment  pypi"
+            echo
+            echo "The single most likely cause is a publisher left naming"
+            echo "\`release_gate.yml\`. That was a workaround for a bind"
+            echo "that has since been dissolved, it cannot work now, and it"
+            echo "is not a fallback. DD-45 records why; RELEASING.md carries"
+            echo "the procedure."
+            echo
+            echo "A 400 mentioning a Build Config URI is the SAME"
+            echo "misconfiguration seen from the attestation side, not a"
+            echo "separate problem: PyPI matches the publisher against two"
+            echo "claims and a publisher naming the reusable workflow"
+            echo "satisfies one of them."
+            echo
+            echo "Nothing was published. The gates all passed, so once the"
+            echo "publisher is corrected, re-run this job; the artifact it"
+            echo "downloads is the one this run already sealed."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "upload failed; see the run summary for the publisher configuration"

@@ -120,10 +120,19 @@ _UNREACHED_AT_LANE_CLOSE: frozenset[str] = frozenset(
         "REQ-104",
         "REQ-108",
         # Implemented in CONFIGURATION, which this walk cannot see:
-        # REQ-75 is --cov-fail-under=90, REQ-93 is the (absent)
-        # commitlint job, REQ-94 the changelog rule.
+        # REQ-93 is the (absent) commitlint job, REQ-94 the changelog rule.
+        #
+        # REQ-75, the 90 percent coverage floor, LEFT this set on
+        # 2026-07-30 and the ratchet is what noticed. It was here because
+        # `--cov-fail-under=90` lived only in `addopts`, where no test
+        # could see it. The tier split gave it a carrier: the commit tier
+        # runs `--no-cov` deliberately, so the floor is enforced by the
+        # pre-push tier alone, and
+        # `test_tooling_config.py::test_the_push_tier_runs_the_whole_suite_and_blocks`
+        # now asserts that hook does NOT pass `--no-cov`. That is a real
+        # check of the requirement rather than a mention of it, which is
+        # exactly the line this file draws everywhere else.
         "REQ-09",
-        "REQ-75",
         "REQ-87",
         "REQ-93",
         "REQ-94",

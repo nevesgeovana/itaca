@@ -16,11 +16,35 @@ template is documented in `ROLE_TEMPLATE.md` next to this file.
 
 ## 1. Resolve the work item's diff
 
-`$ARGUMENTS` may be a git range (`main..HEAD`, `HEAD~2..`), `staged`,
-or `last-commit`. Default when empty: the uncommitted changes
-(staged plus unstaged) if any exist, else the last commit. Produce
-the file list and keep the item's intent in one sentence; the
-reviewers receive both and read the repository themselves.
+**THE WORK MUST BE COMMITTED BEFORE THIS SKILL RUNS.** Review happens on
+a committed range, never on a dirty tree. If you have uncommitted work,
+commit it first; when the findings land, `git commit --amend` or a
+`--fixup` on top is how you fold the fixes in. That pushes toward
+smaller and more frequent commits, which is the direction this
+workspace already wants.
+
+This changed on 2026-07-30 when the isolated runner was installed (step
+3), and the reason is written here because a rule whose reason is
+missing gets reverted by the next person who finds it annoying:
+
+1. **The rest of the system already assumes committed.** The push gate
+   reads the unpushed range, and `write_attestation.py` has refused on a
+   dirty tree since kit 0.2.9. Dirty-tree review was the outlier here,
+   not the norm.
+2. **It does not reduce the incident that motivated the isolation, it
+   REMOVES it.** A reviewer ran `git restore` in the live tree and
+   destroyed a lane's edits; those edits were uncommitted. On a detached
+   worktree at a ref there is nothing uncommitted left to destroy.
+3. **It is affordable only because the commit tier is fast.** Committing
+   before review is real friction at a five-minute commit gate and
+   nothing at a thirty-second one. The two shipped together, deliberately.
+
+`$ARGUMENTS` may be a git range (`main..HEAD`, `HEAD~2..`) or
+`last-commit`. Default when empty: the unpushed range, `git rev-list
+HEAD --not --remotes`, which is exactly what the next push would send
+and therefore what the push gate will demand an attestation for.
+Produce the file list and keep the item's intent in one sentence; the
+reviewers receive both, and each reads its own worktree.
 
 ## 2. Decide the applicable passes
 
@@ -38,10 +62,79 @@ pass applies, it applies.
 
 ## 3. Run the passes
 
-Spawn every applicable reviewer in parallel (one Agent call each),
-passing the git range, the file list, and the intent sentence. Do
-not summarize the diff for them beyond that; their charters tell
-them what to read. Wait for all passes before acting on any finding.
+**Open one isolated worktree per lens FIRST.** A reviewer never receives
+the live tree as its working directory:
+
+```
+python .claude/kit/review_runner.py open . <lens> [<lens> ...]
+```
+
+It prints one `lens<TAB>path` line per worktree. Each is a DETACHED
+worktree of the reviewed ref carrying `RR_DIFF.patch`, `RR_PATHS.txt`
+and an empty `RR_FINDINGS.md`. Give each reviewer ITS OWN path as the
+directory to work in, and tell it to read the diff and paths from those
+two files. Pass `--base <rev>` when the range is not the unpushed one.
+
+This is `REV007-003`, and it answers two recorded failures with one
+structural cause, reviewers executing inside a tree someone else is
+mutating: a lens ran `git restore` in the live tree and destroyed a
+lane's edits, and two Bash-holding lenses shared one worktree and
+corrupted each other's measurements (`ITC-20260730-0250`). Until this
+was vendored, the charters' prohibition paragraphs were the only
+control, and a prohibition is not a mechanism.
+
+Then spawn every applicable reviewer in parallel (one Agent call each),
+passing its worktree path, the git range, and the intent sentence. Do
+not summarize the diff for them beyond that; their charters tell them
+what to read. Wait for all passes before acting on any finding.
+
+Close the worktrees when every pass has reported, and only then:
+
+```
+python .claude/kit/review_runner.py close .
+```
+
+`close` collects each `RR_FINDINGS.md` and removes the worktrees. A
+crashed run deliberately leaves them on disk for inspection, and a later
+`close` still finds them, so never remove one by hand.
+
+The five gated charters pin `model: opus` and `effort: low` in their
+own frontmatter (author decision 11, BRF-064, installed 2026-07-30),
+so you do not pass either on the Agent call and must not override
+them. The reason is independence: without the pin a reviewer inherits
+the IMPLEMENTING session's model, so a lane running a weaker model
+reviews its own work with a weaker reviewer, exactly when that matters
+most. `tests/test_house_style.py` pins it in both directions;
+`incident-analyst` is deliberately unpinned here because it is a
+kit-derived body whose pin arrives by re-vendor.
+
+**The falsifiable safeguard, recorded and deliberately not built.** If
+the count or quality of findings per review drops after the effort
+pin, the RELEASE tier returns to `effort: high` by the author's
+decision. The falsifier is the record already being written: findings
+per review are countable in the review rounds and attestations, so
+"did low reduce what reviews catch" is a measurable claim rather than
+an impression. Do not build tooling for it; the claim needs only the
+numbers already there.
+
+The five gated charters pin `model: opus` and `effort: low` in their
+own frontmatter (author decision 11, BRF-064, installed 2026-07-30),
+so you do not pass either on the Agent call and must not override
+them. The reason is independence: without the pin a reviewer inherits
+the IMPLEMENTING session's model, so a lane running a weaker model
+reviews its own work with a weaker reviewer, exactly when that matters
+most. `tests/test_house_style.py` pins it in both directions;
+`incident-analyst` is deliberately unpinned here because it is a
+kit-derived body whose pin arrives by re-vendor.
+
+**The falsifiable safeguard, recorded and deliberately not built.** If
+the count or quality of findings per review drops after the effort
+pin, the RELEASE tier returns to `effort: high` by the author's
+decision. The falsifier is the record already being written: findings
+per review are countable in the review rounds and attestations, so
+"did low reduce what reviews catch" is a measurable claim rather than
+an impression. Do not build tooling for it; the claim needs only the
+numbers already there.
 
 ## 4. Update or fix, never leave for later
 

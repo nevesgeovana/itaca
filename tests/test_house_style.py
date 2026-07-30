@@ -262,6 +262,87 @@ def _charter_tools(text: str) -> list[str]:
     return []
 
 
+def _charter_field(text: str, key: str) -> str | None:
+    """One scalar frontmatter field of an agent charter, or None."""
+    for line in text.split("---", 2)[1].splitlines():
+        if line.startswith(f"{key}:"):
+            return line[len(key) + 1 :].strip()
+    return None
+
+
+# The five GATED reviewer seats, named rather than globbed. A glob would
+# make this guard agree with whatever is on disk, which is the opposite of
+# pinning: deleting a charter would satisfy it.
+_GATED_REVIEWERS = (
+    "architect-reviewer",
+    "qa-engineer",
+    "vv-engineer",
+    "tech-writer",
+    "api-designer",
+)
+# Kit-derived, and therefore deliberately NOT pinned here. Its body is tied
+# byte for byte to the stamped of-record copy under `.claude/kit` by
+# `tests/test_kit_drift.py`, so adding frontmatter to it by hand would
+# redden that test. Its pin lands in the kit master and arrives by
+# re-vendor, which is the same rule that sent five other kit-body defects
+# upward rather than into a local edit.
+_KIT_DERIVED_CHARTER = "incident-analyst"
+
+
+def test_the_gated_reviewers_pin_their_model_and_effort() -> None:
+    """Author decision 11 (BRF-064, 2026-07-30), installed and falsifiable.
+
+    WHY THE PIN EXISTS: independence. Without it a reviewer inherits the
+    IMPLEMENTING session's model, so the review follows whatever the
+    session happened to be running, and a lane on a weaker model reviews
+    its own work with a weaker reviewer exactly when that matters most.
+
+    WHY IT IS A TEST: this repository holds that a rule with no guard is
+    documentation. The decision was taken and documented on 2026-07-30 and
+    was then described to a lane as already installed here when no charter
+    carried it (`ITC-20260730-2145`). A frontmatter key is deleted by
+    accident more easily than prose is, and nothing else would notice.
+
+    BOTH DIRECTIONS ARE PINNED, and the second is the load-bearing one:
+    `incident-analyst` must NOT carry the pin locally, because it is a
+    kit-derived body whose runtime copy must match its stamped of-record
+    copy byte for byte. A well-meant "you missed one" edit reddens the
+    drift test with a confusing message; this one says why first.
+
+    NOT PINNED HERE: the effort VALUE as a permanent choice. The author's
+    falsifiable safeguard is that if findings per review drop after the
+    effort pin, the RELEASE tier returns to `effort: high` by her decision.
+    That is a measurement against the counts already written into review
+    records, not a rule this file should freeze. If the value moves by her
+    decision, move it here too; the guard exists so the move is deliberate.
+    """
+    agents = _ROOT / ".claude" / "agents"
+    for name in _GATED_REVIEWERS:
+        path = agents / f"{name}.md"
+        assert path.is_file(), (
+            f"the gated reviewer charter {path} is missing, so the "
+            f"role-review skill cannot run that pass at all."
+        )
+        text = path.read_text(encoding="utf-8")
+        for key, want in (("model", "opus"), ("effort", "low")):
+            got = _charter_field(text, key)
+            assert got == want, (
+                f"{path.name} declares {key}: {got!r}, not {want!r}. Author "
+                f"decision 11 (BRF-064) pins the five gated reviewers so a "
+                f"review does not inherit the implementing session's model. "
+                f"If she moved the value, move it in this guard too."
+            )
+    kit_charter = (agents / f"{_KIT_DERIVED_CHARTER}.md").read_text(encoding="utf-8")
+    for key in ("model", "effort"):
+        assert _charter_field(kit_charter, key) is None, (
+            f"{_KIT_DERIVED_CHARTER}.md carries a {key}: field. That charter "
+            f"is a kit-derived body and its runtime copy must match the "
+            f"stamped of-record copy under .claude/kit byte for byte, so a "
+            f"hand-added field here reddens tests/test_kit_drift.py. Its pin "
+            f"belongs in the kit master and arrives by re-vendor."
+        )
+
+
 def test_every_bash_holding_charter_carries_the_git_prohibition() -> None:
     """Bind the capability to the restriction, instead of trusting prose.
 
@@ -977,6 +1058,112 @@ def test_a_binary_payload_is_skipped_and_the_limit_is_deliberate() -> None:
     assert identifiers.offenders([("itaca/io/sample.txt", prose)])
     assert not identifiers.offenders(
         [("itaca/io/sample.itc", b"PK\x03\x04\x00" + prose)]
+    )
+
+
+def test_the_release_runbook_matches_the_workflow_it_documents() -> None:
+    """The runbook must not drift from the path it tells a maintainer to use.
+
+    `RELEASING.md` exists because the one thing that can break a release is
+    the one thing no test can reach: the trusted publisher configured on
+    PyPI. A reviewer put it plainly, that the failure a maintainer meets is
+    `invalid-publisher`, raised by a third-party action, naming neither the
+    workflow file nor the environment nor the decision that chose them.
+
+    A runbook is prose, and prose that disagrees with the workflow is worse
+    than none: it sends someone to configure the wrong thing with
+    confidence. So the two values a reader would act on are read from the
+    workflow and required to appear in the document, rather than being
+    trusted to have been copied correctly.
+
+    Deliberately NOT checked here, because it is not checkable from this
+    repository at all: whether PyPI actually carries that publisher. That
+    is why the publish job prints the expected configuration into every run
+    summary and prints a fix-it block when the upload is refused. This test
+    covers the document; those steps cover the moment.
+    """
+    workflows = _ROOT / ".github" / "workflows"
+    release = yaml.safe_load((workflows / "release.yml").read_text(encoding="utf-8"))
+    runbook_path = _ROOT / "RELEASING.md"
+    assert runbook_path.is_file(), (
+        "RELEASING.md is missing. It is the only place the PyPI publisher "
+        "configuration is written down as standing state, and no test can "
+        "reach that configuration; deleting the document removes the only "
+        "route a maintainer has to it."
+    )
+    runbook = runbook_path.read_text(encoding="utf-8")
+
+    publishing = [
+        (name, job)
+        for name, job in release["jobs"].items()
+        if any(
+            "gh-action-pypi-publish" in str(step.get("uses", ""))
+            for step in job.get("steps") or []
+        )
+    ]
+    assert publishing, "release.yml declares no publishing job to document"
+    for name, job in publishing:
+        environment = job.get("environment")
+        env_name = (
+            environment.get("name") if isinstance(environment, dict) else environment
+        )
+        assert env_name, (
+            f"release.yml's publishing job {name!r} declares no environment "
+            f"name, so the runbook has nothing to document and the OIDC "
+            f"claim PyPI matches is incomplete."
+        )
+        assert f"`{env_name}`" in runbook, (
+            f"RELEASING.md never names the environment {env_name!r} that "
+            f"release.yml's {name!r} job actually declares. A maintainer "
+            f"following the runbook would configure the publisher with the "
+            f"wrong environment and meet `invalid-publisher` anyway."
+        )
+
+    # The workflow FILE name is half of the bind DD-45 records, and naming
+    # the wrong one is the single most likely misconfiguration, since it is
+    # what v0.2.0's abandoned workaround used.
+    assert "`release.yml`" in runbook, (
+        "RELEASING.md never names `release.yml` as the workflow the "
+        "publisher must be configured with. That is the value the v0.2.0 "
+        "workaround got wrong, and the reason this document exists."
+    )
+    assert "invalid-publisher" in runbook, (
+        "RELEASING.md does not mention `invalid-publisher`, which is the "
+        "exact string a maintainer will search for when the upload is "
+        "refused. A runbook that cannot be found by the error it explains "
+        "is one hop too far away."
+    )
+
+    # And the failure path in the workflow must route to the document. Two
+    # steps legitimately name both strings and they play different roles:
+    # one states the expected configuration BEFORE uploading and runs
+    # always, the other fires only when the upload was refused. What must
+    # exist is at least one of the SECOND kind, so requiring the condition
+    # of every matching step is wrong and was how this assertion first went
+    # in; it failed against the pre-publish step, which correctly has no
+    # condition at all.
+    publish_steps = [step for _, job in publishing for step in job.get("steps") or []]
+    diagnostics = [
+        step
+        for step in publish_steps
+        if "RELEASING.md" in str(step.get("run", ""))
+        and "invalid-publisher" in str(step.get("run", ""))
+    ]
+    assert diagnostics, (
+        "release.yml's publishing job has no step whose output names both "
+        "`invalid-publisher` and RELEASING.md. Without one, the only thing "
+        "a maintainer sees on a refused upload is a third-party action's "
+        "message, which names neither the workflow, the environment, nor "
+        "where the procedure is written."
+    )
+    on_failure = [
+        step for step in diagnostics if "failure()" in str(step.get("if", ""))
+    ]
+    assert on_failure, (
+        "release.yml names `invalid-publisher` and RELEASING.md, but in no "
+        "step conditioned on failure(). The fix-it block must fire when the "
+        "upload is REFUSED; a message that only prints on the happy path is "
+        "not there at the moment a maintainer needs it."
     )
 
 

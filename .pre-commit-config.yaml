@@ -1,5 +1,33 @@
-# Local CI mirror (REQ-96): ruff check, ruff format, mypy, fast pytest.
-# Install once with: pre-commit install
+# Local CI mirror (REQ-96), in TIERS. Install BOTH hook types once:
+#
+#     pre-commit install
+#     pre-commit install --hook-type pre-push
+#
+# The second line is not optional. Without it the commit tier runs and the
+# blocking tier does not exist, which would be strictly worse than what
+# this file replaced: the full suite would then run nowhere locally.
+#
+# | tier     | when         | runs                               | budget         |
+# |----------|--------------|------------------------------------|----------------|
+# | commit   | every commit | ruff, mypy, the fast test subset   | p95 under 30 s |
+# | pre-push | every push   | the full suite WITH coverage       | minutes, once  |
+# | PR       | CI           | the matrix, three interpreters     | CI's problem   |
+# | release  | tag          | artifact, examples, the full panel | once           |
+#
+# WHAT MOVED, AND WHAT DID NOT. Nothing stopped being mandatory. The full
+# suite with coverage still blocks every push and still runs on every pull
+# request; it no longer runs on every COMMIT. Whether the full suite stops
+# blocking anywhere is the author's gate-policy sitting, not this file's to
+# decide (BRF-063).
+#
+# WHY. The hook below was named `pytest-fast` and ran `pytest -x -q
+# --no-cov` with `always_run`, which is the entire suite plus a full
+# `mypy --strict`, on every commit. At 49 commits in three days that is
+# hours per day paid at the wrong gate (BRF-060, BRF-063). Measured here on
+# 2026-07-30: two modules were essentially all of it, `test_release_integrity`
+# at 539 s and `test_push_gate` at 108 s, against 0.7 to 3.9 s for every
+# other module. Both are process-level, spawning a checker or a hook per
+# case.
 #
 # Keep the ruff rev below equal to the ruff pin in the pyproject [dev]
 # extra; the bump procedure is documented there.
@@ -24,9 +52,33 @@ repos:
         language: system
         always_run: true
         pass_filenames: false
+        stages: [pre-commit]
+      # The COMMIT tier. `-m "not slow"` is what buys the budget; `-x` buys
+      # latency on a failing run only and must never be mistaken for the
+      # mechanism. The subset FAILS the commit, it does not advise: a fast
+      # tier that only warns is the same class as a guard reporting green.
       - id: pytest-fast
-        name: pytest -x (fast, no coverage; CI enforces the gate)
-        entry: pytest -x -q --no-cov
+        name: pytest (fast subset, no coverage; pre-push runs the rest)
+        entry: pytest -m "not slow" -x -q --no-cov
         language: system
         always_run: true
         pass_filenames: false
+        stages: [pre-commit]
+      # The BLOCKING tier: the whole suite, coverage floor included, once
+      # per push rather than once per commit. Everything the `slow` marker
+      # moved out of the commit tier lands here, which is what makes the
+      # marker a statement about WHERE a test runs and never about whether.
+      - id: pytest-full
+        name: pytest (FULL suite with coverage; blocks the push)
+        entry: pytest
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [pre-push]
+      - id: mypy-full
+        name: mypy --strict (full; blocks the push)
+        entry: mypy
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [pre-push]
