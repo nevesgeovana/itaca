@@ -242,6 +242,19 @@ Whether an incident blocks is Geovana's call, and while one marked
 blocking is open the gate denies. No new work ships on top of a defect
 whose structural cause is still unfixed.
 
+**Two names for that ledger exist right now, and the divergence is
+declared rather than tidied away.** Author decision LEDGER-ENVVAR made
+`COORD_INCIDENT_LEDGER` the single name, and kit 0.2.8 put it into the
+`incident-analyst` charter, which this repository vendors and may not
+edit. Every mechanism here still reads `ITACA_INCIDENT_LEDGER`: the push
+gate (vendored at kit 0.2.6), the locator table above, the plan skill and
+three test modules. So set BOTH until the gate adopts the rename; setting
+only one leaves either the analyst or the gate pointed at nothing.
+`tests/test_house_style.py` pins the divergence in both directions, so the
+day a gate reading the new name is vendored, that test fails and forces
+this file and the three modules to move with it. The gate half belongs to
+the kit and is registered as `ITC-20260730-0215`.
+
 ## What Claude should do here
 
 * Follow the SRS requirement by requirement; cite REQ, DD, and OQ ids in

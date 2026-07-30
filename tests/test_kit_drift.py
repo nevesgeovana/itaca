@@ -47,7 +47,14 @@ expected and correct, and the pins below are per file:
   the label is already cited by name in plan entry
   ``ITC-20260728-2010`` and a label whose contents change after it is
   cited makes the citation say something it no longer means.
-- 0.2.4: ``incident-analyst.md``, from the privacy promotion.
+- 0.2.10: ``incident-analyst.md``, carrying TWO changes at once. 0.2.8
+  renamed the ledger variable the charter names to
+  ``COORD_INCIDENT_LEDGER`` (author decision LEDGER-ENVVAR), and 0.2.10
+  added the section forbidding that seat from using Bash to mutate git
+  state. Three artifacts move together for this one entry: the stamped
+  of-record copy, the runtime charter tied to it by
+  ``test_the_runtime_agent_body_matches_the_of_record_copy``, and this
+  pin.
 - 0.2.2: both side-effect-guard artifacts, and both kit plan-checker
   artifacts. The plan-checker pair is a KNOWN LAG: the kit is at 0.2.3
   for those two (adoption-review hardening), and itaca still pins and
@@ -194,8 +201,27 @@ MANIFEST: dict[str, Pin] = {
     "check_version_identity_mutations.py": Pin(
         "49f0dd3c2dd3ef257761ecbac32c5c0d3f56937f5d735080040843f6aeebf58a", "0.2.6"
     ),
+    # 0.2.10, and the jump from 0.2.4 carries TWO changes, not one: 0.2.8
+    # renamed the ledger variable the charter tells the analyst to read to
+    # COORD_INCIDENT_LEDGER (author decision LEDGER-ENVVAR), and 0.2.10 adds
+    # the section forbidding that seat from using Bash to mutate git state
+    # (INC-20260729-2355-itaca, ITC-20260730-0180).
+    #
+    # RECOMPUTED from the master body, not copied from the master's declared
+    # value, which is STALE for the third time in this manifest: the master's
+    # header declares e093721f... beside a body that hashes to the value
+    # below, and e093721f... is not the current body NOR the body with the
+    # 0.2.10 section removed, so it is left over from some earlier edit. That
+    # is a defect in the master's header, routed to the coordination level as
+    # ITC-20260730-0210, and the vendored copy's own header carries the
+    # recomputed value because the stamped-copy check asserts header equals
+    # pin. The `write_attestation.py` entry above records the same class one
+    # artifact over, and the recompute-not-copy rule the 0.2.7 entries state
+    # is what caught it here. Cross-check that the recomputation is right and
+    # not the mismatch: the same function reproduces the 0.2.4 pin exactly
+    # from the body this commit replaces.
     "incident-analyst.md": Pin(
-        "891fa0bce811aade6fe58494d99db2f048987871cf5487fda77d9ff180ef7beb", "0.2.4"
+        "74030b585008c3ab57b1c9893b5fea00b3b7bbc2bbaca478a6b62d2f9556bd9a", "0.2.10"
     ),
     "check_side_effect_guard.py": Pin(
         "ba9007941dcc44887e31d70dc74be8efe409f51a249d2b79398e66c276e9810c", "0.2.2"

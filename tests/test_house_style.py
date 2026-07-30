@@ -261,6 +261,60 @@ def test_every_bash_holding_charter_carries_the_git_prohibition() -> None:
     )
 
 
+def test_the_ledger_variable_divergence_is_the_one_this_repository_declares() -> None:
+    """Kit 0.2.10 renamed the variable in the charter and not in the gate.
+
+    Author decision LEDGER-ENVVAR made ``COORD_INCIDENT_LEDGER`` the single
+    name for the shared incident ledger, and kit 0.2.8 put it into the
+    ``incident-analyst`` charter. The push gate this repository vendors is at
+    0.2.6 and still reads ``ITACA_INCIDENT_LEDGER``, which is also the name
+    ``CLAUDE.md``'s locator table declares and the name three test modules
+    resolve. So adopting 0.2.10 left one artifact naming a variable no
+    mechanism here reads.
+
+    On this machine both are set to the same path, which is exactly why this
+    needs a guard rather than a note: the divergence is invisible until a
+    clone sets one of the two, and then either the analyst is sent to an unset
+    path or the gate is. Prose in ``CLAUDE.md`` is not a guard by this
+    repository's own rule.
+
+    The assertion pins the divergence AS IT STANDS, in both directions, so the
+    day the kit ships a gate reading the new name this test fails and forces
+    ``CLAUDE.md``, the locator table and the three modules to move with it.
+    Registered as ``ITC-20260730-0215``; the gate half is the kit's.
+    """
+    charter = (_ROOT / ".claude" / "agents" / "incident-analyst.md").read_text(
+        encoding="utf-8"
+    )
+    gate = (_ROOT / ".claude" / "hooks" / "role_review_gate.py").read_text(
+        encoding="utf-8"
+    )
+    claude_md = (_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+
+    assert "COORD_INCIDENT_LEDGER" in charter, (
+        "the vendored incident-analyst charter no longer names "
+        "COORD_INCIDENT_LEDGER. If the kit reverted the LEDGER-ENVVAR rename, "
+        "or the charter was hand-edited, reconcile this test with it; do not "
+        "edit the vendored copy."
+    )
+    assert 'LEDGER_ENV = "ITACA_INCIDENT_LEDGER"' in gate, (
+        "the vendored push gate no longer reads ITACA_INCIDENT_LEDGER. If the "
+        "kit adopted the LEDGER-ENVVAR rename in the gate, the divergence this "
+        "test pins is OVER: rename the variable in CLAUDE.md's locator table, "
+        "in the Incidents section, in .claude/skills/plan/SKILL.md, and in "
+        "tests/test_kit_drift.py, tests/test_plan_validator.py and "
+        "tests/test_push_gate.py, then update this test (ITC-20260730-0215)."
+    )
+    assert "COORD_INCIDENT_LEDGER" in claude_md, (
+        "CLAUDE.md does not mention COORD_INCIDENT_LEDGER, so a reader "
+        "following the incident-analyst charter would configure a variable no "
+        "mechanism in this repository reads, and a reader following CLAUDE.md "
+        "would leave the charter's variable unset. While the two names differ, "
+        "this repository must say so where the locator rule lives "
+        "(ITC-20260730-0215)."
+    )
+
+
 def test_both_workflows_build_the_srs_and_check_the_log() -> None:
     """Pin the build itself, so deleting it cannot reopen the P0 in silence.
 
