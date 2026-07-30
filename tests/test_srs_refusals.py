@@ -778,36 +778,35 @@ def test_every_breaking_change_in_the_release_notes_carries_the_marker() -> None
         "section could not be delimited and this check would inspect the "
         "wrong text"
     )
-    # The newest RELEASED section, skipping an `[Unreleased]` heading that
-    # carries no bullets. Reading `headings[0]` unconditionally was correct
-    # while the release notes lived under `[Unreleased]`, and became wrong
-    # the moment v0.2.0 got its own dated heading and a fresh empty
-    # `[Unreleased]` opened above it: the guard then inspected three lines
-    # of "Nothing yet." and reported that no break was marked. A guard that
-    # fails because the file became more correct is a guard reading the
-    # wrong window.
-    start = next(
-        (
-            index
-            for position, index in enumerate(headings)
-            if any(
-                line.startswith("* ")
-                for line in lines[index : headings[position + 1]]
-                if position + 1 < len(headings)
-            )
-        ),
-        headings[0],
+    # The newest RELEASED section. Selecting by heading text rather than by
+    # "has bullets", which was the first repair and had two defects a
+    # reviewer measured. It went RED on the first non-breaking bullet added
+    # to `[Unreleased]` after a release, because the vacuity floor below
+    # would then demand a break in a section that legitimately has none, and
+    # it accused the author of an unmarked break. And its own defensive
+    # `position + 1 < len(headings)` guard was inert: the slice is the
+    # OUTERMOST iterable of the generator expression, so it is evaluated
+    # before any filter, and the last heading raised IndexError instead of
+    # taking the intended fallback.
+    released = [
+        index for index in headings if not lines[index].startswith("## [Unreleased]")
+    ]
+    assert released, (
+        "CHANGELOG.md has no released version section; REQ-92's obligation is "
+        "about a release, so there is nothing to check"
     )
+    start = released[0]
     following = [index for index in headings if index > start]
-    assert following, (
-        f"CHANGELOG.md's newest section with bullets starts at line "
-        f"{start + 1} and nothing follows it, so the section cannot be "
-        f"delimited"
-    )
-    section = lines[start : following[0]]
-    assert any("**BREAKING" in line for line in section), (
-        "no breaking change is marked in the release notes; this check "
-        "would pass vacuously on a section it failed to find"
+    end = following[0] if following else len(lines)
+    section = lines[start:end]
+    # The vacuity floor is a WHOLE-FILE search, not a requirement on this
+    # section. A release with no breaking change is legitimate; a file with
+    # no marker at all means the marker convention is gone and every
+    # assertion below would pass by finding nothing.
+    assert any("**BREAKING" in line for line in lines), (
+        "CHANGELOG.md carries no **BREAKING marker anywhere, so the "
+        "convention REQ-92 names is not in use and this check would pass "
+        "vacuously"
     )
     unmarked = [
         f"{index + 1}: {line.strip()[:70]}"

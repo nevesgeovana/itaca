@@ -52,11 +52,27 @@ def _weight_matrix(
         return nearest_matrix(x, targets)
     if method == "cubic":
         return cubic_matrix(x, targets)
-    # Only 'polyfit' reaches here, and `_validate_method` has already
-    # refused a missing deg for it and refused a supplied deg for every
-    # other method (REQ-105), so this is the invariant rather than a check.
+    # Only 'polyfit' reaches here. `_validate_method` has refused a
+    # missing deg for it, refused a supplied deg for every other method
+    # (REQ-105), and refused a non-integer one, so an int is what arrives.
+    # The assert states that and does not establish it: the refusals do,
+    # and `python -O` strips this line, so a claim it were load-bearing
+    # would be false.
     assert isinstance(deg, int), deg
     return polyfit_matrix(x, targets, deg)
+
+
+def _replay(base: dict[str, Any], deg: int | NoDefault) -> dict[str, Any]:
+    """Build the replay kwargs, carrying ``deg`` only when consumed.
+
+    One helper for both return paths. The mapping branch and the
+    axis-translation branch each built this dict inline, and a fix applied
+    to one left the other recording the sentinel, which made an
+    axis-translated frame unsaveable: ``db.save`` raised a bare
+    ``TypeError`` out of the JSON encoder. Two expressions of one rule is
+    how that happens, so there is one.
+    """
+    return base if deg is no_default else {**base, "deg": deg}
 
 
 def _validate_method(db: VarFrame, method: str, deg: int | NoDefault, n: int) -> None:
@@ -357,9 +373,18 @@ def interpolate(
             or dict(new_correlation.pairs) != dict(db.correlation.pairs)
         ):
             note += ", axis_correlation=dropped"
+        # Record what the computation CONSUMED, exactly as the mapping
+        # branch below does. Emitting `deg` unconditionally here put the
+        # sentinel into History and into the replay kwargs, so an
+        # axis-translated frame could not be saved at all: `db.save`
+        # raised a bare TypeError out of the JSON encoder and
+        # `to_pipeline().save` raised naming an argument nobody passed.
+        # The mapping branch was fixed and this one was not, which is the
+        # same defect the fix was for, one branch over.
+        consumed = "" if deg is no_default else f", deg={deg}"
         operation = (
             f"interpolate(axisTranslation={{'from': '{from_dim}', "
-            f"'to': '{to_var}'}}, method='{method}', deg={deg}, "
+            f"'to': '{to_var}'}}, method='{method}'{consumed}, "
             f"override={override}{note})"
         )
         return rebuild(
@@ -374,13 +399,15 @@ def interpolate(
             # The explicit target grid must be recorded too: without it
             # replay silently falls back to the derived default grid and
             # reproduces a different frame.
-            replay_kwargs={
-                "axisTranslation": axis_translation,
-                "mapping": (dict(mapping) if mapping else None),
-                "method": method,
-                "deg": deg,
-                "override": override,
-            },
+            replay_kwargs=_replay(
+                {
+                    "axisTranslation": axis_translation,
+                    "mapping": (dict(mapping) if mapping else None),
+                    "method": method,
+                    "override": override,
+                },
+                deg,
+            ),
         )
 
     if not mapping:
@@ -421,13 +448,6 @@ def interpolate(
     operation = (
         f"interpolate({detail}, method='{method}'{consumed}, override={override})"
     )
-    replay: dict[str, Any] = {
-        "mapping": detail,
-        "method": method,
-        "override": override,
-    }
-    if deg is not no_default:
-        replay["deg"] = deg
     return rebuild(
         db,
         content,
@@ -435,5 +455,7 @@ def interpolate(
         comment=comment,
         history=history,
         call="interpolate",
-        replay_kwargs=replay,
+        replay_kwargs=_replay(
+            {"mapping": detail, "method": method, "override": override}, deg
+        ),
     )

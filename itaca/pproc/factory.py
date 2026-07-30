@@ -66,7 +66,9 @@ def processor(
     >>> processor = itc.processor("balance_off.itceq", auto_sort=True)  # doctest: +SKIP
     >>> processed = processor(db, comment="power-off sweep")  # doctest: +SKIP
     >>> config = {"S_ref": 0.25}
-    >>> rescaled = itc.processor("balance_off.itceq", config)  # doctest: +SKIP
+    >>> rescaled = itc.processor(
+    ...     "balance_off.itceq", config=config
+    ... )  # doctest: +SKIP
     """
     if isinstance(name_or_path, Path) or str(name_or_path).endswith(SUFFIX):
         spec = parse_itceq(name_or_path, auto_sort=auto_sort)

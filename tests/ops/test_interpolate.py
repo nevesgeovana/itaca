@@ -15,6 +15,7 @@ HistoryFrame gets +1 inside the convex hull of the original axis and
 
 import dataclasses
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -435,6 +436,86 @@ class TestKeywordOnlyOptions:
         # consequence of the rule and not of the recording being dropped.
         fitted = self._ramp().interpolate({"alpha": [0.5]}, method="polyfit", deg=1)
         assert "deg=1" in fitted.history[-1].operation
+
+    def test_req105_both_selectors_record_a_degree_the_same_way(self) -> None:
+        """THE BLOCKER, and the reason it is parametrized over the selector.
+
+        `interpolate` has two return paths, the mapping selector and the
+        `axisTranslation` selector, and each built its own History string and
+        its own `replay_kwargs` dict inline. The REQ-105 fix landed on the
+        mapping one. With `deg` newly defaulting to the sentinel, the other
+        recorded `deg=<no_default>`, and the consequences were not cosmetic:
+
+            db.save(path)                   TypeError, from the stdlib JSON
+                                            encoder, outside ITACAError
+            to_pipeline().save(path)        DataError naming an argument the
+                                            caller never passed
+
+        Both worked before the sentinel default, so the fix broke a public
+        export path for a REQ-25 capability. Two reviewer lenses found it
+        independently and neither the suite nor the gates saw it, because
+        nothing asserted provenance content or a round trip for that
+        selector.
+
+        Both paths now go through one `_replay` helper, and this test is what
+        keeps them answering the same way.
+        """
+        ramp = self._ramp()
+        runs = {
+            "mapping": ramp.interpolate({"alpha": [0.5]}, method="linear"),
+            "axisTranslation": ramp.interpolate(
+                axisTranslation={"from": "alpha", "to": "y"}
+            ),
+        }
+        for selector, out in runs.items():
+            entry = out.history[-1]
+            assert "deg=" not in entry.operation, (
+                f"the {selector} selector recorded a degree for a method that "
+                f"consumes none: {entry.operation!r}"
+            )
+            assert entry.step is not None and "deg" not in entry.step.kwargs, (
+                f"the {selector} selector put a degree into the replay kwargs: "
+                f"{entry.step.kwargs if entry.step else None!r}"
+            )
+
+    def test_req105_an_axis_translated_frame_still_round_trips(
+        self, tmp_path: Path
+    ) -> None:
+        """The consequence half of the blocker, asserted end to end.
+
+        A provenance record is only worth what can be done with it, and the
+        sentinel in `replay_kwargs` made both public export paths raise. This
+        asserts the paths rather than the record, so a future value that is
+        not JSON-native fails here whatever put it there.
+        """
+        out = self._ramp().interpolate(axisTranslation={"from": "alpha", "to": "y"})
+        archive = tmp_path / "translated.itc"
+        out.save(str(archive))
+        reopened = itc.open(str(archive))
+        assert reopened.state_hash == out.state_hash
+        out.history.to_pipeline().save(str(tmp_path / "translated.itc_pipe"))
+
+    @pytest.mark.parametrize("bad", [None, 1.0, True, "2"], ids=type)
+    def test_a_non_integer_degree_is_refused_with_a_three_part_message(
+        self, bad: object
+    ) -> None:
+        """`deg` must be an int, and the refusal must be an ITACAError.
+
+        `None` is the value a reader writes, because it WAS this parameter's
+        documented default before REQ-105 adoption moved it to the sentinel.
+        After that move it fell past both identity checks into `value < 0` and
+        escaped as a bare `TypeError`, which is outside the ITACA hierarchy
+        and carries none of the three parts.
+
+        `True` is here because `bool` is an `int` subclass, so it satisfied
+        the downstream `isinstance` assert and was recorded as `deg=True` in
+        provenance, which is a degree no polynomial has.
+        """
+        with pytest.raises(DataError) as caught:
+            self._ramp().interpolate({"alpha": [0.5]}, method="polyfit", deg=bad)
+        message = str(caught.value)
+        assert "integer polynomial degree" in message, message
+        assert type(bad).__name__ in message, message
 
     def test_itaca_032_public_returns_are_not_object(self) -> None:
         """No public method may annotate its return as bare `object`.

@@ -600,11 +600,9 @@ class VarFrame:
         >>> swept.shape
         (2, 2)
         """
-        # REQ-85 deprecation window, the shape fill established: a
-        # positional option still works and says so, and the shim is
-        # removed in v0.3.0. Breaking it outright would be a silent
-        # semantic change for anyone who wrote the positional form,
-        # since `axis` is an int and would land in a later parameter.
+        # `axis` is keyword-only per REQ-85, with no deprecation window:
+        # this method never shipped a positional form, so there is nothing
+        # to protect and a window would only have licensed one.
         from itaca.ops.expand import expand as _expand
 
         return _expand(self, dim_name, values, axis, history=history, comment=comment)
