@@ -1585,3 +1585,191 @@ unset). `tests/test_house_style.py` pins that the variable the gate reads
 is the one CLAUDE.md's locator table declares, and that the table's Unset
 cell says DENIES. `tests/gate_locator.py` is the single reader of the
 gate's own literal, so no test module carries a second copy of the name.
+
+---
+
+## DD-45: The publish job moves to the caller, because no publisher value satisfies both claims
+
+**Date:** 2026-07-30
+**Status:** confirmed
+**Context:** ITA-10, adopting kit 0.2.14 (`release_gate.yml`,
+`release_caller.yml`) and 0.2.13 (`check_release_gate.py` and its
+companion). Supersedes the last paragraph of DD-43 in the direction that
+paragraph itself named. `ITC-20260730-0270` closes on this adoption; its
+pyflightstream half stays open at PFS-1. Also carries three of the four
+tier A riders of BRF-059 in full, FND-051, FND-069 and FND-070, and
+FND-052 in part.
+
+**What became of DD-43's residual, one half at a time**, because
+"discharged" would be too tidy a word for it. DD-43 said neither kit fix
+was verified by execution, and named the ITA-7 canary as the verifier.
+Fix 2, the gate's `publish` job no longer declaring `permissions`, is not
+verified but MOOT: kit 0.2.12 deleted that job, and dissolution is not
+discharge. Fix 1, `fetch-depth: 0` on `gates`, survives in the vendored
+body but appears in none of the rehearsal's checks R1 to R11, so it is
+still unverified; a shallow checkout there degrades silently, which is why
+it survived two promotions unnoticed in the first place. And the verifier
+was not the ITA-7 canary in this repository but a scratch one, which is a
+weaker instrument against this repository specifically.
+
+DD-43 removed four release-gate workarounds on the strength of a comment
+and recorded the removal as PROVISIONAL until a canary ran, saying that if
+the canary contradicted the gate body "that is a finding AGAINST the kit
+and it goes back there rather than being patched in a caller again". It
+did contradict it, and this entry is that finding having gone back and
+come home. DD-43 is superseded on this one point rather than edited, for
+the reason it gives itself.
+
+**The bind, and it is not solvable by configuration.** PyPI Trusted
+Publishing matches `job_workflow_ref`, the file CONTAINING the publishing
+job. The sigstore attestation the same action uploads carries
+`workflow_ref`, the ENTRY POINT. PyPI checks BOTH against one configured
+publisher, and with a reusable workflow those name different files. Both
+halves were measured on this repository's own v0.2.0 tag:
+
+| publisher configured as | token | upload |
+|---|---|---|
+| `release.yml` | refused, `invalid-publisher` | never reached |
+| `release_gate.yml` | accepted | refused, 400 on the Build Config URI |
+
+So kit 0.2.6's central move, putting publish inside the reusable workflow
+so it could not run without the gates, was right about the gate and
+impossible for PyPI. That is why v0.2.0 shipped by a hand upload over the
+gate-built artifact, and why the publisher naming `release_gate.yml` is an
+abandoned workaround rather than evidence that anything worked.
+
+**ITACA-006's property is unchanged and its mechanism is not.** The
+property is that no publish path exists that does not depend on every
+gate. Co-location used to carry it for free. Three mechanisms carry it
+now: the gate's `workflow_call` outputs come only from a `sealed` job that
+needs every other job, so a caller cannot learn which artifact to publish
+unless the whole gate passed; `publish` downloads that artifact and never
+rebuilds; and `check_release_gate.py` refuses six classes of deviation
+rather than two, run against `.github/workflows` by
+`tests/test_release_integrity.py` in tier 1, with the four residuals its
+own docstring states, the load-bearing one being that uploading a
+distribution as a GitHub release asset is not treated as publishing.
+
+It does NOT enforce that a repository-owned gating job sits in the
+publishing job's `needs`: rule 2 enumerates gate CALLS only, measured by a
+reviewer who deleted `srs` from `publish`'s `needs` and watched the checker
+exit 0. That half is carried by `tests/test_house_style.py`, stated over
+every non-publishing job rather than over a named one, so the next gating
+job is covered without anyone remembering to add it.
+
+**Why the tag path now runs the gate twice.** `breadth` carries ci.yml's
+matrix entry for entry, so the configuration that ships is proven on the
+commit being released rather than on main (FND-070: the tag path ran
+Python 3.12 alone, and 3.12 is not in CI's matrix at all). `release` is a
+separate non-matrix call and its artifact is the one that ships, because a
+matrix job's outputs are those of whichever leg finished last, so
+`needs.breadth.outputs.artifact-name` would name a real artifact that no
+reader can identify. The cost is one extra full gate run per tag and it is
+the price of a deterministic answer to which build is being published.
+
+**Three riders that came with it.** `id-token: write` is on `publish` and
+nowhere else, where it used to sit on the whole gate call, so the jobs
+that install dependencies and run third-party build tooling no longer hold
+a credential able to publish (FND-051); `publish` also holds no
+`contents`, so it cannot read the source it is publishing a build of. The
+build FRONTEND is pinned exactly, `pip==26.2 build==1.5.0 twine==7.0.0`,
+resolved from the index on the day of adoption rather than taken from the
+kit, because the build job used to run `pip install --upgrade pip build
+twine` and the tools that produced every published artifact were whatever
+the index held that minute. That is three of FND-052's four clauses. The
+fourth is NOT discharged, and is stated rather than glossed:
+`pyproject.toml` still declares
+`requires = ["setuptools>=68", "setuptools-scm>=8"]`, a floor with no
+ceiling, which `python -m build` resolves inside its isolated environment
+on the day of the tag. `setuptools-scm` is what computes the version DD-38
+makes load-bearing for provenance, so the unpinned half is the half
+carrying the strongest reproducibility claim. Registered rather than fixed
+here: pinning a build backend changes what the artifact is built by, and
+belongs in its own change with its own evidence. Each gate call names its artifact
+with a distinct `artifact-tag`, because artifacts share one namespace per
+run and are immutable, so three matrix legs on one literal name collided
+(FND-069).
+
+**What is verified by execution and what is not, and the difference
+matters more here than usual.** The topology was proved before adoption,
+not asserted: a green run, a red run and a second green run against
+TestPyPI. The full record is in the coordination hub at
+`coordination/REHEARSAL_RELEASE_PATH.md` sections 6 to 8, which is a
+PRIVATE repository, so the durable half is quoted here instead, this file
+being public and MIT. The TestPyPI project `kit-release-rehearsal` still
+serves `0.1.1` and `0.1.3`, each with a provenance entry beside it, the two
+wheels hashing to
+
+    9e2f010174da7dea8f5d3eaae726f282c9ae46324f33d833c5e927b2a5f6deb5
+    4476a0394fa9588ff06d89af0bbfc8416833ae4341d767d3a4f80d802131bee5
+
+which anyone can recompute without this repository and without taking
+anybody's word for it. The three run IDs that record cites no longer
+resolve: the scratch repository was deleted the same day, by design. The two halves
+that failed on v0.2.0 both passed there against ONE publisher naming the
+caller, with attestations on. The red run's evidence is its JOB TABLE, every
+`sealed` job SKIPPED and publish SKIPPED rather than failed, and that table
+is the one part of the rehearsal that died with the scratch repository. The
+absence of the red version from the index is NOT evidence of anything, as
+the record itself says: it is equally consistent with a version that was
+never attempted.
+The rehearsal's FIRST run is the part worth carrying: it died at startup
+over expression syntax inside an input `description`, which GitHub
+evaluates, with six local checks green over a body that could not start.
+That is the whole argument against accepting a checker pass as the
+acceptance, and it is why `check_release_gate.py` rule 1 now refuses
+expression syntax in any `workflow_call` description.
+
+What that does NOT prove is this repository. The rehearsal is evidence
+about a topology, run against a scratch package on a test index. itaca's
+first real tag on this path is still its own first execution of ITS
+caller, with its own gates, install line, smoke expression and version
+reader, against the real index. Treat it as a first, because it is one.
+
+**The author's step, and it is outside this repository.** On PyPI the
+`itaca` publisher must be repointed to name `release.yml` with environment
+`pypi` before the first tag. Leaving the one that names `release_gate.yml`
+in place fails the same way it already did.
+
+**Three names left as written.** DD-43's `release_gate.yml:337` line
+reference and its `publish: false` discussion describe a body that no
+longer exists. The third is the one this paragraph missed on its first
+draft: "`release.yml` keeps `id-token: write` ... It also keeps
+`contents: read`, which is the R3-ITA-001 fix". This file now declares NO
+workflow-level permissions at all; each gate-calling job grants
+`contents: read` itself and `publish` holds neither, which is stronger than
+what DD-43 described and is not what it says. Frozen entries are
+append-only, so this entry is the operative record and none of the three is
+edited. The same treatment DD-44 gave DD-31's variable name.
+
+**Guards:** `tests/test_release_integrity.py` runs the checker against
+`.github/workflows`, and reads its REPORT rather than only its exit code:
+the VERIFIED line must name six rules, must not report one as NOT RUN, and
+rules 2, 4, 5 and 6 must each have run over a scope of at least one. That
+last clause exists because this repository's PRE-adoption tree printed
+"over 0 publishing job(s)" and satisfied a weaker version of this check. It
+also pins the mutation companion at 40 cases and 28 mutants; the mutant
+count is the guard, and the case count catches only a re-vendor that
+updates the body hash mechanically over a shrunken case list, which is
+narrower than the reason first written here.
+
+`tests/test_house_style.py` carries the rest, and each clause is a hole a
+reviewer measured rather than imagined. The SRS build must sit in the
+publishing job's transitive `needs` closure, bound to a job whose `uses`
+ends in `srs_build.yml` rather than to the job NAME, after the name-bound
+version was made to pass against a job that compiled nothing; so must every
+other non-publishing job in the file, which is the half the checker does
+not carry; the publishing job may hold no job-level `if:`, because `needs`
+does not block a job conditioned on `always()`, which runs AFTER its
+dependencies fail; nothing in the closure may set `continue-on-error`; the
+publish step may name no `repository-url`, which would send a real release
+to a test index and report success; and the three gate calls must pass
+identical `gates`, `build-toolchain`, `version-command` and `smoke`, which
+nothing compared before, the checker's rule 5 comparing declared matrices
+alone. `tests/test_kit_drift.py` pins all four vendored bodies.
+
+**SRS:** REQ-95. Not REQ-96, which DD-43 carried and this entry does not:
+REQ-96 is the pre-commit mirror obligation, and nothing here touches
+`.pre-commit-config.yaml`. No SRS revision is owed either. No requirement
+text changes, the release topology is not specified normatively, and
+REQ-95's continuous-integration obligation is still satisfied.

@@ -36,6 +36,7 @@ question only the archive can answer.
 from __future__ import annotations
 
 import importlib.metadata
+import re
 import subprocess
 import sys
 import tarfile
@@ -94,7 +95,24 @@ def test_the_release_gate_checker_can_still_fail() -> None:
 
     A guard that cannot fail the case it exists to catch manufactures
     confidence. The companion builds workflow fixtures and requires the
-    checker to deny six weakenings of its own rules.
+    checker to deny every weakening of its own rules.
+
+    Both counts are pinned, and the reason is narrower than it first looks.
+    An earlier version of this docstring argued that a companion which
+    dropped half its cases "would still report every mutant denied". That is
+    FALSE, and a reviewer measured why: the companion marks a mutant denied
+    when ANY case fails, and a mutant nothing catches is reported as
+    survived and exits non-zero. So dropping load-bearing cases turns the
+    run RED, not green.
+
+    What the case pin actually catches is the loss of cases that are
+    redundant with respect to all 28 mutants, on one specific path: a
+    re-vendor where the body hash is updated mechanically and a shrunken
+    case list goes unnoticed. Both counts are already implied by the
+    body-sha256 pin in ``test_kit_drift.py``, which fails first on any byte
+    change, so these two literals are defense in depth for that path alone.
+    Exact rather than a floor, because a floor is strictly weaker against it
+    and no cheaper to maintain.
 
     It prints ``NOT CHECKED: no release_gate.yml beside this file``, which
     is correct and expected in a vendored copy: the gate lives under
@@ -104,7 +122,20 @@ def test_the_release_gate_checker_can_still_fail() -> None:
     """
     done = _run(str(_RELEASE_GATE_MUTATIONS))
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "all 6 mutants denied" in done.stdout, done.stdout
+    assert "all 28 mutants denied" in done.stdout, (
+        f"the release-gate mutation companion did not report 'all 28 mutants "
+        f"denied'. Two opposite remedies: if a re-vendor changed the count, "
+        f"move it here and in tests/test_kit_drift.py's manifest note "
+        f"together; if it did not, a mutant SURVIVED and the checker no "
+        f"longer refuses what it claims to. Output:\n{done.stdout}"
+    )
+    assert "40 cases on real workflow files" in done.stdout, (
+        f"the release-gate mutation companion did not report 40 cases. The "
+        f"mutants can all be denied by a shrunken case list, so this count is "
+        f"what catches a re-vendor that quietly dropped cases. If the kit "
+        f"really changed it, move the pin; do not delete it. "
+        f"Output:\n{done.stdout}"
+    )
 
 
 def test_the_version_identity_checker_can_still_fail() -> None:
@@ -146,8 +177,70 @@ def test_the_release_gate_checker_had_something_to_check() -> None:
     checker does not, which is why the count is read here.
     """
     done = _run(str(_RELEASE_GATE_CHECK), "--workflows", str(_WORKFLOWS))
-    assert "publishing job(s) found    : 0" not in done.stdout, done.stdout
-    assert "scanned 0 workflow file(s)" not in done.stdout, done.stdout
+    # POSITIVELY, not as an absent substring. Both counts used to be checked
+    # by asserting an exactly-padded string was NOT present, which goes
+    # silently blind the moment a re-vendor reflows the report line: the
+    # substring is then never present, both assertions pass forever, and the
+    # guard whose whole purpose is "a clean run must not mean the checker
+    # scanned nothing" is gone with CI green. That is this repository's own
+    # "a checker whose output wording changes goes blind in a way no exit
+    # code reports", one level in.
+    for label, pattern in (
+        ("publishing jobs", r"publishing job\(s\) found\s*:\s*(\d+)"),
+        ("scanned workflow files", r"scanned (\d+) workflow file\(s\)"),
+    ):
+        found = re.search(pattern, done.stdout)
+        assert found, (
+            f"the release-gate checker's report no longer carries a "
+            f"{label} count, so this guard can no longer tell a clean run "
+            f"from an empty scan. Re-read the vendored report format and "
+            f"update the pattern. Output:\n{done.stdout}"
+        )
+        assert int(found.group(1)) >= 1, (
+            f"the release-gate checker reported {found.group(1)} {label}. It "
+            f"exits 0 against an empty or mis-pointed directory exactly as it "
+            f"does against a clean one, so a zero here is a scan that "
+            f"happened to find nothing to check."
+        )
+    # The same reasoning one level further in: a checker can exit 0 having
+    # RUN fewer rules than it has. Kit 0.2.13 carries six, and each names a
+    # failure this repository actually had.
+    verified = next(
+        (line for line in done.stdout.splitlines() if "VERIFIED:" in line), ""
+    )
+    assert "NOT RUN" not in verified, (
+        f"the release-gate checker's VERIFIED line reports a rule as NOT RUN, "
+        f"so it enumerated six rules and exercised fewer. Rule 1 prints "
+        f"'rule 1 (seal) NOT RUN' when it finds no gate file to examine, "
+        f"which is a scan that verified nothing about the seal. Line was: "
+        f"{verified!r}"
+    )
+    for rule in range(1, 7):
+        assert f"rule {rule} " in verified, (
+            f"the release-gate checker's VERIFIED line does not name rule "
+            f"{rule}. Kit 0.2.13 runs six rules; a run that exercises fewer "
+            f"still exits 0. Line was: {verified!r}"
+        )
+    # Scope, per rule, because "over 0 publishing job(s)" is what this
+    # repository's PRE-adoption tree printed and it satisfies the loop above.
+    # The count is the first number after `over` rather than the token
+    # immediately following it: rule 4 reads "over the gate and 1 publishing
+    # job(s)", so anchoring on `over (\d+)` matches five rules and silently
+    # skips the fourth, which is how this assertion first went in.
+    for rule in (2, 4, 5, 6):
+        scoped = re.search(rf"rule {rule} \([^)]+\) over [^0-9;]*(\d+)", verified)
+        assert scoped, (
+            f"the release-gate checker's VERIFIED line carries no scope count "
+            f"for rule {rule}, so this guard cannot tell a rule that examined "
+            f"something from one that examined nothing. Re-read the vendored "
+            f"report format. Line was: {verified!r}"
+        )
+        assert int(scoped.group(1)) >= 1, (
+            f"rule {rule} ran over a scope of zero, so it examined nothing "
+            f"and still reported VERIFIED. The pre-adoption topology printed "
+            f"exactly this, which is the arrangement this repository "
+            f"abandoned (DD-45). Line was: {verified!r}"
+        )
 
 
 def test_the_citation_record_matches_the_release_it_describes() -> None:
@@ -157,7 +250,7 @@ def test_the_citation_record_matches_the_release_it_describes() -> None:
     `version: 0.1.0` with `date-released: 2026-07-22` and the v0.1.0 DOI
     while the v0.2.0 tag was being prepared. There is no `.zenodo.json`, so
     Zenodo falls back to this file for deposit metadata: the archive record
-    would have been labelled 0.1.0, carried the previous release's DOI, and
+    would have been labeled 0.1.0, carried the previous release's DOI, and
     its abstract would have called processors "roadmapped rather than
     released" in the release whose largest feature they are. A minted DOI
     does not come back.
@@ -198,7 +291,7 @@ def test_the_citation_record_matches_the_release_it_describes() -> None:
     assert fields["version"] == packaged, (
         f"CITATION.cff says version {fields['version']} and the package "
         f"reports {packaged}. Zenodo reads this file, and a minted DOI "
-        f"labelled with the wrong version does not come back."
+        f"labeled with the wrong version does not come back."
     )
     changelog = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     heading = f"## [{packaged}] - {fields['date-released']}"
@@ -393,7 +486,7 @@ class TestIncident0854Guards:
 
         28 mutants, each a narrowing that turned a leaking artifact
         green, plus control pairs proving each narrowing is caught by its
-        own detector rather than by a neighbour.
+        own detector rather than by a neighbor.
         """
         done = _run(str(_SHIPPED_SURFACE_MUTATIONS))
         assert done.returncode == 0, done.stdout + done.stderr

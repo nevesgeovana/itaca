@@ -15,9 +15,12 @@
 # for one reason: the document must be built on the RELEASE path as well as on
 # CI, and the first version of this lived only in `ci.yml`. A reviewer measured
 # what that meant: a tag push, the only path that publishes, never built the
-# document, and `release.yml` itself condemns exactly that arrangement for the
-# library ("CI's triggers are disjoint from this one, so on a tag push the two
-# ran in parallel and publish could finish first"). Defining the job once and
+# document, and the shared gate's own header condemns exactly that arrangement
+# for the library (`release_gate.yml`, "On a tag push CI and release therefore
+# ran in PARALLEL and publish could finish first"). That sentence used to be
+# quoted from `release.yml`, whose header was rewritten when kit 0.2.12 moved
+# the publish job into it; the quotation moved with the prose rather than being
+# left pointing at text that no longer exists. Defining the job once and
 # calling it from both callers keeps the two paths from drifting, which is the
 # same argument that made CI and Release share one gate.
 #

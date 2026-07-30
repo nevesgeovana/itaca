@@ -1,27 +1,103 @@
 # Release (DD-21 incremental releases; M1 plan Phase B0).
 #
-# This file is a CALLER of the vendored shared release gate and holds no
-# build, check or publish logic of its own. That is the whole point of
-# ITACA-006: the previous body triggered on a `v*` tag, built, ran
-# `twine check`, compared the tag against `__version__`, and uploaded to
-# PyPI, with no pytest, no coverage, no ruff, no mypy, and no dependency
-# on CI's verdict for that SHA. CI's triggers are disjoint from this
-# one, so on a tag push the two ran in parallel and publish could finish
-# first. The only thing between a tag and a live upload was a human
-# process that a tag cut from the web UI bypasses entirely.
+# This file is a CALLER of the vendored shared release gate, and since kit
+# 0.2.12 it is also the PUBLISHER. It holds no build or check logic of its
+# own: everything that decides whether a tag may ship is in the gate, and
+# the one thing this file does that the gate cannot is exchange an OIDC
+# token with PyPI.
 #
-# The old body was DELETED rather than kept beside the gate. A second
-# publishing path makes the gate advisory, because the tag push starts
-# it too, and every hash and every drift test stays green while it does.
-# `.claude/kit/check_release_gate.py` refuses that arrangement by rule,
-# and `tests/test_release_integrity.py` runs it against this directory.
+# WHY THE PUBLISH JOB IS HERE RATHER THAN IN THE GATE, and it is not a
+# preference. PyPI Trusted Publishing matches `job_workflow_ref`, the file
+# CONTAINING the publishing job, while the sigstore attestation the same
+# action uploads carries `workflow_ref`, the ENTRY POINT. PyPI checks both
+# claims against ONE configured publisher, so with a reusable workflow the
+# two name different files:
 #
-# Publishing still goes through PyPI trusted publishing (OIDC): no API
-# token is stored here. The publisher configured on PyPI must name the
-# workflow that actually uploads, which is now `release_gate.yml` and no
-# longer this file; the GitHub environment is `pypi`.
+#   publisher = release.yml        -> token refused, `invalid-publisher`
+#   publisher = release_gate.yml   -> token accepted, upload refused, 400
+#
+# Both were measured on this repository's own v0.2.0 tag, which is why
+# v0.2.0 shipped by a hand upload over the gate-built artifact. No
+# publisher value satisfies both claims, so this is not solvable by
+# configuration. `ITC-20260730-0270` carries both measurements, and this
+# TOPOLOGY was proved by execution against TestPyPI before adoption: a
+# green run, a red run and a second green run, recorded in the coordination
+# hub at `coordination/REHEARSAL_RELEASE_PATH.md` sections 6 to 8. The
+# rehearsal published a scratch package to a test index from a scratch
+# repository, and those runs were deleted the same day; what survives is
+# the TestPyPI project `kit-release-rehearsal`, still serving both green
+# versions with a provenance entry per file.
+#
+# WHAT THAT DOES NOT PROVE, and it is this file. The rehearsal is evidence
+# about an arrangement of jobs, not about itaca's gates, install line,
+# smoke expression or version reader, and TestPyPI is not PyPI. The jobs
+# BELOW have never run. This repository's first tag on this path is its own
+# first execution of it, and it should be treated as a first, because it is
+# one.
+#
+# This file was COPIED from the kit's `release_caller.yml` at kit 0.2.14,
+# vendored beside it as `release.yml.template`, and then edited. That
+# template is hash-pinned by `tests/test_kit_drift.py`; this copy
+# deliberately is NOT, because it carries this repository's own gate
+# commands, and pinning it would freeze them inside a kit hash. What binds
+# this copy is `.claude/kit/check_release_gate.py`. When the template's pin
+# moves, DIFF the new template against this file and re-apply by hand;
+# never overwrite this file with it, which would silently discard the gates,
+# the smoke expression, the install lines and the `srs` job while leaving
+# all six checker rules satisfied.
+#
+# WHAT REPLACES CO-LOCATION. ITACA-006's property is that no publish path
+# exists that does not depend on every gate. Moving publish out of the gate
+# does not weaken it, because three mechanisms carry it instead of one:
+#
+#   1. `publish` NEEDS every job that calls the gate, and every
+#      repository-owned gating job. Not one of them: all.
+#   2. `publish` publishes the artifact whose NAME it learned from a gate
+#      call's output. A gate only produces outputs from its `sealed` job,
+#      and `sealed` needs every job in the gate, so a name that can be read
+#      is a gate that passed.
+#   3. `publish` does not check out and does not build. It has nothing to
+#      substitute for what the gate sealed.
+#
+# WHICH GUARD CARRIES WHICH, because an earlier version of this header
+# credited the checker with all of it and a reviewer measured otherwise.
+# `.claude/kit/check_release_gate.py` enforces mechanism 2 and 3, and the
+# GATE-CALL half of mechanism 1: its rule 2 enumerates gate calls and has no
+# concept of a repository-owned gating job, so deleting `srs` from
+# `publish`'s `needs` below leaves that checker at exit 0. The
+# repository-owned half is carried by
+# `tests/test_house_style.py::test_both_workflows_build_the_srs_and_check_the_log`,
+# which requires EVERY non-publishing job declared here to sit in the
+# publishing job's transitive needs closure, so a second gating job added
+# later is covered without anyone remembering to add it. Both run in tier 1;
+# `tests/test_release_integrity.py` is what runs the checker against this
+# directory. The checker also states four residuals of its own in its
+# docstring, the load-bearing one being that a GitHub release asset upload
+# is not treated as publishing.
+#
+# WHY TWO GATE CALLS. `breadth` reproduces ci.yml's matrix entry for entry,
+# so the full matrix is proven on the commit being tagged; FND-070's open
+# half was a tag path running Python 3.12 alone, an interpreter CI's matrix
+# does not even contain, so the shipped configuration had been proven on
+# main and never on the commit being released. `release` is a separate
+# non-matrix call and its artifact is the one that ships, because a matrix
+# job's outputs are those of whichever leg finished last:
+# `needs.breadth.outputs.artifact-name` would name a real artifact that no
+# reader can identify. The cost is one extra full gate run per tag and it
+# is the price of a deterministic answer to "which build is being
+# published".
+#
+# The publisher configured on PyPI must name THIS file, `release.yml`, with
+# environment `pypi`. The one naming `release_gate.yml` is the abandoned
+# workaround and fails the same way.
 name: Release
 
+# NO workflow-level `permissions:` block, deliberately. A permission
+# declared here is held by every job, and `id-token: write` is the one
+# credential in this file that must not be. FND-051: it used to sit on the
+# whole gate call, so the jobs that install dependencies, run this
+# repository's own commands and run third-party build tooling all held an
+# OIDC credential able to publish.
 on:
   push:
     tags: ["v*"]
@@ -29,40 +105,56 @@ on:
 jobs:
   # The specification build, gating publication rather than running beside it.
   # REQ-95 requires it and ITC-20260730-0010 is why it exists. It is declared
-  # here as well as in `ci.yml` because the two triggers are disjoint, which is
-  # the same reason this file's own header gives for deleting the old parallel
-  # publish path: a check that does not sit in the publishing job's `needs`
-  # closure is advisory, and on a tag push nothing else would build the
-  # document at all. The body is defined once, in the itaca-owned reusable, so
-  # the two callers cannot drift.
+  # here as well as in `ci.yml` because the two triggers are disjoint: a check
+  # that does not sit in the publishing job's `needs` closure is advisory, and
+  # on a tag push nothing else would build the document at all. The body is
+  # defined once, in the itaca-owned reusable, so the two callers cannot drift.
   srs:
     permissions:
       contents: read
     uses: ./.github/workflows/srs_build.yml
 
-  gate:
-    # Publication waits on the document compiling. A release whose
-    # authoritative specification does not build is the case this ordering
-    # exists to make impossible.
-    needs: [srs]
-    uses: ./.github/workflows/release_gate.yml
+  breadth:
+    name: gate (py${{ matrix.python-version }}, ${{ matrix.deps }} deps)
     permissions:
-      # Declaring ANY permission sets every undeclared one to none, and
-      # a reusable workflow cannot be granted more than its caller has.
-      # The gate runs actions/checkout three times, so omitting this line
-      # left the tag path unable to check out at all, while ci.yml (a
-      # different caller, which does grant it) stayed green and the
-      # publish jobs it skips never exercised this one (R3-ITA-001).
+      # What the gate's three checkouts need, and all this caller grants it.
+      # It no longer grants `id-token: write`: that is on `publish` alone.
       contents: read
-      # OIDC trusted publishing: the gate exchanges a short-lived
-      # identity token with PyPI instead of a stored secret.
-      id-token: write
+    strategy:
+      fail-fast: false
+      # This matrix is the SAME SET as ci.yml's gate call, and
+      # `check_release_gate.py` rule 5 refuses the pair when it is not. A leg
+      # CI exercises and the tag path does not is a configuration proven on
+      # main and never on the commit being released.
+      matrix:
+        include:
+          - python-version: "3.11"
+            deps: latest
+            install: pip install -e ".[dev]"
+          # NumPy 1.26 has no Python 3.13 wheels, so the minimum floor is
+          # exercised on the oldest supported interpreter only.
+          - python-version: "3.11"
+            deps: minimum
+            install: pip install -e ".[dev]" && pip install "numpy==1.26.*" "pandas==2.1.*"
+          - python-version: "3.13"
+            deps: latest
+            install: pip install -e ".[dev]"
+    uses: ./.github/workflows/release_gate.yml
     with:
-      publish: true
-      python-version: "3.12"
-      install: pip install -e ".[dev]"
+      # Every leg uploads under its own name. Artifacts share one namespace
+      # per RUN and are immutable in upload-artifact v4, so legs calling a
+      # gate with one literal name collide (FND-069). The checker resolves
+      # this expression against each declared leg and refuses a collision.
+      artifact-tag: py${{ matrix.python-version }}-${{ matrix.deps }}
+      python-version: ${{ matrix.python-version }}
+      install: ${{ matrix.install }}
       version-command: python -c "import itaca.core.version as v; print(v.__version__)"
       identity-checker: .claude/kit/check_version_identity.py
+      # Resolved from PyPI on 2026-07-30, the day of adoption, and these are
+      # this repository's versions rather than the kit's: the gate refuses
+      # anything that is not `name==version` naming at least these three, and
+      # a bump here is a commit in this repository and not a kit promotion.
+      build-toolchain: pip==26.2 build==1.5.0 twine==7.0.0
       # The gates are NAMED for what the command actually enforces. The
       # 90 percent coverage floor rides inside `pytest` through this
       # repository's `addopts`, so it is not split into a second gate
@@ -89,3 +181,99 @@ jobs:
         [2.0, 4.0, 6.0], db.vars['CZ'].values; assert
         list(db.uncertainty.systematic['CZ']) == [0.2, 0.2, 0.2],
         db.uncertainty.systematic['CZ']; print('smoke ok', itc.__version__)"
+
+  release:
+    name: gate (the artifact that ships)
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release_gate.yml
+    with:
+      # A constant, because this job has no matrix. It must still differ from
+      # every tag `breadth` produces, and the checker compares them.
+      artifact-tag: release
+      # The interpreter the shipped artifact is built on. It is the value
+      # this repository has always shipped on and adopting the new topology
+      # does not change it; moving it is a library decision.
+      python-version: "3.12"
+      install: pip install -e ".[dev]"
+      version-command: python -c "import itaca.core.version as v; print(v.__version__)"
+      identity-checker: .claude/kit/check_version_identity.py
+      build-toolchain: pip==26.2 build==1.5.0 twine==7.0.0
+      gates: |
+        [
+          {"name": "lint", "run": "ruff check . && ruff format --check ."},
+          {"name": "types", "run": "mypy"},
+          {"name": "tests+coverage(90)", "run": "pytest"}
+        ]
+      smoke: >-
+        $PYTHON -c "import numpy as np, itaca as itc; db =
+        itc.load(np.array([[0.0, 1.0], [1.0, 2.0], [2.0, 3.0]]),
+        names=['alpha', 'FZ']).pivot(dims=['alpha']).set_uncertainty({'FZ':
+        0.1}).compute('CZ = FZ * 2.0'); assert list(db.vars['CZ'].values) ==
+        [2.0, 4.0, 6.0], db.vars['CZ'].values; assert
+        list(db.uncertainty.systematic['CZ']) == [0.2, 0.2, 0.2],
+        db.uncertainty.systematic['CZ']; print('smoke ok', itc.__version__)"
+
+  publish:
+    name: publish to PyPI
+    # EVERY gate call, plus the specification build. `needs` on a matrix job
+    # waits for all of its legs, so this one line is what makes the full
+    # matrix a precondition of publication rather than a report beside it.
+    needs: [srs, breadth, release]
+    runs-on: ubuntu-24.04
+    environment:
+      # Part of the OIDC claim PyPI matches, and the only place a required
+      # reviewer or a branch restriction can attach. Whether to attach one is
+      # the author's call; the checker requires the environment to exist so
+      # the narrowest available claim is not left unused.
+      name: pypi
+    permissions:
+      # The ONLY id-token grant in this repository, on the only job that
+      # exchanges it. Declaring any permission sets every undeclared one to
+      # none, so this job also holds no `contents`, which is correct: it must
+      # not be able to read the source it is publishing a build of.
+      #
+      # `actions: read` is deliberately absent. Whether a same-run
+      # `download-artifact` needs it under a block this narrow was the one
+      # open question in the kit body, and the rehearsal answered it by
+      # execution: the publish job's effective grant printed as
+      # `Metadata: read` alone and the download succeeded (runs 30572604938
+      # and 30573529205, recorded in the rehearsal record; the runs
+      # themselves were deleted the same day and no longer resolve).
+      id-token: write
+    steps:
+      - name: State what is being published
+        # RECORDED, not asserted, and the difference is the point. Comparing
+        # `needs.release.outputs.sha` against `github.sha` would always hold:
+        # both name this run's commit, so the comparison could not fail and
+        # would read like a check. What the gate's outputs are actually worth
+        # is that they DO NOT EXIST unless the gate passed, which `needs`
+        # already enforces.
+        env:
+          ARTIFACT: ${{ needs.release.outputs.artifact-name }}
+          VERSION: ${{ needs.release.outputs.version }}
+          GATED_SHA: ${{ needs.release.outputs.sha }}
+        run: |
+          {
+            echo "## Publishing"
+            echo
+            echo "| what | value |"
+            echo "|---|---|"
+            echo "| artifact | \`$ARTIFACT\` |"
+            echo "| version | \`$VERSION\` |"
+            echo "| gated on | \`$GATED_SHA\` |"
+            echo "| tag | \`${{ github.ref_name }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "publishing $ARTIFACT ($VERSION) gated on $GATED_SHA"
+      - name: Download the sealed artifact
+        # By the gate's own output, never by a literal. A literal would be a
+        # second description of the same thing, and rule 2 refuses one.
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.release.outputs.artifact-name }}
+          path: dist/
+      - name: Publish to PyPI (trusted publishing)
+        # Pinned by commit SHA, with the tag recorded beside it so the pin can
+        # be re-derived; `release/v1` is a BRANCH and moves, which is why the
+        # previous form pinned nothing at all. No API token is stored here.
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

@@ -1,14 +1,14 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.7
+# kit-version: 0.2.14
 # artifact: release_gate.yml
-# body-sha256: f8e0262a1f9ada6220afd9bee1bf488e030e827fd2b3dc4d90bea684a4607a10
-# canonical-source: BUILT for the kit (0.2.6). One reusable workflow for the shared class ITACA-006 and PYFS-018 report identically: publish runs with no pytest, coverage, lint or types, and does not depend on the CI workflow at all. Both reviews independently recommend a single reusable quality job called by CI and by release; the two libraries' release.yml files were already near-verbatim copies of each other, which is what makes this kit material rather than a library's own.
+# body-sha256: 1081d686ccf6b89a4af612ebc9c4ea3202a52a27068c00459a82e07187751511
+# canonical-source: BUILT for the kit (0.2.6), REDESIGNED at 0.2.12 by lane HUB-8. One reusable workflow for the shared class ITACA-006 and PYFS-018 report identically: publish ran with no pytest, coverage, lint or types, and did not depend on the CI workflow at all. 0.2.6 fixed that by moving publish INSIDE this file, which is where PyPI Trusted Publishing cannot match it (ITC-20260730-0270, measured on itaca run 30546434533). 0.2.12 moves publish back to the CALLER and keeps the gate binding through `needs` and an artifact handoff instead of through co-location.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # 
 # END KIT PROVENANCE (body verbatim below)
-# The shared release gate, called by BOTH ci.yml and release.yml.
+# The shared release gate, called by BOTH ci.yml and the publishing caller.
 #
-# What it fixes. In both libraries a `v*` tag push started release.yml, which
+# WHAT IT FIXES. In both libraries a `v*` tag push started release.yml, which
 # built, ran `twine check`, compared the tag against the declared version, and
 # uploaded to PyPI. It ran no tests, no lint, no type check and no coverage,
 # and it declared no dependency on the CI workflow, whose triggers are
@@ -16,21 +16,53 @@
 # could finish first. The only thing standing between a tag and a live upload
 # was a human process that a tag created from the web UI bypasses entirely.
 #
-# The two structural properties, and every job below exists for one of them:
+# WHERE PUBLISH LIVES, AND WHY IT MOVED BACK OUT. Through 0.2.11 the publish
+# job was in THIS file, because a job here cannot run without the gate jobs it
+# `needs`. That was correct about the gate and wrong about PyPI. Trusted
+# Publishing matches `job_workflow_ref`, the file CONTAINING the publishing
+# job, while the sigstore attestation it uploads carries `workflow_ref`, the
+# ENTRY POINT. With a reusable workflow those two claims name different files
+# and PyPI compares both against one configured publisher, so:
 #
-#   1. publish depends on the full gate set for the SAME commit. Every job that
-#      checks out source pins `ref: github.sha` explicitly rather than relying
-#      on the default, so the dependency is a property a reader can verify
-#      instead of a convention. Three of the six jobs check out NOTHING, and
-#      each for its own reason: `inventory` reads only the gates input,
-#      `smoke` must not have the source tree present at all (see property 2),
-#      and `publish` only downloads the artifact `build` produced. An earlier
-#      draft of this comment said "every job", which a review lens caught as
-#      false against the file it sits in.
+#   publisher = the caller        -> token refused, `invalid-publisher`
+#   publisher = this file         -> token accepted, attestation refused, 400
+#
+# Both were measured on itaca's v0.2.0 tag, and the second is why the first
+# entry's "add a publisher naming release_gate.yml" is a workaround and not a
+# fix: no publisher value satisfies both claims. The action prints the same
+# thing in words, that reusable workflows are not currently supported for
+# Trusted Publishing. ITC-20260730-0270 carries both measurements.
+#
+# So publish is the caller's job now, and this file keeps it gated by three
+# mechanisms rather than by sitting next to it:
+#
+#   1. THE SEAL. `sealed` is the only job whose outputs leave this workflow,
+#      and it `needs` every other job in the file. A caller cannot learn the
+#      name of the artifact to publish without the whole gate having passed,
+#      because the name is a `sealed` output and a job's outputs do not exist
+#      when the job did not run.
+#   2. THE HANDOFF. The published artifact is the one `build` uploaded and
+#      `smoke` installed. The caller downloads it by the name `sealed` reports
+#      and never rebuilds, so what reaches the index is what passed.
+#   3. THE CHECKER. `check_release_gate.py` refuses a publishing job that does
+#      not transitively `need` every gate call in its own workflow, that checks
+#      out, that builds, or that names its artifact any way other than through
+#      a gate call's output. The property "no publish path exists that does not
+#      depend on every gate" is now a repository-level rule enforced by a
+#      guard, where before it was a file-level rule enforced by adjacency.
+#
+# THE STRUCTURAL PROPERTIES, and every job below exists for one of them:
+#
+#   1. the seal depends on the full gate set for the SAME commit. Every job
+#      that checks out source pins `ref: github.sha` explicitly rather than
+#      relying on the default, so the dependency is a property a reader can
+#      verify instead of a convention. Two of the six jobs check out NOTHING,
+#      and each for its own reason: `inventory` reads only its inputs, and
+#      `smoke` must not have the source tree present at all (see property 2).
 #   2. what is published is what was tested. `build` uploads one artifact;
 #      `smoke` installs that artifact's wheel into a clean virtualenv with the
 #      source tree ABSENT from the machine, so an import cannot silently
-#      resolve to the checkout; `publish` uploads the same artifact and never
+#      resolve to the checkout; the caller uploads the same artifact and never
 #      rebuilds.
 #
 # A gate that a repository does not have yet must be DECLARED, not omitted.
@@ -41,12 +73,61 @@
 # oversight. That is the residual this workflow makes visible rather than
 # closes.
 #
-# STATED RESIDUAL, deliberately not fixed here. Both reviews also ask for the
-# actions to be pinned by commit SHA rather than by tag. They are not, because
-# a SHA cannot be verified from where this file is written and a fabricated
-# one is worse than an honest tag: it would look like the stronger form while
-# pinning nothing anyone checked. Pinning is registered as kit work, to be
-# done where the SHAs can be read from the actions' own repositories.
+# ONE ARTIFACT NAME PER LEG, and it is a required input rather than a literal.
+# Through 0.2.11 the name was the literal `dist`, and a caller putting a matrix
+# on the job that calls this workflow therefore had every leg of one run upload
+# under one name. Artifacts are immutable in upload-artifact v4, so the legs
+# collide (FND-069). `artifact-tag` makes the name the caller's to vary, and
+# `check_release_gate.py` refuses a matrix gate call whose tag does not resolve
+# to a distinct value on every declared leg. A digest of the inputs was
+# considered instead and rejected: it would guarantee distinctness without a
+# checker, and it would also make every artifact in the run UI unreadable and
+# every collision a runtime failure rather than a refusal at the place the
+# mistake is written.
+#
+# EVERY ACTION IS PINNED BY COMMIT SHA. This closes the residual registered at
+# 0.2.6 and carried through 0.2.11, which said a SHA could not be verified from
+# where this file is written and a fabricated one would be worse than an honest
+# tag. It can now: the SHAs below were read from each action's own repository
+# through the GitHub API on 2026-07-30, together with the version tag pointing
+# at each, and both halves are recorded so a reader can re-derive them.
+#
+#   actions/checkout               v4.4.0  11d5960a326750d5838078e36cf38b85af677262
+#   actions/setup-python           v5.6.0  a26af69be951a213d495a4c3e4e4022e16d87065
+#   actions/upload-artifact        v4.6.2  ea165f8d65b6e75b540449e92b4886f43607fa02
+#   actions/download-artifact      v4.3.0  d3f86a106a0bac45b974a628896c90dbdf5c8093
+#
+# The runner label is pinned for the same reason: `ubuntu-latest` moves under
+# the release without any commit here. A consumer needing a different operating
+# system needs a kit promotion, which is the cost of the pin and is stated
+# rather than discovered.
+#
+# VERIFIED BY EXECUTION 2026-07-30, and this block replaces the note that said
+# it was not. No machine at the coordination level runs Actions, so this
+# topology was settled by the TestPyPI rehearsal specified and recorded in
+# `coordination/REHEARSAL_RELEASE_PATH.md`: a green run, a red run and a second
+# green run, against a scratch repository built from this file's own body.
+#
+#   GREEN   run 30572604938 and run 30573529205. Four distinct artifacts per
+#           run, the caller's publish job waiting on every gate call, the OIDC
+#           token accepted against a publisher naming the CALLER, and the upload
+#           accepted WITH attestations. Both halves that failed on itaca's
+#           v0.2.0, one each, passed here against ONE publisher value.
+#   RED     run 30573140809, one gate command set to `exit 1`. Every `sealed`
+#           job SKIPPED, the caller's publish job SKIPPED rather than failed,
+#           ZERO artifacts produced, and the index untouched. `publish` never
+#           became eligible, and the artifact name a caller publishes by never
+#           existed to be read.
+#
+# What that does NOT prove is written in section 5 of the rehearsal record and
+# is not repeated here: it is not either library's own gates, and TestPyPI is
+# not PyPI. Each library's first real tag is still its own first execution.
+#
+# The rule that produced this redesign is DD-43's: a canary contradicting the
+# gate body is a finding AGAINST the kit and comes back here rather than being
+# patched in a caller. It came back twice. The second time was the rehearsal's
+# own first run, which killed every workflow at startup over expression syntax
+# in an input description, and that fix is 0.2.13.
 name: Release gate
 
 on:
@@ -101,18 +182,66 @@ on:
           exercise an import and something real, not merely `--version`.
         required: true
         type: string
-      publish:
+      artifact-tag:
         description: >-
-          Upload to PyPI. False from CI, true from the tag-triggered release
-          workflow. The caller decides; the gate chain is identical either way.
-        required: false
-        type: boolean
-        default: false
+          Label distinguishing THIS call's artifact from every other call's in
+          the same run. The uploaded artifact is named `dist-<artifact-tag>`,
+          and that name is reported back as the `artifact-name` output. A
+          caller with a matrix must vary it per leg, by interpolating its
+          matrix keys; a caller with one call may use a constant such as
+          `release`. The worked example lives in `release_caller.yml`, where it
+          is a `#` comment, and the reason it is not repeated here is the next
+          paragraph. Restricted to [A-Za-z0-9._-] starting with an
+          alphanumeric, at most 59 characters, so the resulting name is always
+          a legal artifact name.
+          NO EXPRESSION SYNTAX IN ANY DESCRIPTION IN THIS FILE, and it is not a
+          style rule. GitHub EVALUATES the expression delimiters inside an
+          input description, so a worked example written here is parsed as an
+          expression against a context that does not exist at that position and
+          the ENTIRE workflow fails to start, before any job runs. Measured
+          2026-07-30 on the rehearsal's first run, which is the first thing the
+          rehearsal ever found: this description carried a matrix reference as
+          an illustration and every run died with "Unrecognized named-value:
+          'matrix'". `check_release_gate.py` rule 1 refuses it now, so the
+          class cannot come back through a well-meant edit.
+        required: true
+        type: string
+      build-toolchain:
+        description: >-
+          The packaging tools `build` installs, EXACTLY pinned. Every
+          whitespace-separated token must have the form `name==version`, and
+          the set must name at least pip, build and twine. `inventory` refuses
+          anything else and it runs before `build`, so an unpinned toolchain
+          stops the run rather than producing an artifact nobody can
+          reproduce. The VERSIONS are the repository's, not the kit's: a kit
+          body carrying them would make every version bump a kit promotion in
+          two repositories. The SHAPE is the kit's, which is the same split
+          `check_shipped_surface.py` makes between its token set and its
+          per-repo config.
+        required: true
+        type: string
+    outputs:
+      artifact-name:
+        description: >-
+          The name of the artifact holding the sdist and wheel this run built,
+          tested and sealed. The publishing caller downloads THIS and never
+          rebuilds. It comes from `sealed`, so it does not exist unless every
+          job in this file passed.
+        value: ${{ jobs.sealed.outputs.artifact-name }}
+      version:
+        description: The version string the identity check approved.
+        value: ${{ jobs.sealed.outputs.version }}
+      sha:
+        description: >-
+          The commit every gate ran against. The caller can compare it with
+          its own `github.sha` to state, in its own file, that what it is about
+          to publish was gated on the commit it was asked to publish.
+        value: ${{ jobs.sealed.outputs.sha }}
 
 jobs:
   inventory:
     name: gate inventory
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Every gate either runs or is declared absent with a reason
         env:
@@ -173,16 +302,87 @@ jobs:
           print(f"\n{len(rows)} gate(s) declared, {len(absent)} absent")
           PY
 
+      - name: The artifact tag must name one leg and only one
+        # Shape only. That two legs do not COLLIDE is a property of the caller's
+        # whole matrix, which no single call can see, and it is checked
+        # statically by `check_release_gate.py` against the declared legs. What
+        # is checkable here is that the tag yields a legal artifact name at all,
+        # which is worth doing in the job that runs first rather than in `build`
+        # after three gates have already spent their minutes.
+        env:
+          TAG: ${{ inputs.artifact-tag }}
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+
+          tag = os.environ["TAG"]
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,58}", tag):
+              sys.exit(
+                  f"artifact-tag {tag!r} is refused. It becomes the artifact "
+                  f"name `dist-<tag>`, which GitHub requires to avoid "
+                  f"whitespace and the characters \" : < > | * ? \\ /, and an "
+                  f"empty or padded tag would produce a name no caller can "
+                  f"predict. Allowed: an alphanumeric followed by up to 58 of "
+                  f"[A-Za-z0-9._-]."
+              )
+          print(f"artifact will be named dist-{tag}")
+          PY
+
+      - name: The build toolchain must be pinned exactly
+        # FND-052. The build job used to run `pip install --upgrade pip build
+        # twine`, so the tools that produced every published artifact were
+        # whatever the index held that minute, and a release could not be
+        # reproduced from its own commit. This refusal runs HERE, in the job
+        # `build` needs, which is what makes the word-split in `build`'s install
+        # step safe: nothing reaches it that did not match the pattern below.
+        env:
+          TOOLCHAIN: ${{ inputs.build-toolchain }}
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+
+          PIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*==[A-Za-z0-9][A-Za-z0-9.*+!-]*")
+          REQUIRED = {"pip", "build", "twine"}
+
+          raw = os.environ["TOOLCHAIN"]
+          tokens = raw.split()
+          if not tokens:
+              sys.exit(
+                  "build-toolchain is empty. The tools that build the artifact "
+                  "are part of what produced it; leaving them to the index "
+                  "means the release cannot be rebuilt from its own commit."
+              )
+          bad = [t for t in tokens if not PIN.fullmatch(t)]
+          if bad:
+              sys.exit(
+                  "build-toolchain must pin every tool exactly, as "
+                  "`name==version`. Refused: " + ", ".join(repr(b) for b in bad)
+              )
+          # PEP 503 normalization, so `setuptools_scm` and `setuptools-scm` are
+          # one name and a repository cannot satisfy the requirement twice under
+          # two spellings while missing a third tool.
+          names = {re.sub(r"[-_.]+", "-", t.split("==", 1)[0]).lower() for t in tokens}
+          missing = sorted(REQUIRED - names)
+          if missing:
+              sys.exit(
+                  f"build-toolchain does not pin {', '.join(missing)}. This "
+                  f"workflow runs `python -m build` and `twine check`, and it "
+                  f"installs pip itself, so all three are part of the artifact's "
+                  f"provenance whether or not they are named."
+              )
+          print(f"{len(tokens)} build tool(s) pinned: {' '.join(sorted(tokens))}")
+          PY
+
   gates:
     name: gate/${{ matrix.gate.name }}
     needs: inventory
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         gate: ${{ fromJSON(inputs.gates) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.sha }}
           # 0.2.7. This job runs `install`, and for a repository whose version
@@ -194,7 +394,7 @@ jobs:
           # this for the same reason; `gates` did not, and it is the job that
           # installs. Found by itaca, ITC-20260728-2235.
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ inputs.python-version }}
       - name: Install
@@ -225,16 +425,18 @@ jobs:
   identity:
     name: version identity
     needs: inventory
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.read.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.sha }}
           # The rule compares against the newest reachable release tag, so a
           # shallow clone with no tags would make it a configuration error
           # rather than a check.
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ inputs.python-version }}
       - name: Install
@@ -267,39 +469,67 @@ jobs:
   build:
     name: build
     needs: [inventory, gates, identity]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    outputs:
+      artifact-name: ${{ steps.name.outputs.artifact }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ inputs.python-version }}
-      - name: Build sdist and wheel
+      - name: Name this leg's artifact
+        # Computed in a step rather than written as `name: dist-${{ inputs...}}`
+        # on the upload, so that ONE expression produces the name and every
+        # consumer of it (the upload here, `smoke`'s download, `sealed`'s
+        # output, and the caller's publish job) reads that one value. The
+        # earlier shape had the literal `dist` in three places, and the way it
+        # failed was that one of them was a caller's assumption.
+        id: name
+        env:
+          TAG: ${{ inputs.artifact-tag }}
         run: |
-          python -m pip install --upgrade pip build twine
+          echo "artifact=dist-$TAG" >> "$GITHUB_OUTPUT"
+          echo "artifact name: dist-$TAG"
+      - name: Build sdist and wheel
+        # Unquoted on purpose: the toolchain is several requirements and must
+        # word-split. `inventory` refused anything that is not a whitespace
+        # separated list of `name==version`, and this job `needs: inventory`,
+        # so the only strings that reach this line are ones that cannot carry a
+        # shell metacharacter. The safety is the dependency edge, not the
+        # quoting, and it is written down because that is not obvious from the
+        # line itself.
+        env:
+          TOOLCHAIN: ${{ inputs.build-toolchain }}
+        run: |
+          python -m pip install $TOOLCHAIN
           python -m build
           twine check dist/*
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dist
+          name: ${{ steps.name.outputs.artifact }}
           path: dist/
+          # An empty upload used to be a warning. The whole chain below assumes
+          # this artifact holds a distribution, and a caller downloading an
+          # empty one publishes nothing while every job stays green.
+          if-no-files-found: error
 
   smoke:
     name: smoke the built wheel
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       # Deliberately NO checkout. With the source tree absent from the runner,
       # an import cannot resolve to it, so what this job exercises is the
       # distribution and only the distribution. A smoke test run from the
       # repository root passes for a wheel that ships nothing.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist
+          name: ${{ needs.build.outputs.artifact-name }}
           path: dist/
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ inputs.python-version }}
       - name: Install the built wheel into a clean environment
@@ -314,65 +544,38 @@ jobs:
           PYTHON: ${{ runner.temp }}/smoke/bin/python
         run: bash -c "$SMOKE"
 
-  publish:
-    name: publish to PyPI
-    # Every gate, the identity rule, the build and the smoke of that build.
-    # This list is the finding: through kit 0.2.5 it read `needs: build` and
-    # build itself needed nothing.
+  sealed:
+    name: gate sealed
+    # THE SEAL, and this list is the load-bearing line of the file. It names
+    # every other job, and everything this workflow tells its caller comes from
+    # here. A caller cannot publish without the artifact name, cannot get the
+    # name without this job's outputs, and cannot get this job's outputs unless
+    # each of these five passed. `check_release_gate.py` rule 1 refuses a gate
+    # whose outputs come from a job that does not cover the file, which is what
+    # stops a later job from being added and wired to nothing.
     needs: [inventory, gates, identity, build, smoke]
-    if: ${{ inputs.publish }}
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-    # 0.2.7: this job declares NO permissions and inherits the caller's.
-    #
-    # It used to declare `id-token: write` here, for OIDC trusted publishing,
-    # which is a short-lived identity token rather than a stored secret and is
-    # the right mechanism. The defect was where the declaration sat. A called
-    # workflow's jobs may not request more than the caller grants, and that is
-    # validated when the run STARTS, before any `if:` is evaluated. So a caller
-    # passing `publish: false` had to grant OIDC anyway or the whole workflow
-    # died at startup with `publish` never running. Measured, not reasoned:
-    # itaca's first push of its new caller died in one second for exactly this.
-    # ITC-20260729-0250.
-    #
-    # Inheriting moves the grant to the caller that actually publishes. A CI
-    # caller now grants `contents: read` and nothing else; the tag-triggered
-    # release caller grants `id-token: write`.
-    #
-    # THE COST, and it is a real trade rather than a free win: a publishing
-    # caller that forgets the grant now fails at the upload step instead of at
-    # startup, which is later and less obvious. It still FAILS, and it cannot
-    # publish something wrong, but the diagnosis moved. Each library's own
-    # tier-1 suite is where that is caught, by asserting its release workflow
-    # grants `id-token: write`; the kit cannot see its callers.
-    #
-    # THE SECOND COST, added after CHK-1 measured the neighbouring defect and
-    # made it visible. Declaring `permissions` on a job sets every UNDECLARED
-    # permission to `none`, so the old form gave this job `id-token: write` and
-    # `contents: none`, which is exactly what it needs: it downloads an
-    # artifact and uploads it, and never checks out. Inheriting gives it
-    # whatever the caller holds, which on the release path includes
-    # `contents: read`. That is a small widening of one job on one path, taken
-    # deliberately in exchange for every CI run of every caller no longer
-    # holding an OIDC credential it has no use for. Both halves of that trade
-    # are stated because the first version of this comment stated only the
-    # half that favours the change.
-    #
-    # RELATED AND NOT FIXED HERE, because it belongs to the caller: a caller
-    # that declares ONLY `id-token: write` thereby sets `contents` to `none`,
-    # and this workflow checks out three times. itaca's release.yml is in that
-    # state and CHK-1 recorded it as R3-ITA-001, the finding that the
-    # publishing path has never once been executed.
-    #
-    # NOT VERIFIED BY EXECUTION HERE. This is GitHub startup-validation
-    # semantics and this machine cannot run Actions. The measurement that
-    # settles it is a CI run in a library that vendors this, which is exactly
-    # what caught the original defect.
+    runs-on: ubuntu-24.04
+    outputs:
+      artifact-name: ${{ needs.build.outputs.artifact-name }}
+      version: ${{ needs.identity.outputs.version }}
+      sha: ${{ github.sha }}
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - name: Publish to PyPI (trusted publishing)
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: State what this seal covers
+        env:
+          ARTIFACT: ${{ needs.build.outputs.artifact-name }}
+          VERSION: ${{ needs.identity.outputs.version }}
+        run: |
+          {
+            echo "## Release gate sealed"
+            echo
+            echo "| what | value |"
+            echo "|---|---|"
+            echo "| commit | \`${{ github.sha }}\` |"
+            echo "| version | \`$VERSION\` |"
+            echo "| artifact | \`$ARTIFACT\` |"
+            echo
+            echo "Every gate, the version identity rule, the build and the"
+            echo "smoke of that build passed on this commit. A caller may"
+            echo "publish this artifact and must not rebuild it."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "sealed: $ARTIFACT at $VERSION on ${{ github.sha }}"

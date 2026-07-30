@@ -38,10 +38,20 @@ expected and correct, and the pins below are per file:
   (``ITC-20260730-0215``, DD-44).
 - 0.2.9: ``write_attestation.py``, the INC-20260729-2355 guard. Its own
   entry below carries the detail.
-- 0.2.6, the release-integrity promotion, which is HISTORY for the two
-  hook bodies above and still the current pin for the five artifacts it
-  introduced: ``role_review_gate.py`` and ``write_attestation.py``
-  re-vendored, plus five NEW artifacts. The
+- 0.2.14 and 0.2.13: the release path, four rows in one adoption.
+  ``release_gate.yml`` and the NEW ``release_caller.yml`` at 0.2.14,
+  ``check_release_gate.py`` and its companion at 0.2.13. The publish job
+  moved OUT of the gate and into the caller, because PyPI Trusted
+  Publishing cannot match a job inside a reusable workflow
+  (``ITC-20260730-0270``, measured twice on this repository's v0.2.0 tag).
+  The caller is a TEMPLATE and is vendored as ``.yml.template``, so the
+  workflow copied from it is this repository's own file rather than a
+  pinned body; the entries below say why.
+- 0.2.6, the release-integrity promotion. It is HISTORY for the two hook
+  bodies above, and for three of the five artifacts it introduced, which
+  moved to 0.2.13 and 0.2.14 in the release-path adoption above. It
+  remains the current pin for exactly two,
+  ``check_version_identity.py`` and its mutation companion. The
   vocabulary change is the whole of it for the two existing bodies:
   ``write_attestation.py`` gains ``numerical-analyst`` and
   ``integration-reviewer`` in ``KNOWN_PASSES``, and the gate's deny
@@ -197,8 +207,41 @@ MANIFEST: dict[str, Pin] = {
     "write_attestation.py": Pin(
         "9d62d8a32c7aba156deade505a05759e26e9d7c72f87bf0ac5632f4ce17afa28", "0.2.9"
     ),
+    # 0.2.14 for the two workflow bodies and 0.2.13 for the checker pair,
+    # which is one adoption and four rows: kit 0.2.12 moved the publish job
+    # OUT of the gate and into the caller, 0.2.13 fixed a startup defect the
+    # rehearsal found in 0.2.12's own body, and 0.2.14 is prose only,
+    # replacing two NOT VERIFIED BY EXECUTION notes with the runs that
+    # verified them. The mixed versions are the manifest being per file, not
+    # a lag.
+    #
+    # WHY THE PUBLISH JOB MOVED, because a reader of this pin will ask. PyPI
+    # Trusted Publishing matches `job_workflow_ref`, the file CONTAINING the
+    # publishing job, and the sigstore attestation the same action uploads
+    # carries `workflow_ref`, the ENTRY POINT. PyPI checks both against one
+    # configured publisher, so with a reusable workflow no publisher value
+    # satisfies both. Both halves were measured on this repository's own
+    # v0.2.0 tag (`ITC-20260730-0270`), which is why v0.2.0 shipped by hand.
+    #
+    # Every one of the four hashes below was RECOMPUTED from the master body
+    # with `_kit_body`/`_normalize` from this file, per the recompute-not-copy
+    # rule the 0.2.7 entries state, and all four agreed with the kit README's
+    # declared value AND with the master's own header. That is three
+    # independent sources agreeing, which is what makes copying safe here and
+    # is not the case elsewhere in this manifest.
     "release_gate.yml": Pin(
-        "f8e0262a1f9ada6220afd9bee1bf488e030e827fd2b3dc4d90bea684a4607a10", "0.2.7"
+        "1081d686ccf6b89a4af612ebc9c4ea3202a52a27068c00459a82e07187751511", "0.2.14"
+    ),
+    # The publishing caller, vendored as `.yml.template` rather than `.yml`
+    # so GitHub does not run it and `check_release_gate.py` does not scan it.
+    # It is a TEMPLATE: `.github/workflows/release.yml` was copied from this
+    # body and edited, and that copy is this repository's own file and is
+    # deliberately NOT pinned here. What binds the copy is the checker, run
+    # against this directory by `tests/test_release_integrity.py`. Pinning
+    # the copy instead would have frozen this repository's own gate commands
+    # inside a kit hash.
+    "release_caller.yml": Pin(
+        "be93714d94cb36780d9b30374e6c28c760c303c13fe5b706bb8ca800d07ee395", "0.2.14"
     ),
     # 0.2.7, the HUB-6 promotion. Two of the three guards
     # INC-20260729-0854-shared needs, plus the review policy they are
@@ -223,11 +266,17 @@ MANIFEST: dict[str, Pin] = {
     "review-policy.md": Pin(
         "d3845ed17ef14d013ee2ffc8350f61bf0c0f585f63fc93c19e172d0a8afbd561", "0.2.7"
     ),
+    # 0.2.13. Two rules became six, and the sixth is the one the rehearsal
+    # paid for: GitHub EVALUATES the `description` of a `workflow_call` input,
+    # so 0.2.12's worked example killed every run at startup with no job to
+    # attribute it to. Rule 1 now refuses expression syntax in any such
+    # description. Guard evidence at 40 cases and 28 mutants, all denied,
+    # measured here on adoption and not taken from the changelog.
     "check_release_gate.py": Pin(
-        "a0ef06b1aa031245e0354eadfbe120e69e38515ce3184eb2ea0b1d68adf34eb3", "0.2.6"
+        "4e821fb150ef236c6ada877e72c17a9a1c397b10beec14d085021b835ae3d943", "0.2.13"
     ),
     "check_release_gate_mutations.py": Pin(
-        "897ace78c3d664b3de16f6a3947df746e9ab79d3916e448a61f499eef830d134", "0.2.6"
+        "97442e34e77e239437e3e2234dd6c518d79be59ddbafc2b5a302a0538c0eaf77", "0.2.13"
     ),
     "check_version_identity.py": Pin(
         "d9fd719a92bc82cd8c81ab60888bcae4eeed320af89bced74b2602350afe68bd", "0.2.6"
@@ -304,6 +353,7 @@ COMMITTED: list[tuple[str, str]] = [
         ".claude/kit/check_version_identity_mutations.py",
     ),
     ("release_gate.yml", ".github/workflows/release_gate.yml"),
+    ("release_caller.yml", ".github/workflows/release.yml.template"),
     ("check_shipped_surface.py", ".claude/kit/check_shipped_surface.py"),
     (
         "check_shipped_surface_mutations.py",

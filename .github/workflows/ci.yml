@@ -5,8 +5,16 @@
 #
 # CI and Release now call the SAME reusable gate, which is what REV-001
 # asked for in ITACA-006: one description of what must pass, rather than
-# two files that can drift apart while both stay green. The only
-# difference between the two callers is `publish`.
+# two files that can drift apart while both stay green. Since kit 0.2.12
+# the gate does not publish at all, so there is no `publish` input to tell
+# the two callers apart: what makes release.yml the release path is that it
+# carries a publishing job, and what keeps this file off the index is that
+# it does not.
+#
+# The matrix below is checked against release.yml's `breadth` call, entry
+# for entry, by `check_release_gate.py` rule 5. A leg added here and not
+# there is refused, because it would be a configuration CI proves on main
+# and the tag path never proves on the commit being released (FND-070).
 #
 # The matrix sits on the CALLING job, deliberately. The gate takes one
 # `python-version` by design, because a matrix input would put this
@@ -40,7 +48,8 @@ jobs:
     # before any `if:` is evaluated. So a caller passing `publish: false`
     # still had to hold an OIDC credential it had no use for, or die in
     # one second. Kit 0.2.7 removed that declaration so the job inherits,
-    # which is `ITC-20260729-0250`; the workaround came out with it.
+    # which is `ITC-20260729-0250`; the workaround came out with it. At
+    # 0.2.12 the gate has no publish job left to declare anything.
     permissions:
       contents: read
     strategy:
@@ -60,11 +69,19 @@ jobs:
             install: pip install -e ".[dev]"
     uses: ./.github/workflows/release_gate.yml
     with:
-      publish: false
+      # One artifact name per leg. Artifacts share a single namespace per
+      # RUN and are immutable in upload-artifact v4, so the three legs used
+      # to collide on the one literal name the gate carried (FND-069).
+      artifact-tag: py${{ matrix.python-version }}-${{ matrix.deps }}
       python-version: ${{ matrix.python-version }}
       install: ${{ matrix.install }}
       version-command: python -c "import itaca.core.version as v; print(v.__version__)"
       identity-checker: .claude/kit/check_version_identity.py
+      # Resolved from PyPI on 2026-07-30 and kept identical to release.yml's.
+      # FND-052: the build step used to run `pip install --upgrade pip build
+      # twine`, so the tools that produced every published artifact were
+      # whatever the index held that minute.
+      build-toolchain: pip==26.2 build==1.5.0 twine==7.0.0
       gates: |
         [
           {"name": "lint", "run": "ruff check . && ruff format --check ."},

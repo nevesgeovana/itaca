@@ -28,6 +28,7 @@ would take its verdict from build output and from one machine's
 absolute paths.
 """
 
+import json
 import re
 import subprocess
 import sys
@@ -35,6 +36,7 @@ from pathlib import Path
 
 import identifiers
 import pytest
+import yaml
 from gate_locator import ledger_env  # one reader of the gate's ledger variable
 
 DASHES = {chr(0x2014): "em dash", chr(0x2013): "en dash"}
@@ -43,6 +45,13 @@ TEXT_SUFFIXES = {
     ".json",
     ".md",
     ".py",
+    # A vendored kit body whose path must NOT end in `.yml`, or GitHub would
+    # run it and the release-gate checker would scan it. Every other vendored
+    # body is already walked (the `.py` ones by suffix, `release_gate.yml` as
+    # `.yml`), and this one arrived exempt by accident rather than by
+    # decision. CLAUDE.md states the dash rule with "No exceptions", so the
+    # suffix is added here and the path is pinned in `_MUST_REACH` below.
+    ".template",
     ".tex",
     ".toml",
     ".txt",
@@ -74,6 +83,11 @@ _MUST_REACH = (
     "examples/wt_campaign.py",
     ".claude/skills/audit/SKILL.md",
     ".claude/kit/check_release_gate.py",
+    # The one vendored kit body whose suffix is neither `.py` nor `.yml`.
+    # Pinned by path as well as by suffix because it reached this repository
+    # exempt from this walk, and a suffix set is one edit away from losing it
+    # again.
+    ".github/workflows/release.yml.template",
     ".github/workflows/ci.yml",
     "CLAUDE.md",
     "README.md",
@@ -559,11 +573,23 @@ def test_both_workflows_build_the_srs_and_check_the_log() -> None:
     parsed the workflow for it, though two other tests already parse the same
     file for other properties.
 
-    Three properties, and the third is the one that carries the P0. The build
-    must be reachable from BOTH callers, since their triggers are disjoint and
-    a tag push would otherwise publish a document nobody compiled; and the run
-    must check the log rather than only the exit status, because a nonstopmode
-    build can emit a PDF while having logged errors.
+    Three properties. The build must actually run latexmk over ``docs/srs``;
+    it must read ``main.log``, because a nonstopmode build emits a PDF while
+    logging errors; and it must sit in the publishing job's transitive
+    ``needs`` closure in ``release.yml``, which is the one that carries the
+    P0, since a check outside that closure is advisory and the tag push
+    starts both at once.
+
+    NOT proved here: that the document compiles. That is the workflow's job,
+    and this only proves nothing deleted the wiring.
+
+    The closure half binds on IDENTITY, not on the job's label. An earlier
+    version asked whether the token ``srs`` was reachable, and a reviewer
+    made that pass against a ``release.yml`` whose ``srs`` job ran
+    ``echo "nothing is compiled here"``: renaming or repointing the job's
+    ``uses:`` while leaving the name in place reopened
+    ``ITC-20260730-0010`` with the suite green. What is required now is a job
+    whose ``uses`` ends in ``srs_build.yml``.
     """
     workflows = _ROOT / ".github" / "workflows"
     reusable = workflows / "srs_build.yml"
@@ -589,13 +615,117 @@ def test_both_workflows_build_the_srs_and_check_the_log() -> None:
             f"triggers are disjoint, and a tag push that skips the build "
             f"publishes a document no machine has read (ITC-20260730-0010)."
         )
-    release = (workflows / "release.yml").read_text(encoding="utf-8")
-    assert "needs: [srs]" in release, (
-        "the release gate no longer waits on the SRS build, so the build runs "
-        "beside publication instead of before it. release.yml's own header "
-        "gives the reason this matters: a check outside the publishing job's "
-        "needs closure is advisory, and the tag push starts both at once."
+    # The load-bearing half, asserted on STRUCTURE rather than on a literal.
+    # It used to read ``"needs: [srs]" in release``, which was true of the
+    # shape that existed when it was written and said nothing about the
+    # property: kit 0.2.12 moved the publishing job out of the gate and into
+    # this file, so the job that must wait on the build is `publish` and its
+    # needs list is no longer that string.
+    release = yaml.safe_load((workflows / "release.yml").read_text(encoding="utf-8"))
+    jobs = release["jobs"]
+    publishing = [
+        name
+        for name, job in jobs.items()
+        if any(
+            "gh-action-pypi-publish" in str(step.get("uses", ""))
+            for step in job.get("steps") or []
+        )
+    ]
+    assert publishing, (
+        "release.yml declares no publishing job at all, so this test can no "
+        "longer say whether the SRS build gates publication. If publication "
+        "moved elsewhere, move this assertion with it (ITC-20260730-0010)."
     )
+    for name, job in jobs.items():
+        needs = job.get("needs") or []
+        for parent in [needs] if isinstance(needs, str) else needs:
+            assert parent in jobs, (
+                f"release.yml's job {name!r} needs {parent!r}, which is not a "
+                f"job declared in that file; the needs graph cannot be walked "
+                f"and this guard cannot say what gates publication. Fix the "
+                f"reference or remove it."
+            )
+
+    def closure(name: str) -> set[str]:
+        """Transitive ``needs`` closure, iterative so a cycle cannot recurse."""
+        reached: set[str] = set()
+        pending = [name]
+        while pending:
+            needs = jobs[pending.pop()].get("needs") or []
+            for parent in [needs] if isinstance(needs, str) else needs:
+                if parent not in reached:
+                    reached.add(parent)
+                    pending.append(parent)
+        return reached
+
+    gating = {
+        name
+        for name, job in jobs.items()
+        if str(job.get("uses", "")).endswith("srs_build.yml")
+    }
+    assert gating, (
+        "release.yml declares no job whose `uses` is srs_build.yml, so on the "
+        "path that publishes, the specification is never compiled. A job named "
+        "`srs` is not enough: this asserts the identity of the build, because a "
+        "job keeping the name while its `uses` moves reopens "
+        "ITC-20260730-0010 with the suite green."
+    )
+    for name in publishing:
+        reached = closure(name)
+        assert gating & reached, (
+            f"release.yml's publishing job {name!r} does not transitively need "
+            f"the SRS build ({sorted(gating)}), so the build runs beside "
+            f"publication instead of before it. Add it to that job's `needs`: "
+            f"a check outside the publishing job's needs closure is advisory, "
+            f"and the tag push starts both at once (ITC-20260730-0010)."
+        )
+        # Every OTHER job in the file too, and this half is guarded HERE
+        # because the vendored checker does not guard it. `check_release_gate`
+        # rule 2 enumerates gate CALLS; it has no concept of a
+        # repository-owned gating job, and a reviewer measured that deleting
+        # `srs` from `publish`'s `needs` leaves the checker at exit 0. Stated
+        # as "every other job" rather than as a list, so the next
+        # repository-owned gate (a license scan, a shipped-surface job) is
+        # covered by default instead of being remembered.
+        ungated = sorted(set(jobs) - set(publishing) - reached)
+        assert not ungated, (
+            f"release.yml declares {ungated}, which the publishing job "
+            f"{name!r} does not transitively need, so on a tag push they run "
+            f"BESIDE publication rather than gating it. Add each to that job's "
+            f"`needs`, or delete it. The release-gate checker does not catch "
+            f"this: its rule 2 enumerates gate calls only."
+        )
+        # `needs` alone does not block: with `if: always()` a job runs AFTER
+        # its dependencies fail. That would make the whole property false
+        # while every other guard here stayed green, and it is a NEW surface
+        # in this repository, because until kit 0.2.12 the publish job lived
+        # inside the hash-pinned gate body rather than in this editable file.
+        assert "if" not in jobs[name], (
+            f"release.yml's publishing job {name!r} carries a job-level `if:`. "
+            f"`needs` does not block a job whose condition is always(): it "
+            f"runs after those jobs FAIL, so publication would no longer "
+            f"depend on the gates passing. Remove the condition."
+        )
+        for gated in sorted(reached | {name}):
+            assert not jobs[gated].get("continue-on-error"), (
+                f"release.yml's job {gated!r} sets continue-on-error, and it "
+                f"is inside the publishing job {name!r}'s needs closure, so "
+                f"its failure would not stop the release. Remove it."
+            )
+        # A `repository-url` left behind after a rehearsal sends a REAL
+        # release to the test index and reports success. The vendored
+        # template warns about it in prose; prose is not a guard, and this
+        # repository's own header cites a TestPyPI rehearsal, so the edit
+        # demonstrably gets made.
+        for step in jobs[name].get("steps") or []:
+            if "gh-action-pypi-publish" not in str(step.get("uses", "")):
+                continue
+            assert "repository-url" not in (step.get("with") or {}), (
+                "release.yml's publish step names a `repository-url`. That "
+                "sends this release to the index it names, not to PyPI, and "
+                "reports SUCCESS while doing it. Delete the input; it belongs "
+                "only in a rehearsal copy that is never committed."
+            )
 
 
 def test_no_srs_source_is_blank_line_doubled() -> None:
@@ -848,3 +978,56 @@ def test_a_binary_payload_is_skipped_and_the_limit_is_deliberate() -> None:
     assert not identifiers.offenders(
         [("itaca/io/sample.itc", b"PK\x03\x04\x00" + prose)]
     )
+
+
+def test_every_gate_call_passes_the_same_checks_and_toolchain() -> None:
+    """The three gate calls must agree, because nothing else compares them.
+
+    Kit 0.2.12's two-call topology took the gate inputs from ONE call site
+    to three: ``ci.yml:gate``, and ``release.yml``'s ``breadth`` and
+    ``release``. All three files say in comments that they are kept
+    identical, and until this test nothing checked it. What the vendored
+    ``check_release_gate.py`` compares is DECLARED MATRICES (rule 5); every
+    other ``with:`` input is invisible to it.
+
+    Measured by a reviewer on scratch copies, which is why this exists: the
+    ``types`` gate deleted from BOTH of ``release.yml``'s calls, together
+    with a diverged ``build-toolchain``, leaves the checker at exit 0 with
+    no violations. The tag path would then ship without the type gate and
+    built by a toolchain CI never proved, with the whole suite green.
+
+    ``gates`` is compared as PARSED JSON rather than as text, so
+    reformatting is not a failure and a reordered array is not either. The
+    gate itself accepts an entry carrying ``absent`` (a reason) instead of
+    ``run`` (a command), which is the shape that would otherwise let a
+    release declare a gate away in one file only.
+    """
+    workflows = _ROOT / ".github" / "workflows"
+    compared = ("gates", "build-toolchain", "version-command", "smoke")
+    calls: dict[str, dict[str, object]] = {}
+    for name in ("ci.yml", "release.yml"):
+        parsed = yaml.safe_load((workflows / name).read_text(encoding="utf-8"))
+        for job, body in parsed["jobs"].items():
+            if not str(body.get("uses", "")).endswith("release_gate.yml"):
+                continue
+            calls[f"{name}:{job}"] = body.get("with") or {}
+    assert len(calls) >= 3, (
+        f"expected at least three release-gate calls across ci.yml and "
+        f"release.yml and found {sorted(calls)}. Either the topology changed "
+        f"or this guard is reading the wrong jobs; it cannot compare what it "
+        f"cannot find."
+    )
+    reference, expected = sorted(calls)[0], calls[sorted(calls)[0]]
+    for key in compared:
+        want = json.loads(expected[key]) if key == "gates" else expected[key]
+        for call, given in sorted(calls.items()):
+            got = json.loads(given[key]) if key == "gates" else given[key]
+            assert got == want, (
+                f"the release-gate input {key!r} differs between {reference!r} "
+                f"and {call!r}, so CI and the tag path do not prove the same "
+                f"thing about the commit being released. Make them identical, "
+                f"or state in both files why they must differ. Neither the "
+                f"release-gate checker nor any other guard compares this: "
+                f"rule 5 compares declared matrices only.\n"
+                f"  {reference}: {want!r}\n  {call}: {got!r}"
+            )

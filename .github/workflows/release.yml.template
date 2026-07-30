@@ -1,0 +1,221 @@
+# ITACA / pyflightstream shared process kit
+# kit-version: 0.2.14
+# artifact: release_caller.yml
+# body-sha256: be93714d94cb36780d9b30374e6c28c760c303c13fe5b706bb8ca800d07ee395
+# canonical-source: BUILT for the kit (0.2.12) by lane HUB-8, as the other half of the release_gate.yml redesign. The gate stopped publishing because PyPI Trusted Publishing cannot match a job inside a reusable workflow (ITC-20260730-0270), so the publishing job is the caller's now. A checker rule alone would have told each repository what is forbidden without ever showing it the one arrangement that works, which is how the previous refusal message came to prescribe a topology that cannot publish.
+# note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored. This one is a TEMPLATE and not a workflow: it is vendored as `.yml.template` so GitHub never runs it and `check_release_gate.py` never scans it. `.github/workflows/release.yml` was COPIED from this body and edited; from that moment the copy is this repository's own file and is not hash-pinned here. What binds it is the checker.
+# 
+# END KIT PROVENANCE (body verbatim below)
+# The publishing caller. Copy to `.github/workflows/release.yml` and edit.
+#
+# WHY THE PUBLISH JOB IS HERE AND NOT IN THE GATE. PyPI Trusted Publishing
+# matches `job_workflow_ref`, the file CONTAINING the publishing job. The
+# sigstore attestation the same action uploads carries `workflow_ref`, the
+# ENTRY POINT. PyPI checks both against one configured publisher, so a publish
+# job inside a reusable workflow makes those two claims name different files
+# and no publisher value satisfies both. Measured twice on itaca's v0.2.0 tag;
+# ITC-20260730-0270 records both failures. Publishing from the caller puts both
+# claims on this file, which is the supported configuration.
+#
+# WHAT REPLACES CO-LOCATION AS THE GUARANTEE. Nothing about this file being the
+# publisher weakens ITACA-006, whose property is that no publish path exists
+# that does not depend on every gate. Three things carry it now:
+#
+#   1. `publish` NEEDS every job that calls the gate. Not one of them: all.
+#   2. `publish` publishes the artifact whose NAME it learned from a gate call's
+#      output, and a gate call only produces outputs when its `sealed` job ran,
+#      and `sealed` needs every job in the gate.
+#   3. `publish` does not check out and does not build. It cannot substitute
+#      something for what the gate sealed, because it has nothing else.
+#
+# `check_release_gate.py` refuses a repository where any of those three is
+# false, which is how the property survives being spread across two files.
+#
+# WHY TWO GATE CALLS RATHER THAN ONE. `breadth` reproduces CI's matrix so the
+# full matrix is proven on the commit being tagged; that is FND-070, whose open
+# half was a tag path running one interpreter that CI's matrix did not even
+# contain. `release` is a single call, and its artifact is the one that ships.
+# They are separate because a matrix job's outputs are those of whichever leg
+# finished last, so `needs.breadth.outputs.artifact-name` names a real artifact
+# and no reader can say which. A single non-matrix call has one answer.
+#
+# The cost is one extra full gate run per tag, and it is the honest price of a
+# deterministic answer to "which build is being published". The alternative,
+# naming one leg's artifact by a literal string, was rejected: a literal is a
+# second place that has to agree with the matrix, and this whole redesign
+# exists because a literal artifact name and a caller's assumption disagreed.
+name: Release
+
+# NO workflow-level `permissions:` block, deliberately. A permission declared
+# here is held by every job, and `id-token: write` is the one credential in
+# this file that must not be. FND-051: it used to be granted to the whole gate
+# call, so the jobs that install dependencies, run this repository's own
+# commands and run third-party build tooling all held an OIDC credential able
+# to publish. It is now on `publish` and on nothing else, and `publish` neither
+# checks out nor builds.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  # EDIT or DELETE. Any repository-owned job that must gate publication goes
+  # here and into `publish`'s `needs`. itaca's is its specification build. A
+  # check that is not in the publishing job's needs closure is advisory, and on
+  # a tag push nothing else would run it at all, because tag triggers and CI
+  # triggers are disjoint.
+  docs:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/docs_build.yml
+
+  breadth:
+    name: gate (py${{ matrix.python-version }}, ${{ matrix.deps }} deps)
+    permissions:
+      # What the gate's three checkouts need, and all this caller grants it.
+      contents: read
+    strategy:
+      fail-fast: false
+      # EDIT. This matrix must be the SAME SET as the one in ci.yml's gate
+      # call, and `check_release_gate.py` rule 5 refuses the pair when it is
+      # not. A leg CI exercises and the tag path does not is a configuration
+      # that was proven on main and never on the commit being released, which
+      # is exactly the half of FND-070 that was open.
+      matrix:
+        include:
+          - python-version: "3.11"
+            deps: latest
+            install: pip install -e ".[dev]"
+          - python-version: "3.11"
+            deps: minimum
+            install: pip install -e ".[dev]" && pip install "somedep==1.0.*"
+          - python-version: "3.13"
+            deps: latest
+            install: pip install -e ".[dev]"
+    uses: ./.github/workflows/release_gate.yml
+    with:
+      # Every leg of this matrix uploads under its own name. Artifacts share
+      # one namespace per RUN and are immutable in upload-artifact v4, so the
+      # three legs used to collide on the single literal name the gate carried
+      # (FND-069). The checker resolves this expression against each declared
+      # leg and refuses the call when two legs produce the same value, so a tag
+      # that is not varied here is refused before it can fail in a run.
+      artifact-tag: py${{ matrix.python-version }}-${{ matrix.deps }}
+      python-version: ${{ matrix.python-version }}
+      install: ${{ matrix.install }}
+      # EDIT, all five below, and keep them identical to ci.yml's.
+      version-command: python -c "import somepkg; print(somepkg.__version__)"
+      identity-checker: .claude/tools/check_version_identity.py
+      # EDIT with versions you resolved YOURSELF on the day you adopt this.
+      # These were the newest on PyPI on 2026-07-30, read from the index, and
+      # they are an example rather than a kit pin: the gate refuses anything
+      # that is not `name==version` and names at least these three, and the
+      # values are the repository's own to choose and to bump.
+      build-toolchain: pip==26.2 build==1.5.0 twine==7.0.0
+      gates: |
+        [
+          {"name": "lint", "run": "ruff check . && ruff format --check ."},
+          {"name": "types", "run": "mypy"},
+          {"name": "tests+coverage(90)", "run": "pytest"}
+        ]
+      smoke: >-
+        $PYTHON -c "import somepkg; assert somepkg.works(); print('smoke ok')"
+
+  release:
+    name: gate (the artifact that ships)
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release_gate.yml
+    with:
+      # A constant, because this job has no matrix. It must still differ from
+      # every tag `breadth` produces, and the checker compares them.
+      artifact-tag: release
+      # EDIT. The interpreter the shipped artifact is built on. It may be one
+      # of the matrix legs' or not; what matters is that this is the build the
+      # index receives and that it passed every gate on this commit.
+      python-version: "3.12"
+      install: pip install -e ".[dev]"
+      version-command: python -c "import somepkg; print(somepkg.__version__)"
+      identity-checker: .claude/tools/check_version_identity.py
+      build-toolchain: pip==26.2 build==1.5.0 twine==7.0.0
+      gates: |
+        [
+          {"name": "lint", "run": "ruff check . && ruff format --check ."},
+          {"name": "types", "run": "mypy"},
+          {"name": "tests+coverage(90)", "run": "pytest"}
+        ]
+      smoke: >-
+        $PYTHON -c "import somepkg; assert somepkg.works(); print('smoke ok')"
+
+  publish:
+    name: publish to PyPI
+    # EVERY gate call, plus every repository-owned gating job. `needs` on a
+    # matrix job waits for all of its legs, so this one line is what makes the
+    # full matrix a precondition of publication rather than a report beside it.
+    needs: [docs, breadth, release]
+    runs-on: ubuntu-24.04
+    environment:
+      # The environment is part of the OIDC claim PyPI matches, and it is where
+      # a required reviewer or a branch restriction is attached if this
+      # repository ever wants one. `check_release_gate.py` requires a
+      # publishing job to name one rather than leaving the narrowest available
+      # claim unused.
+      name: pypi
+    permissions:
+      # The ONLY id-token grant in this repository, on the only job that
+      # exchanges it. Declaring any permission sets every undeclared one to
+      # none, so this job also holds no `contents`, which is correct: it must
+      # not be able to read the source it is publishing a build of.
+      #
+      # ANSWERED BY EXECUTION 2026-07-30, replacing a note that said this was
+      # the one thing here nobody had verified. The open question was whether
+      # download-artifact needs `actions: read` for a SAME-RUN download under a
+      # permissions block this narrow. It does not: in rehearsal runs
+      # 30572604938 and 30573529205 the publish job's effective grant printed
+      # as `Metadata: read` alone and the download succeeded. So the narrow
+      # form is not merely documented, it ran.
+      id-token: write
+    steps:
+      - name: State what is being published
+        # RECORDED, not asserted, and the difference is the point. Comparing
+        # `needs.release.outputs.sha` against `github.sha` would always hold:
+        # both name this run's commit, so the comparison could not fail and
+        # would read like a check. What the gate's outputs are actually worth
+        # is that they DO NOT EXIST unless the gate passed, which `needs`
+        # already enforces. So this step publishes the facts to the run summary
+        # instead of pretending to verify them.
+        env:
+          ARTIFACT: ${{ needs.release.outputs.artifact-name }}
+          VERSION: ${{ needs.release.outputs.version }}
+          GATED_SHA: ${{ needs.release.outputs.sha }}
+        run: |
+          {
+            echo "## Publishing"
+            echo
+            echo "| what | value |"
+            echo "|---|---|"
+            echo "| artifact | \`$ARTIFACT\` |"
+            echo "| version | \`$VERSION\` |"
+            echo "| gated on | \`$GATED_SHA\` |"
+            echo "| tag | \`${{ github.ref_name }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "publishing $ARTIFACT ($VERSION) gated on $GATED_SHA"
+      - name: Download the sealed artifact
+        # By the gate's own output, never by a literal. A literal would be a
+        # second description of the same thing, and the checker refuses one:
+        # rule 2 requires this name to reference a gate call's outputs.
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.release.outputs.artifact-name }}
+          path: dist/
+      - name: Publish to PyPI (trusted publishing)
+        # Pinned by commit SHA. The tag is recorded beside it so the pin can be
+        # re-derived; `release/v1` is a BRANCH and moves, which is the reason
+        # this used to pin nothing at all.
+        #
+        # EDIT for a rehearsal only: add
+        #   with:
+        #     repository-url: https://test.pypi.org/legacy/
+        # to publish to TestPyPI instead. Delete it before the real path runs;
+        # a `repository-url` left behind sends a real release to the test index
+        # and reports success.
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

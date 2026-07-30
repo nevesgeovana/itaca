@@ -1195,3 +1195,52 @@ rather than leaving.
 partial withdrawal (one component, or one variable) is meaningful at all.
 
 **SRS:** REQ-39, REQ-40, REQ-98, REQ-18.
+
+---
+
+## OQ-47: Should the shipped artifact be built on an interpreter CI exercises?
+
+**Raised:** 2026-07-30 (lane ITA-10, kit 0.2.14 adoption; architect,
+V&V and API-designer passes independently)
+**Status:** open
+**Question:** `release.yml`'s `release` gate call builds the artifact that
+ships on Python 3.12. Neither `ci.yml`'s matrix nor `release.yml`'s
+`breadth` matrix contains 3.12: both run 3.11 latest, 3.11 minimum, and
+3.13 latest. So 3.12 is the one supported interpreter that no push to
+`main` ever exercises, and a 3.12-only regression surfaces first at tag
+time, which is the most expensive moment to find one.
+
+**Why it is a question and not a defect.** The shipped build is not
+untested: the `release` call runs the full gate set (lint, types, tests
+with the 90 percent floor, the identity check, the build and the smoke of
+that build) on 3.12 at tag time. `pyproject.toml` advertises 3.12 as
+supported, so building on it is legitimate. And rule 5 of
+`check_release_gate.py` permits the tag path being a superset of CI, so
+nothing refuses the arrangement. What is open is whether the arrangement
+is the one wanted.
+
+**Why it surfaced now.** FND-070's stated direction was that the tag path
+ran ONE interpreter that CI's matrix did not contain, and the kit 0.2.14
+adoption closed it: `breadth` now reproduces CI's matrix entry for entry.
+Its mirror stayed open and is invisible to the checker by design, since
+rule 5 skips a gate call carrying no matrix. BRF-068 explicitly left the
+interpreter choice to this repository ("Whether `python-version: 3.12`
+remains the interpreter of the shipped build ... is a library decision"),
+so the adoption preserved the existing value rather than moving it.
+
+**The three answers, and the cost of each.**
+
+| answer | cost |
+|---|---|
+| Add 3.12 to `ci.yml` and to `breadth` | a fourth leg on every push and every tag, and rule 5 keeps the two in step |
+| Build the shipped artifact on a leg CI already runs | no new CI minutes; changes which interpreter produces the wheel |
+| Keep 3.12 and record why | free, and the residual stays, so `release.yml` should then say a pure-Python wheel is insensitive to its build interpreter |
+
+The third is defensible for a pure-Python wheel and is the cheapest, but
+it is an argument nobody has written down yet, and writing it down is what
+would make it a decision rather than an omission.
+
+**Who decides:** the product owner, on which interpreters this library
+promises; the answer is not delegable to a lane.
+
+**SRS:** REQ-83, REQ-95.

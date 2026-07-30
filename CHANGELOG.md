@@ -6,7 +6,40 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
-Nothing yet.
+No public API change. Release infrastructure only, recorded here because
+it changes how a release reaches PyPI and the next tag runs on it.
+
+**How v0.2.0 was published, stated plainly.** The v0.2.0 files on PyPI
+were uploaded by hand, over the artifact the release gate had built. The
+automated path could not publish, for the reason under Changed below.
+Those files therefore carry no PEP 740 provenance attestation. Releases
+from the next tag onward are published by the workflow and do carry one,
+so a reader comparing the two will find that asymmetry and this is what
+explains it.
+
+**Publishing configuration.** The PyPI trusted publisher for `itaca`
+names `release.yml` with environment `pypi`. A publisher naming
+`release_gate.yml` cannot work and is not a fallback.
+
+### Changed
+
+* The publish job moved out of the shared reusable gate and into
+  `release.yml`, which is now the publisher (DD-45). PyPI Trusted
+  Publishing matches the file containing the publishing job, while the
+  attestation the same action uploads names the entry point, so with a
+  reusable workflow no configured publisher value satisfies both claims.
+  Both halves were measured on v0.2.0's tag.
+* The tag path now runs the full CI matrix on the commit being released,
+  where it previously ran Python 3.12 alone, an interpreter CI's matrix
+  does not contain. The artifact that ships is built in a separate
+  non-matrix gate call, still on Python 3.12, now beside the full matrix
+  rather than instead of it.
+* `id-token: write` is held by the publishing job alone; the build and
+  gate jobs no longer hold a credential able to publish.
+* The packaging frontend is pinned exactly
+  (`pip==26.2 build==1.5.0 twine==7.0.0`) instead of being upgraded from
+  the index at build time. The build backend is not yet pinned; DD-45
+  records that as the open half.
 
 ## [0.2.0] - 2026-07-30
 

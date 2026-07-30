@@ -9,6 +9,20 @@
 .claude/kit/**                       text eol=lf
 # release_gate.yml is a vendored kit body too, but it must live where
 # GitHub can call it as a reusable workflow, so it falls outside the
-# .claude/kit/** rule above and needs its own line. Without it a checkout
-# on another machine rewrites the line endings and breaks the pinned hash.
+# .claude/kit/** rule above and needs its own line.
+#
+# WHY, stated correctly, because the reason written here until 2026-07-30
+# was measurably false and a new entry was about to inherit it. It said a
+# CRLF checkout "breaks the pinned hash". It does not: tests/test_kit_drift
+# normalizes line endings before hashing (`_normalize`, on top of Python's
+# universal newlines), so a CRLF working copy still matches its pin. The
+# pin is worth having for what it does do, which is keep the stored bytes
+# identical on every platform, keep diffs clean, and keep a file GitHub
+# reads as a workflow from depending on one machine's core.autocrlf.
 .github/workflows/release_gate.yml   text eol=lf
+# The publishing caller's TEMPLATE (kit release_caller.yml), a vendored
+# body pinned for the byte stability above. It lives beside the gate rather
+# than under .claude/kit because that is where the file it is copied to
+# must live, and it is deliberately not a `.yml`: GitHub would run it and
+# the release-gate checker would scan it.
+.github/workflows/release.yml.template  text eol=lf
