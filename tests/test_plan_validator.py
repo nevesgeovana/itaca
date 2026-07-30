@@ -177,23 +177,33 @@ def _entry_count(output: str) -> int | None:
 def test_a_zero_entry_ledger_report_is_a_failure_here() -> None:
     """Read the checker's entry COUNT, not only its exit code.
 
-    ``ITC-20260727-1612``. ``check_plan_kit.py`` exits ZERO on an empty
-    ledger folder, printing ``no entries in <dir>``, while a MISSING folder
-    is refused loudly with ``not a directory`` and exit 1. So the loud case
-    is handled and the empty one is not, and a run pointed at the wrong path
-    reports success.
+    ``ITC-20260727-1612``. ``check_plan_kit.py`` used to exit ZERO on an
+    empty ledger folder, printing ``no entries in <dir>``, while a MISSING
+    folder was refused loudly with ``not a directory`` and exit 1. So the
+    loud case was handled and the empty one was not, and a run pointed at
+    the wrong path reported success. Kit 0.2.10 refuses it with exit 2, and
+    that fix is adopted here.
 
-    ``CLAUDE.md`` already tells the reader to read the entry count rather
+    ``CLAUDE.md`` already told the reader to read the entry count rather
     than the exit code. That is documentation, and this repository's own
     incident rule says documentation is not a guard. This test is that
     instruction expressed as a mechanism: whatever the exit code was, a
     report covering zero entries fails here.
 
-    What this does NOT claim: it does not fix the checker. That file is a
-    shared-kit artifact resolved through ``ITACA_PLAN_VALIDATOR`` and is not
-    itaca's to edit, so the refusal itself is routed to the kit and pinned
-    below. What itaca owns is its own CONSUMPTION of the checker, and that
-    is exactly what is guarded here.
+    It survives the kit fix because it guards a different thing. The kit
+    decides what an empty walk means to a CHECKER; this decides what a
+    zero-entry report means to ITACA, which would still be a silent pass if
+    some caller here read the exit code alone. It also catches a checker
+    whose output wording drifts, which no exit code reports.
+
+    THREE outcomes, told apart, because they want three different fixes and
+    the first version of this test conflated two of them. Once the kit
+    refused the empty case, an empty ledger stopped printing a count line at
+    all, so the "no count line" branch fired with the message "the output
+    format changed" for a run where nothing had changed: a reader following
+    it would have gone to re-read ``_entry_count`` while the real cause was
+    a ledger with no entries in it. The checker's own refusal is therefore
+    read first, and only an unexplained missing count is reported as drift.
     """
     resolved = _resolve()
     if resolved is None:
@@ -216,25 +226,35 @@ def test_a_zero_entry_ledger_report_is_a_failure_here() -> None:
     )
     output = done.stdout + done.stderr
     count = _entry_count(output)
-    # The two ways this can fail want different fixes, so they are told apart
-    # rather than sharing one message: no count at all means the checker's
-    # output wording changed under us, while a count of zero means the folder
-    # really is empty.
+    where = f"{ledger} (resolved by the {branch} branch), exit {done.returncode}"
+    # 1. The checker itself said it could not verify. Since kit 0.2.10 that is
+    #    what an empty walk looks like, and it prints no count line, so this
+    #    must be read BEFORE the missing-count branch or an empty ledger is
+    #    misreported as a wording change.
+    assert not (done.returncode == 2 or "CANNOT VERIFY" in output), (
+        f"the plan checker refused to verify the ledger at {where}. Since kit "
+        f"0.2.10 that is what an EMPTY plan directory produces, so either the "
+        f"resolved path is wrong or the ledger is genuinely empty; check "
+        f"ITACA_MANAGEMENT_ROOT and that the tree is synced. Nothing was "
+        f"validated (ITC-20260727-1612). Output: {output.strip()!r}"
+    )
+    # 2. No count line and no refusal: the wording this guard reads has moved.
     assert count is not None, (
-        f"the plan checker's output carried no '<N> entries checked' line, so "
-        f"its entry count could not be read at all. This is not an empty "
-        f"ledger: it means the checker's output format changed and this guard "
-        f"can no longer see what it exists to see (ITC-20260727-1612). Re-read "
-        f"check_plan_kit.py and update _entry_count. Ledger: {ledger} "
-        f"(resolved by the {branch} branch). Exit {done.returncode}. "
+        f"the plan checker's output carried no '<N> entries checked' line and "
+        f"did not refuse either, so its entry count could not be read at all. "
+        f"That means the checker's output format changed and this guard can no "
+        f"longer see what it exists to see (ITC-20260727-1612). Re-read "
+        f"check_plan_kit.py and update _entry_count. Ledger: {where}. "
         f"Output: {output.strip()!r}"
     )
+    # 3. A count of zero reported as a SUCCESS, which is the original defect
+    #    and remains itaca's own failure mode if a future checker regresses.
     assert count > 0, (
-        f"the plan checker reported {count} entries for the ledger at {ledger} "
-        f"(resolved by the {branch} branch) and exited {done.returncode}. An "
-        f"empty ledger folder exits ZERO, so this reads as a pass while nothing "
-        f"was validated (ITC-20260727-1612). Either the resolved ledger path is "
-        f"wrong or the ledger is genuinely empty; check ITACA_MANAGEMENT_ROOT. "
+        f"the plan checker reported {count} entries for the ledger at {where}, "
+        f"without refusing. A zero-entry report reads as a pass while nothing "
+        f"was validated, which is ITC-20260727-1612 whatever the exit code "
+        f"was. Either the resolved ledger path is wrong or the ledger is "
+        f"genuinely empty; check ITACA_MANAGEMENT_ROOT. "
         f"Output: {output.strip()!r}"
     )
 
