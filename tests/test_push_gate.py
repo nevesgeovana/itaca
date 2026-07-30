@@ -25,38 +25,35 @@ stdout.
 from __future__ import annotations
 
 import json
-import re
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
+from gate_locator import ledger_env  # one reader of the gate's ledger variable
 
 HOOK = Path(__file__).resolve().parents[1] / ".claude" / "hooks" / "role_review_gate.py"
 ATTESTATION = Path(".claude") / ".role_review_attestation.json"
 
 
-def _ledger_env_of_the_gate() -> str:
-    """The ledger variable the vendored gate actually resolves.
-
-    READ from the gate rather than written here. A literal in this file was a
-    second copy of one fact, and when kit 0.2.8 renamed the variable
-    (COORD_INCIDENT_LEDGER, author decision LEDGER-ENVVAR) this module went on
-    exporting the old name: five cases then set a variable the gate does not
-    read, so the gate saw an unset ledger and denied, and the failures
-    reported nothing about what they test.
-    """
-    source = HOOK.read_text(encoding="utf-8")
-    match = re.search(r'^LEDGER_ENV = "([A-Z_]+)"', source, re.MULTILINE)
-    assert match is not None, (
-        f"could not read LEDGER_ENV out of {HOOK}. This module must resolve "
-        f"the same variable the gate does; do not reintroduce a literal here."
-    )
-    return match.group(1)
-
-
-LEDGER_ENV = _ledger_env_of_the_gate()
+# READ from the gate rather than written here. A literal in this file was a
+# second copy of one fact, and when kit 0.2.8 renamed the variable
+# (COORD_INCIDENT_LEDGER, author decision LEDGER-ENVVAR) this module went on
+# exporting the old name: five cases then set a variable the gate does not
+# read, so the gate saw an unset ledger and denied, and the failures reported
+# nothing about what they test. `tests/gate_locator.py` is the single reader,
+# shared with tests/test_house_style.py, and it refuses an ambiguous gate.
+LEDGER_ENV = ledger_env()
+#: Every variable whose name ends this way is stripped from a hook subprocess
+#: environment, not just the one the gate currently reads. The retired
+#: ITACA_INCIDENT_LEDGER and the sister's PYFS_INCIDENT_LEDGER are both
+#: exported on the author's machine, so leaving them in place made this
+#: module's hermeticity claim false the moment a gate revision read either:
+#: measured, a decoy assignment that fooled the reader above sent 24 cases to
+#: consult the real ledger.
+_LEDGER_SUFFIX = "_LEDGER"
 # Built by concatenation so this file never contains the literal command
 # it tests; the gate scans command text and would flag work on this file.
 PUSH = "git" + " push"
@@ -80,15 +77,28 @@ def git(repo: Path, *args: str) -> str:
 _CLEAN = object()
 
 
-def hook_env(ledger: str | None = None) -> dict[str, str]:
+def hook_env(ledger: str | None) -> dict[str, str]:
     """The environment a hook subprocess runs in.
 
-    ``child_env`` (tests/conftest.py) strips coverage measurement. The
-    incident ledger variable is set to whatever the caller resolved, never
-    inherited, so no case depends on the state of a ledger outside the
-    repository.
+    ``child_env`` (tests/conftest.py) strips coverage measurement. EVERY
+    ledger-shaped variable is stripped and only the one the gate reads is set,
+    to whatever the caller resolved, so no case depends on the state of a
+    ledger outside the repository.
+
+    Stripping the whole family rather than one name is the difference between
+    a hermeticity claim and a hermeticity guarantee. The retired
+    ``ITACA_INCIDENT_LEDGER`` and the sister repository's
+    ``PYFS_INCIDENT_LEDGER`` are both exported on the author's machine, so a
+    gate revision reading either would have quietly handed this suite the real
+    ledger while this docstring said otherwise.
+
+    ``ledger`` has NO DEFAULT, deliberately. It defaulted to None, which meant
+    "unset", which was neutral at kit 0.2.6 and is a DENIAL at 0.2.8. A
+    defaulted call would now produce a puzzling refusal that reads as a review
+    failure, so the choice is made explicit at every call site.
     """
-    return child_env(**{LEDGER_ENV: ledger})
+    stripped = {name: None for name in os.environ if name.endswith(_LEDGER_SUFFIX)}
+    return child_env(**{**stripped, LEDGER_ENV: ledger})
 
 
 def _resolve_ledger(repo: Path, ledger: str | None | object) -> str | None:
@@ -262,11 +272,37 @@ def test_tag_push_needs_the_release_attestation_when_the_branch_is_pushed(
 
 
 def test_a_configured_but_unreadable_ledger_blocks(repo: Path, tmp_path: Path) -> None:
-    """A ledger that cannot be consulted must not read as all clear."""
+    """A ledger that cannot be consulted must not read as all clear.
+
+    THE SUB-KIND IS ASSERTED, not only the denial, and kit 0.2.8 is why. Until
+    then an unset variable was neutral, so a deny on this path could only have
+    come from the configured-but-broken case and ``== "deny"`` discriminated by
+    itself. Now BOTH deny, so the bare assertion separates nothing: measured,
+    relabelling the gate's unreadable-checker branch to ``unconfigured`` left
+    the whole module green.
+
+    The two have OPPOSITE remedies, which is what makes conflating them cost
+    something. ``[config]`` says "export the variable", and an operator who has
+    already exported it is told to do the thing they did. ``[ledger]`` says the
+    configured path holds no readable checker, which is the real fix.
+    """
     head = add_commit(repo, "one")
     attest(repo, [head])
-    assert decide(repo, f"{PUSH} origin main", ledger=str(tmp_path / "nowhere")) == (
-        "deny"
+    decision, reason = judge(
+        repo, f"{PUSH} origin main", ledger=str(tmp_path / "nowhere")
+    )
+    assert decision == "deny", (
+        f"a configured ledger that cannot be consulted read as all clear: {reason!r}"
+    )
+    assert "[ledger]" in reason, (
+        f"the unreachable-ledger deny does not carry the [ledger] sub-kind, so "
+        f"it cannot be told from the unset-variable deny, whose remedy is the "
+        f"opposite one: {reason!r}"
+    )
+    assert "[config]" not in reason, (
+        f"the unreachable-ledger deny carries the [config] sub-kind, which "
+        f"tells an operator who HAS exported the variable to export it: "
+        f"{reason!r}"
     )
 
 
@@ -315,6 +351,49 @@ def test_an_unconfigured_ledger_denies_rather_than_failing_open(repo: Path) -> N
     # And the attestation is not what is holding it: the same push with a
     # configured clean ledger goes through, so this case isolates the ledger.
     assert decide(repo, f"{PUSH} origin main") == "allow"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "ls -la",
+        "git status",
+        'git commit -m "one"',
+        "git fetch origin",
+        'echo "explain the git push gate"',
+        "python .claude/hooks/write_attestation.py review qa",
+    ],
+)
+def test_an_unconfigured_ledger_denies_pushes_and_nothing_else(
+    repo: Path, command: str
+) -> None:
+    """The positive control for the fail-closed branch: its SCOPE.
+
+    Kit 0.2.8's own comment on ``LEDGER_ENV`` says a copy vendored before the
+    variable is set "denies every command in that repository until it is". That
+    overstates the code: ``main`` calls ``_allow_silently`` when the command is
+    not a recognized push, so an unset variable refuses pushes and nothing
+    else. The correction is routed to the kit; the GUARD belongs here, because
+    the claim itaca depends on is the narrow one.
+
+    Without this control the widened refusal has no bound. A kit revision that
+    consulted the ledger before classifying the command would deny every shell
+    command on any clone that had not exported the variable, and the whole
+    module would stay green, because every other case here now runs with a
+    CONFIGURED ledger by default. The ``[config]`` message would make it read
+    as a first-time setup step rather than as a gate that had escaped its
+    scope.
+
+    Same shape as the positive control beside the widened force refusal: a
+    refusal is only as good as the statement of what it does not refuse.
+    """
+    add_commit(repo, "one")
+    assert decide(repo, command, ledger=None) == "allow", (
+        f"an unset {LEDGER_ENV} denied {command!r}, which is not a push. The "
+        f"fail-closed branch has escaped its scope: on a clone that has not "
+        f"exported the variable, ordinary work would stop and the [config] "
+        f"message would read as a setup step rather than as a defect."
+    )
 
 
 def test_a_trailing_command_does_not_defeat_the_gate(repo: Path) -> None:

@@ -95,9 +95,10 @@ the management root below, never committed here). The plan ledger is
 validated by the
 checker named in the `ITACA_PLAN_VALIDATOR` environment variable (the
 plan skill holds the mechanism): unset skips validation, set but
-unreachable is a configuration error. `COORD_INCIDENT_LEDGER` locates the
-incident checker the same way, with one difference that matters: unset
-SKIPS validation there and DENIES a push here.
+unreachable is a configuration error. `COORD_INCIDENT_LEDGER` names the
+incident checker in the same shape, and answers UNSET differently: an unset
+`ITACA_PLAN_VALIDATOR` skips a validation, an unset
+`COORD_INCIDENT_LEDGER` DENIES a push.
 
 Mandatory push and release gate (adopted 2026-07-23, after a
 pyflightstream release ran paraphrased manual checks instead of the
@@ -157,12 +158,30 @@ and is wrong on every other clone.
 | `ITACA_PLAN_VALIDATOR` | `check_plan_kit.py`, or its directory | skip validation, say so | stop and report | the plan skill | `tests/test_plan_validator.py` |
 | `COORD_INCIDENT_LEDGER` | `check_incidents.py`, or its directory | **push gate DENIES** | push gate denies | `.claude/hooks/role_review_gate.py` | `tests/test_push_gate.py`, `tests/test_kit_drift.py`, `tests/test_house_style.py` |
 
-Unset never blocks a clone that configured nothing, which is the point
-of the branch, but it does not mean the same thing across the family:
-for the two checkers it means the check does not run, while for the root
-it means a different location is used. The root is therefore the one
-member whose unset branch has a stop case, because a location that does
-not exist cannot be silently substituted the way a skipped check can:
+**Unset means three different things across this family, and no two
+members agree.** The word looks like one branch and is not, so it is spelled
+out per row rather than generalized:
+
+- `ITACA_PLAN_VALIDATOR` unset SKIPS the validation. Nothing stops, and the
+  skip must be announced in the session record so it is not read as a pass.
+- `ITACA_MANAGEMENT_ROOT` unset SUBSTITUTES a location, `_private/`, and
+  stops when that location holds no session documents. A location that does
+  not exist cannot be silently substituted the way a skipped check can, which
+  is why this member has a stop case where a skipped check does not.
+- `COORD_INCIDENT_LEDGER` unset DENIES a push, and denies nothing else. This
+  is the only member whose absence is a REFUSAL. A guard that reads its own
+  missing configuration as permission is not a guard, and this one did read it
+  that way until kit 0.2.8 (see "Incidents"). Export it before working in a
+  fresh clone.
+
+An earlier version of this paragraph said "unset never blocks a clone that
+configured nothing, which is the point of the branch". That was true of the
+family as it stood and is now false of one member, and it is the sentence a
+reader would have used to talk themselves out of the denial above. It is
+replaced rather than qualified, because a rule with a counterexample in the
+same section is worse than no rule.
+
+The management-root branches, in full:
 
 - **Unset uses `_private/` in this repository** when that directory
   still holds the session documents, which is the pre-migration layout
@@ -260,7 +279,11 @@ whose structural cause is still unfixed.
 
 **One name, and how it got there.** Author decision LEDGER-ENVVAR made
 `COORD_INCIDENT_LEDGER` the single name for every workspace sharing this
-ledger, and kit 0.2.8 carried it into the push gate together with the change
+ledger. That is the DECISION and not yet the state: the sister repository
+vendors kit 0.2.4 and still reads its own name, so a clone of it that
+configured nothing still fails open, which is the sister's adoption to make
+and is routed rather than absorbed here (DD-44). Kit 0.2.8 carried the name
+into itaca's push gate together with the change
 that matters more: an ABSENT ledger now denies instead of reading as
 does-not-apply. itaca ran kit 0.2.6 until 2026-07-30 and so carried the
 fail-open branch for a day after the fix existed, which the coordination

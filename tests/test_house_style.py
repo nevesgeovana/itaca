@@ -35,6 +35,7 @@ from pathlib import Path
 
 import identifiers
 import pytest
+from gate_locator import ledger_env  # one reader of the gate's ledger variable
 
 DASHES = {chr(0x2014): "em dash", chr(0x2013): "en dash"}
 TEXT_SUFFIXES = {
@@ -465,24 +466,19 @@ def test_one_ledger_variable_is_named_by_the_gate_and_by_the_locator_table() -> 
     charter = (_ROOT / ".claude" / "agents" / "incident-analyst.md").read_text(
         encoding="utf-8"
     )
-    gate = (_ROOT / ".claude" / "hooks" / "role_review_gate.py").read_text(
-        encoding="utf-8"
-    )
     claude_md = (_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
 
     # Read the gate's variable out of the gate rather than asserting a
-    # literal. Asserting the old name would pass in the one state that
-    # actually misconfigures a clone: the gate keeps reading ITACA_ while
-    # CLAUDE.md is renamed to COORD_. A reviewer measured exactly that hole
-    # in the first version of this test.
-    declared = re.search(r'LEDGER_ENV = "([A-Z_]+)"', gate)
-    assert declared is not None, (
-        "the vendored push gate no longer assigns LEDGER_ENV to a bare "
-        "variable name, so this test cannot read which locator it resolves. "
-        "Re-read role_review_gate.py and this assertion together "
-        "(ITC-20260730-0215)."
-    )
-    reads = declared.group(1)
+    # literal. Asserting a name would pass in the one state that actually
+    # misconfigures a clone: the gate renamed and the locator table not.
+    #
+    # Through `tests/gate_locator.py`, which tests/test_push_gate.py also
+    # uses. This module had its own unanchored regex and that one its own
+    # anchored one; they agreed until a kit body mentioned a retired name in
+    # an indented comment, at which point the unanchored reader would match
+    # the comment and this test's failure message would prescribe renaming
+    # the locator table to match it.
+    reads = ledger_env()
     # Whatever the gate reads must be the variable CLAUDE.md's locator table
     # declares, so the two cannot be renamed apart in either direction. The
     # row is found by the guard file it names.
@@ -498,18 +494,18 @@ def test_one_ledger_variable_is_named_by_the_gate_and_by_the_locator_table() -> 
         f"(ITC-20260730-0215)."
     )
     # EXACT, not a substring of the row. A substring test passed for EITHER
-    # name once the row itself was rewritten to mention both, which is the one
-    # state that misconfigures a clone: the gate renamed and the row not. The
-    # second name lives in a footnote, which this deliberately does not read.
+    # name while the row mentioned both, which is the state that misconfigures
+    # a clone: the gate renamed and the row not.
     declared_names = re.findall(r"`([A-Z_]+_LEDGER)`", table_row[0])
     assert declared_names == [reads], (
         f"the push gate resolves {reads} and CLAUDE.md's locator-table row "
         f"declares {declared_names}: {table_row[0].strip()!r}. The row must "
-        f"name exactly the one variable the gate reads. If the kit adopted the "
-        f"LEDGER-ENVVAR rename in the gate, the divergence this test pins is "
-        f"OVER: rename the variable in that row, in the Incidents section, in "
-        f".claude/skills/plan/SKILL.md, and in tests/test_kit_drift.py, "
-        f"tests/test_plan_validator.py and tests/test_push_gate.py "
+        f"name exactly the one variable the gate reads, so the two cannot be "
+        f"renamed apart. If a later kit version renamed it again, the remedy "
+        f"is to re-vendor and move this row, the Incidents section, "
+        f".claude/skills/plan/SKILL.md, tests/test_kit_drift.py and "
+        f"tests/test_plan_validator.py together; tests/test_push_gate.py and "
+        f"this test read the name out of the gate and need no edit "
         f"(ITC-20260730-0215)."
     )
     # And the vendored charter names the same one, so a future kit version that
@@ -520,6 +516,36 @@ def test_one_ledger_variable_is_named_by_the_gate_and_by_the_locator_table() -> 
         f"different variables. The charter is a kit body and may not be "
         f"hand-edited: route the divergence up and re-vendor "
         f"(ITC-20260730-0215 is the precedent)."
+    )
+    # THE UNSET SEMANTICS, not only the name. The name is what a reader
+    # exports; the Unset cell is what tells them whether they may skip it, and
+    # this is the one member of the family whose absence is a refusal. Pinning
+    # the name alone left the cell free to revert to "check does not apply,
+    # silently" with the suite green, which a reviewer measured: the row and
+    # the two prose statements would then have said opposite things and the
+    # reader who trusted the row would have believed the gate was optional.
+    cells = [cell.strip() for cell in table_row[0].strip().strip("|").split("|")]
+    assert len(cells) == 6, (
+        f"the locator-table row for the gate has {len(cells)} cells, expected "
+        f"six (Variable, Names, Unset, Set but invalid, Mechanism, Guard): "
+        f"{cells}. This test reads the third."
+    )
+    assert "DENIES" in cells[2], (
+        f"the locator table's Unset cell for {reads} reads {cells[2]!r}, which "
+        f"does not say the push gate DENIES. Since kit 0.2.8 an absent ledger "
+        f"is a refusal, not a skip, and the table is where a reader decides "
+        f"whether configuring it is optional. If the kit reverted to the "
+        f"fail-open branch, that is the finding, not this cell "
+        f"(ITC-20260730-0215)."
+    )
+    # And the prose must not contradict the cell. The sentence below was in
+    # this file's Incidents section while the row said the opposite.
+    assert "Unset never blocks" not in claude_md, (
+        "CLAUDE.md carries the sentence 'Unset never blocks a clone that "
+        "configured nothing', which is false of COORD_INCIDENT_LEDGER and is "
+        "exactly the sentence a reader would use to talk themselves out of the "
+        "denial the locator table states. Spell the three unset meanings out "
+        "per row instead of generalizing over the family."
     )
 
 

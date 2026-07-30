@@ -31,8 +31,17 @@ needs no cross-repo filesystem access and cannot deadlock a push. A MIXED
 manifest (per-file body hashes and versions, not one kit-wide hash) is
 expected and correct, and the pins below are per file:
 
-- 0.2.6, the release-integrity promotion: ``role_review_gate.py`` and
-  ``write_attestation.py`` re-vendored, plus five NEW artifacts. The
+- 0.2.8: ``role_review_gate.py``, author decision LEDGER-ENVVAR. One
+  variable, ``COORD_INCIDENT_LEDGER``, and an ABSENT ledger DENIES a push
+  where 0.2.6 read absence as does-not-apply. itaca sat at 0.2.6 for a day
+  after the fix existed and so carried a gate that could FAIL OPEN
+  (``ITC-20260730-0215``, DD-44).
+- 0.2.9: ``write_attestation.py``, the INC-20260729-2355 guard. Its own
+  entry below carries the detail.
+- 0.2.6, the release-integrity promotion, which is HISTORY for the two
+  hook bodies above and still the current pin for the five artifacts it
+  introduced: ``role_review_gate.py`` and ``write_attestation.py``
+  re-vendored, plus five NEW artifacts. The
   vocabulary change is the whole of it for the two existing bodies:
   ``write_attestation.py`` gains ``numerical-analyst`` and
   ``integration-reviewer`` in ``KNOWN_PASSES``, and the gate's deny
@@ -143,6 +152,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from gate_locator import ledger_env  # one reader of the gate's ledger variable
 
 _ROOT = Path(__file__).resolve().parents[1]
 _MARKER = "END KIT PROVENANCE"
@@ -453,9 +463,18 @@ def _env_located() -> list[tuple[str, Path]]:
     never set them still runs a green suite. Note the asymmetry with the
     push gate, which since kit 0.2.8 DENIES on an unset ledger; the
     module docstring says why the two differ.
-    Each tool is located by its OWN variable: the incident checker by
-    COORD_INCIDENT_LEDGER, the plan checker (and its companion) by
-    ITACA_PLAN_VALIDATOR. snap.sh is deliberately NOT here: it has no
+    Each tool is located by its OWN variable: the incident checker by the one
+    the push gate resolves, READ from the gate through
+    ``tests/gate_locator.py`` rather than written here, and the plan checker
+    (and its companion) by ITACA_PLAN_VALIDATOR.
+
+    Reading it matters more here than in the modules that also read it,
+    because this one's drift mode is SILENT. A hardcoded name that the kit
+    later renamed would make this function return no incident entry, and the
+    caller would then take ``pytest.skip``: the incident checker's drift pin
+    would simply stop being checked, with CI green. The same defect one module
+    over produced a red test, which is strictly better. snap.sh is
+    deliberately NOT here: it has no
     locator variable of its own, so binding it to the plan-validator
     directory would be a false coupling (a correctly configured plan
     validator whose directory happens not to hold snap.sh would fail a
@@ -464,7 +483,7 @@ def _env_located() -> list[tuple[str, Path]]:
     it is a registered kit item.
     """
     located: list[tuple[str, Path]] = []
-    ledger = os.environ.get("COORD_INCIDENT_LEDGER")
+    ledger = os.environ.get(ledger_env())
     if ledger:
         base = Path(ledger)
         checker = base if base.suffix == ".py" else base / "check_incidents.py"
@@ -528,7 +547,7 @@ def test_env_located_shared_tools_match_the_manifest() -> None:
     located = _env_located()
     if not located:
         pytest.skip(
-            "neither COORD_INCIDENT_LEDGER nor ITACA_PLAN_VALIDATOR is set; "
+            f"neither {ledger_env()} nor ITACA_PLAN_VALIDATOR is set; "
             "env-located kit tools are not configured here"
         )
     for key, path in located:
@@ -568,7 +587,7 @@ def test_the_derivation_never_reinterprets_a_py_value_as_its_parent(
         if exists:
             configured.write_text("# real file, wrong checker\n", encoding="utf-8")
         monkeypatch.setenv("ITACA_PLAN_VALIDATOR", str(configured))
-        monkeypatch.delenv("COORD_INCIDENT_LEDGER", raising=False)
+        monkeypatch.delenv(ledger_env(), raising=False)
         located = dict(_env_located())
         assert located["check_plan_kit.py"] == configured, (
             f"the derivation resolved ITACA_PLAN_VALIDATOR={configured} to "
@@ -608,7 +627,7 @@ def test_a_configured_locator_names_something_that_exists() -> None:
     configured = [
         (name, Path(value))
         for name in (
-            "COORD_INCIDENT_LEDGER",
+            ledger_env(),
             "ITACA_PLAN_VALIDATOR",
             "ITACA_MANAGEMENT_ROOT",
         )
@@ -616,7 +635,7 @@ def test_a_configured_locator_names_something_that_exists() -> None:
     ]
     if not configured:
         pytest.skip(
-            "no member of the locator family is set (COORD_INCIDENT_LEDGER, "
+            f"no member of the locator family is set ({ledger_env()}, "
             "ITACA_PLAN_VALIDATOR, ITACA_MANAGEMENT_ROOT); there is no "
             "configured locator to check"
         )

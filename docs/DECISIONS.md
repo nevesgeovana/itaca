@@ -1517,3 +1517,71 @@ would be the same class as the incident this promotion exists to close,
 so the removal is recorded here as provisional until the canary runs.
 
 **SRS:** REQ-95, REQ-96.
+
+---
+
+## DD-44: One incident-ledger variable, and its absence refuses
+
+**Date:** 2026-07-30
+**Status:** confirmed
+**Context:** ITA-2C, adopting kit 0.2.8 (author decision LEDGER-ENVVAR).
+Supersedes the sentence "For the two checkers, unset means the check does
+not run" in DD-31's **The asymmetry inside the variable family is
+deliberate** paragraph, and closes `ITC-20260730-0215`.
+
+DD-31 stated the family's asymmetry as a two-against-one: the management
+root substitutes a location and may stop, while the two CHECKERS skip.
+That second half is now false for one of the two, and it is superseded
+here rather than edited, for the reason DD-43 gives one entry up: a frozen
+entry rewritten in place is the DD-30 defect.
+
+`ITACA_INCIDENT_LEDGER` is retired in favor of `COORD_INCIDENT_LEDGER`,
+one variable for every workspace sharing the ledger. The rename is the
+visible half.
+
+**The load-bearing half is that an ABSENT ledger now DENIES a push.** At
+kit 0.2.6 an unset variable returned "not blocked", so on a clone that
+configured nothing the incident half of the gate did not gate. The measured
+cause is worth keeping: the coordination flavor of the gate derived a
+variable name per target repository, the coordination repository's derived
+name had never been exported, and absence read as does-not-apply, so the
+level that WRITES the incidents was the only one of three the gate did not
+stop. Measured there on 2026-07-29 with a blocking incident open: itaca
+blocked, pyflightstream blocked, the hub not.
+
+So the family now answers `unset` three different ways, and no two members
+agree. `ITACA_PLAN_VALIDATOR` skips a validation. `ITACA_MANAGEMENT_ROOT`
+substitutes `_private/` and stops if that holds no session documents.
+`COORD_INCIDENT_LEDGER` refuses a push. CLAUDE.md's locator table states
+each per row rather than generalizing, because the generalization is what
+DD-31's superseded sentence was.
+
+**Scope of the refusal, measured rather than read.** It denies recognized
+`git push` commands and nothing else: the hook allows silently when the
+command is not a push. The kit master's own comment on the constant says a
+copy vendored before the variable is set "denies every command in that
+repository", which overstates its reach; that correction is routed to the
+coordination level in `ITC-20260730-0215` rather than patched in a vendored
+copy. The deployment advice the comment gives, export first and then
+vendor, is sound either way.
+
+**Why itaca adopted this at the last lane before a tag**, which is
+normally the wrong moment for a process change. A push gate that can fail
+open is a release-integrity defect, and shipping a tag past one while
+claiming the release gate is empty would be the "guard reports green while
+the behavior is absent" class the lane existed to close. Checked before
+adopting, because a stricter gate can deny the tag it protects: the
+incident checker exits 0 for itaca.
+
+**Still not true of the family, and named so the entry does not overclaim.**
+The sister repository vendors kit 0.2.4 and reads `PYFS_INCIDENT_LEDGER`,
+so "one variable for every workspace" is the decision and not yet the
+state, and a clone of the sister that configured nothing still fails open.
+That is the sister's adoption to make and is routed rather than absorbed.
+
+**Guards:** `tests/test_push_gate.py` pins the refusal, its `[config]`
+sub-kind, and its SCOPE (six non-push commands allowed with the variable
+unset). `tests/test_house_style.py` pins that the variable the gate reads
+is the one CLAUDE.md's locator table declares, and that the table's Unset
+cell says DENIES. `tests/gate_locator.py` is the single reader of the
+gate's own literal, so no test module carries a second copy of the name.
