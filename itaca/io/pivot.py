@@ -9,6 +9,7 @@ row would destroy evidence.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -28,6 +29,8 @@ from itaca.core.historyframe import HistoryFrame
 from itaca.core.uncframe import UncFrame
 from itaca.core.varframe import VarFrame
 from itaca.core.variable import Variable
+
+logger = logging.getLogger(__name__)
 
 DATAPOINT_DIM = "datapoint"
 
@@ -296,7 +299,7 @@ def pivot(
             # column that never repeats is a variable (REQ-13 heuristic).
             if n_unique <= threshold and n_unique < finite.size:
                 requested.append(name)
-        print(f"pivot auto_detect resolved dims: {requested}")
+        logger.info("pivot auto_detect resolved dims: %s", requested)
     if not requested:
         raise PivotError(
             "VarFrame",

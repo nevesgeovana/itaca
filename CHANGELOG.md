@@ -6,8 +6,9 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
-No public API change. Release infrastructure only, recorded here because
-it changes how a release reaches PyPI and the next tag runs on it.
+No signature change. One observable behavior change, under Fixed, and
+release infrastructure, recorded here because it changes how a release
+reaches PyPI and the next tag runs on it.
 
 **How v0.2.0 was published, stated plainly.** The v0.2.0 files on PyPI
 were uploaded by hand, over the artifact the release gate had built. The
@@ -40,6 +41,24 @@ names `release.yml` with environment `pypi`. A publisher naming
   (`pip==26.2 build==1.5.0 twine==7.0.0`) instead of being upgraded from
   the index at build time. The build backend is not yet pinned; DD-45
   records that as the open half.
+
+### Fixed
+
+* `db.pivot(auto_detect=True)` no longer writes to stdout. It announced
+  the dimension list it resolved on every call, with no argument a caller
+  could pass to stop it, which corrupts the output of any program using
+  itaca as a component. Nothing chartered that output: REQ-14 specifies
+  the detection and says nothing about announcing it. The message is
+  unchanged and now goes to `logging` at INFO on the `itaca.io.pivot`
+  logger, the convention `core/provenance.py` and `io/loader.py` already
+  use. A script reading those lines off stdout will now find them absent;
+  `logging.basicConfig(level=logging.INFO)` puts them back, on stderr.
+  REQ-14, REQ-76, P-08.
+* `parse_itceq(..., auto_sort=True)` **still prints** its resolved order,
+  deliberately: DD-17 charters that report as feedback to the user, and a
+  log record at INFO is silent under the default configuration, so moving
+  it would retire a decided behavior in passing. OQ-48 asks whether it
+  should move and what would replace DD-17's auditability if it does.
 
 ## [0.2.0] - 2026-07-30
 

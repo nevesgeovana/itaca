@@ -57,10 +57,14 @@ class TestReproducibility:
 
 class TestPivotEdges:
     def test_auto_detect_reports_resolved_dims(
-        self, capsys: pytest.CaptureFixture[str]
+        self, caplog: pytest.LogCaptureFixture
     ) -> None:
         # REQ-76 Pivot: auto_detect on ambiguous candidates gives
-        # feedback naming the resolved dimension list.
+        # feedback naming the resolved dimension list. REQ-76 requires the
+        # CASE to be tested and charters no destination for the feedback;
+        # it goes to the module logger, not stdout, because P-08 grants
+        # terminal output to inspection, summary and diagnostic surfaces
+        # and db.pivot is a transformation. See tests/test_stdout_discipline.
         arr = np.column_stack(
             [
                 np.repeat([0.1, 0.2], 2),
@@ -69,9 +73,9 @@ class TestPivotEdges:
             ]
         )
         db = itc.load(arr, names=["mach", "alpha", "CT"])
-        structured = db.pivot(auto_detect=True)
-        out = capsys.readouterr().out
-        assert "resolved dims" in out
+        with caplog.at_level("INFO", logger="itaca.io.pivot"):
+            structured = db.pivot(auto_detect=True)
+        assert any("resolved dims" in record.message for record in caplog.records)
         assert set(structured.dims) == {"mach", "alpha"}
 
 

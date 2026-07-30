@@ -1244,3 +1244,61 @@ would make it a decision rather than an omission.
 promises; the answer is not delegable to a lane.
 
 **SRS:** REQ-83, REQ-95.
+
+---
+
+## OQ-48: Should the auto_sort report stay on stdout?
+
+**Raised:** 2026-07-30, lane ITA-9, while closing
+`ITC-20260723-2042-io-pivot-prints-to-stdout-from-library-code`.
+**Status:** open.
+
+`db.pivot(auto_detect=True)` printed the dimension list it resolved on
+every call. Nothing chartered that: REQ-14 specifies the detection and
+says nothing about announcing it, and the test that pinned the print cited
+REQ-76, which is the required-edge-case list and only requires the case to
+be tested. It was fixed in the same commit: the message now goes to the
+module logger at INFO, the convention `core/provenance.py` and
+`io/loader.py` already use.
+
+The structural walk that closed it found one other print in a computation
+path, and that one is different, which is why it is a question rather than
+a second fix.
+
+**The question.** `parse_itceq(..., auto_sort=True)` prints the resolved
+equation order. **DD-17 charters it**: "the parser reports the resolved
+order to the user as feedback", and the rationale is that "the feedback
+makes the resolved order auditable". So the report is decided behavior,
+not an oversight.
+
+But P-08 grants terminal output to "inspection, summary, and diagnostic
+methods", and a parser is none of those. A library that writes to stdout
+from a data path corrupts the output of any program using it as a
+component, and no argument the caller passes can stop it.
+
+**Why the obvious fix is not obviously right.** Moving it to
+`logger.info` would satisfy P-08, and it is what the pivot half does. It
+would also make DD-17's feedback invisible: with no logging configured,
+Python's last-resort handler emits at WARNING, so an INFO record reaches
+nobody. That silently retires a decided behavior, which is the reason this
+lane did not do it.
+
+**The four answers, and the cost of each.**
+
+| answer | cost |
+|---|---|
+| Keep the print, supersede nothing | a library data path keeps writing to stdout, and the guard in `tests/test_stdout_discipline.py` carries a standing exemption |
+| Move to `logger.info` and supersede DD-17 | P-08 satisfied; DD-17's auditability claim is retired unless something replaces it |
+| Move to `logger.info` AND expose the order on the returned object | the order is already on `spec.equations`, so this is mostly writing down that the return value IS the audit trail; costs one docstring and a superseding DD |
+| Report through `warnings.warn` | visible by default, and the codebase already uses `warnings` for the caller's attention; but the resolved order is not a warning, and a filter would suppress it |
+
+The third is the only one that keeps both authorities: `spec.equations`
+carries the resolved order and `spec.sorted` says the sort ran, so the
+feedback is auditable programmatically rather than by reading a terminal.
+That is an argument, not a decision, and DD-17 is frozen, so retiring its
+stdout half needs a new DD that supersedes it.
+
+**Who decides:** the product owner, on whether a library surface may write
+to stdout at all and on what replaces DD-17's auditability if it does not.
+
+**SRS:** P-08, REQ-14, REQ-48, REQ-76. **DD:** DD-17.
