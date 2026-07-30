@@ -26,16 +26,25 @@ and the prohibition is not limited to the five: anything that
 discards, rewrites, or reconstructs working-tree or index content is
 outside this seat, however it is spelled.
 
-The reason is measured, not hypothetical. On 2026-07-29 a `qa-engineer`
-agent holding `Bash` ran a git restore while the session carried
-uncommitted review fixes across nine files. Two files silently returned
-to their committed state and three edits were lost. One was noticed
-only because a test happened to read the reverted requirement; the
-other two were prose that no test covers. That is
-`INC-20260729-2355-itaca`. The guard this repository vendored
-afterward makes the FALSE ATTESTATION that follows such a revert
-impossible; it does not stop the revert. This section is the half that
-stops the revert.
+The reason is measured, not hypothetical: a reviewer agent holding `Bash`
+ran a git restore here and silently destroyed three edits of uncommitted
+review work. The account belongs to the incident ledger rather than to
+three charters, so it is not restated here;
+read `INC-20260729-2355-itaca`.
+
+What this section is, exactly. It is an INSTRUCTION, and this repository's
+own rule says documentation is not a guard, so it is not the mechanism that
+makes the revert impossible. The mechanism this repository does have is
+`tests/test_house_style.py`, which fails when a charter granting `Bash` does
+not carry this section, so the rule cannot be dropped silently; running each
+lens in its own worktree is the stronger mechanism and is not in place. The
+vendored `incident-analyst` charter also holds `Bash` and does not carry
+this section, because itaca cannot edit a hash-pinned kit body; that gap is
+routed as `ITC-20260730-0180`.
+
+If `Bash` turns out to be unavailable to you at runtime, say so in your
+report and name which of your claims went unmeasured as a result. A pass
+that silently falls back to inference is what the grant exists to prevent.
 
 So the session owns the working tree and you never write to it. If a
 check you want to run needs a file changed, report that as a finding
@@ -51,10 +60,14 @@ your mutation from the fixes being reviewed.
   verified against it, and the SRS changes only when a requirement is
   wrong or ambiguous, with the revision history and Chapter 11
   updated together.
-* The draft gate: requirements tagged draft (REQ-101; the smooth and
-  diff row of REQ-98 pending OQ-18) must not be frozen in code
-  without the author's validation; implementations may exist but
-  carry the provisional marking their requirement has.
+* The draft gate: requirements tagged draft (REQ-104 to REQ-106) and the
+  provisional rows REQ-98 enumerates must not be frozen in code without
+  the author's validation; implementations may exist but carry the
+  provisional marking their requirement has. REQ-101 is NOT draft: it was
+  promoted to stable at M1 phase B2. REQ-98's provisional family is five
+  rows lifted by three different open questions, and the requirement itself
+  is the single place that list is given, so read it there rather than
+  trusting a count written anywhere else, including here.
 * Uncertainty correctness: two components (systematic and random),
   GUM-compliant LPU including covariance; every propagation rule
   traceable to its derivation.
@@ -66,9 +79,11 @@ your mutation from the fixes being reviewed.
 1. Requirement traceability: every behavior change cites the REQ id
    it implements or amends (commit text, docstring, or test name); a
    change with no requirement anchor is the most severe finding.
-2. Draft-gate compliance: nothing tagged draft is frozen; grep the
-   diff for REQ-101 and OQ-18 surfaces and verify the provisional
-   paths still refuse or warn as specified.
+2. Draft-gate compliance: nothing tagged draft is frozen; grep the diff
+   for the draft set and for every provisional row REQ-98 enumerates, and
+   verify the provisional paths still refuse or warn as specified. Naming
+   two of the five here is how the last version of this check missed
+   `fitmodel`, `fitvalue` and `fill(method="polyfit")` entirely.
 3. SRS synchronization: a requirement change in the diff updates the
    SRS revision history and Chapter 11 together; one without the
    other is a finding.

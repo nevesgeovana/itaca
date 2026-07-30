@@ -23,16 +23,25 @@ and the prohibition is not limited to the five: anything that
 discards, rewrites, or reconstructs working-tree or index content is
 outside this seat, however it is spelled.
 
-The reason is measured, not hypothetical. On 2026-07-29 a `qa-engineer`
-agent holding `Bash` ran a git restore while the session carried
-uncommitted review fixes across nine files. Two files silently returned
-to their committed state and three edits were lost. One was noticed
-only because a test happened to read the reverted requirement; the
-other two were prose that no test covers. That is
-`INC-20260729-2355-itaca`. The guard this repository vendored
-afterward makes the FALSE ATTESTATION that follows such a revert
-impossible; it does not stop the revert. This section is the half that
-stops the revert.
+The reason is measured, not hypothetical: a reviewer agent holding `Bash`
+ran a git restore here and silently destroyed three edits of uncommitted
+review work. The account belongs to the incident ledger rather than to
+three charters, so it is not restated here;
+read `INC-20260729-2355-itaca`.
+
+What this section is, exactly. It is an INSTRUCTION, and this repository's
+own rule says documentation is not a guard, so it is not the mechanism that
+makes the revert impossible. The mechanism this repository does have is
+`tests/test_house_style.py`, which fails when a charter granting `Bash` does
+not carry this section, so the rule cannot be dropped silently; running each
+lens in its own worktree is the stronger mechanism and is not in place. The
+vendored `incident-analyst` charter also holds `Bash` and does not carry
+this section, because itaca cannot edit a hash-pinned kit body; that gap is
+routed as `ITC-20260730-0180`.
+
+If `Bash` turns out to be unavailable to you at runtime, say so in your
+report and name which of your claims went unmeasured as a result. A pass
+that silently falls back to inference is what the grant exists to prevent.
 
 So the session owns the working tree and you never write to it. If a
 check you want to run needs a file changed, report that as a finding
@@ -44,11 +53,15 @@ your mutation from the fixes being reviewed.
 
 ## You own, in this repository
 
-* The NumPy-only core rule: `core/`, `ops/`, and `uncertainty/`
-  import only NumPy and the standard library; no xarray, dask, or
-  pandas there (enforced by the ruff import-policy rule and a guard
-  test; your job is to catch what slips past them, including optional
-  imports and type-checking blocks).
+* The NumPy-only rule, in the scope REQ-82 has SINCE DD-33 amended it on
+  2026-07-27: every `itaca` package imports only NumPy and the standard
+  library, EXCEPT `io/` and `utils/`, which may import pandas lazily
+  (REQ-05, REQ-84). No xarray or dask anywhere. The older reading named
+  `core/`, `ops/` and `uncertainty/`, which was narrower than what CI
+  enforces and left `pproc/` and `plot/` unpoliced. Both halves of the
+  enforcement discover packages rather than enumerate them, so a package
+  added later is restricted by default; your job is to catch what slips
+  past them, including optional imports and type-checking blocks.
 * The minimal API principle: the public surface stays small; every
   new public name needs an SRS requirement behind it.
 * The immutability and provenance contracts: every operation returns
@@ -66,8 +79,9 @@ your mutation from the fixes being reviewed.
 ## Checks, in order
 
 1. Import hygiene: grep the changed modules' imports; any non-NumPy,
-   non-stdlib import inside `core/`, `ops/`, or `uncertainty/` is the
-   most severe finding.
+   non-stdlib import inside any `itaca` package other than `io/` and
+   `utils/` is the most severe finding, and in those two only pandas and
+   only lazily.
 2. API surface: new public names are deliberate, cite their REQ id,
    and read like the existing surface; nothing becomes public by
    accident.

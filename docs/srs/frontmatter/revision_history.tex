@@ -10,20 +10,43 @@
 \textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Summary}\\
 \midrule
 \midrule
+0.2.3 & 2026-07-30 & Geovana Neves &
+The sixth CHK-1 refusal, and the build. A PATCH revision by the rule
+chapter~9 states: a clarification, adding no requirement and withdrawing
+none. REQ-01 gains the refusal of a CSV row WIDER than its header
+(\code{DataError}, \code{R3-ITA-009}) and states the asymmetry out loud,
+that a row NARROWER than its header is still NaN-filled, since a reader
+who meets one half of it infers the other wrongly. The asymmetry is
+deliberate: a row with more fields than the header is a malformed file,
+either a truncated header or a delimiter inside an unquoted field, while a
+row with fewer is ordinary missing data. REQ-01 also states the
+empty-cell rule the asymmetry leans on, which the document had nowhere.
+This refusal shipped in v0.2.0 marked BREAKING in \code{CHANGELOG.md} and
+its own error message cited REQ-01, while REQ-01 did not describe it; the
+0.2.2 revision below closed five such gaps and missed this one, which the
+independent review REV-004 found (\code{ITC-20260729-2255}).
+
+REQ-95 gains the specification build. Two defects had reached \code{main}
+in a document that no mechanism compiled: chapter~7 carried a blank line
+after every content line, and one unescaped underscore inside \code{code}
+put chapter~8 into math mode. Seven \code{pdflatex} errors, and the only
+thing that ever found either was a person running the build by hand, with
+\code{main.log} dated 2026-07-23 while 0.2.1 and 0.2.2 both shipped after
+it (\code{ITC-20260729-2300}, \code{ITC-20260729-2350},
+\code{ITC-20260730-0010}). The chapter~7 reflow changed no content: 692
+source lines became 346 with the 307 non-blank lines byte-identical and in
+the same order.
+\\[4pt]
 0.2.2 & 2026-07-29 & Geovana Neves &
 CHK-1 refusal amendment (\code{ITC-20260729-1450}), which blocked the
 v0.2.0 tag. The revision below predicted this class in its own words and
 closed four instances of it; the CHK-1 release checkpoint then added
-six more public refusals whose requirement text did not describe them,
+five more public refusals whose requirement text did not describe them,
 and this revision closes those. The code shipped correct in every case:
 what was wrong was the text, so no requirement scope is added or
 withdrawn. REQ-01 states that one name may not be both a dimension and a
 variable, so a column named \code{datapoint} is refused
-(\code{R3-ITA-008}), and that a CSV row wider than its header is refused
-while a row narrower than it is still NaN-filled, the asymmetry being
-given its reason rather than left for a reader to infer
-(\code{R3-ITA-009}, \code{ITC-20260729-2255}, found by REV-004 after the
-first five were closed). REQ-24 and REQ-107 state the \code{itc.concat}
+(\code{R3-ITA-008}). REQ-24 and REQ-107 state the \code{itc.concat}
 \code{AxesError} on inputs whose vector groups sit in different axis
 systems (\code{CHK1-003}). REQ-39 requires a finite declared
 uncertainty magnitude, cites GUM clause~5.1.2 by its two operative

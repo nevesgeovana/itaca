@@ -301,8 +301,17 @@ Deprecated, Removed, Fixed, Security).
 \textbf{Continuous integration.}\\
 GitHub Actions runs on every push: \code{ruff check},
 \code{ruff format --check}, \code{mypy --strict} (public API),
-\code{pytest}, and the coverage gate (threshold 90\,\%). All checks must
-pass before a pull request may be merged.
+\code{pytest}, the coverage gate (threshold 90\,\%), and a build of this
+specification. All checks must pass before a pull request may be merged.
+
+The specification build compiles \code{docs/srs/main.tex} and fails on a
+non-zero exit status OR on any error logged by the run, because a
+nonstopmode build can emit a PDF while having logged errors, and a PDF
+built from a document that fell into math mode is exactly the artifact
+that looks like a success. It is listed here because a mandatory gate
+absent from this enumeration is the defect this document's own 0.2.3
+revision exists to close: two build defects reached \code{main} while
+nothing compiled the document.
 \end{reqbox}
 
 \begin{reqbox}{REQ-96}{\stable}
@@ -311,6 +320,12 @@ A \code{.pre-commit-config.yaml} mirrors the CI checks (\code{ruff check},
 \code{ruff format --check}, \code{mypy}, fast \code{pytest -x}), running
 locally on every commit. The local pre-commit configuration is a hard
 requirement of the contribution workflow.
+
+ONE DELIBERATE EXCEPTION to the mirror: the specification build REQ-95
+requires is NOT mirrored here. It needs a TeX distribution, which is not a
+contribution prerequisite, and a hook a contributor cannot run is a hook
+that gets skipped. The exception is stated rather than left as a silent
+gap between the two requirements.
 \end{reqbox}
 
 \begin{reqbox}{REQ-97}{\draft}

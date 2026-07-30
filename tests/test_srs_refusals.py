@@ -7,7 +7,7 @@ Usage example (the contract under test)::
     assert set(provisional) == set(refusing)
 
 `ITC-20260729-1450`, a blocker on the v0.2.0 tag. The CHK-1 release
-checkpoint added five public refusals to surfaces whose stable
+checkpoint added six public refusals to surfaces whose stable
 requirement text contradicted them, and REQ-98 carried its provisional
 family in four places at three different values while the normative
 table still claimed that two of them propagate. Both are one defect: a
@@ -586,13 +586,18 @@ _CHK1_REFUSALS = (
             "R3-ITA-008",
             "both a dimension and a variable",
             # The sixth CHK-1 refusal, ITC-20260729-2255, found by REV-004
-            # after the first five were closed. All three phrases were
-            # measured ABSENT from REQ-01 before the amendment, the way the
-            # rows below were chosen: "wider" and "narrower" carry the
-            # refusal and its asymmetry, and the finding id anchors it.
+            # after the first five were closed and closed by SRS 0.2.3.
+            #
+            # These pin the NORMATIVE sentences, not the paragraph that
+            # explains them. The first version of this row pinned bare
+            # "wider" and "narrower", which occur only in the rationale
+            # paragraph, so deleting both normative sentences and keeping the
+            # explanation left this guard GREEN. That is the inert-guard
+            # failure this file exists to prevent, and a reviewer measured it
+            # here rather than in production.
             "R3-ITA-009",
-            "wider",
-            "narrower",
+            "may not be WIDER than its header",
+            "NARROWER than its header is NOT refused",
         ),
         "a column named datapoint is refused, and so is a row wider than "
         "the header while a narrower one is still NaN-filled",
@@ -603,6 +608,32 @@ _CHK1_REFUSALS = (
     ("REQ-44", ("shadow", "DD-42"), "a constant may not shadow a channel"),
     ("REQ-45", ("three things", "DD-42"), "validate refuses three things, not two"),
 )
+
+
+def test_the_refusal_fixture_still_covers_every_governing_requirement() -> None:
+    """A deleted row removes a check with no signal, so the count is pinned.
+
+    Six requirements govern the six CHK-1 refusals: REQ-01 carries two of
+    them (the ``datapoint`` collision and the row width), while the concat
+    refusal is written into REQ-24 and REQ-107 together and the
+    constant-shadowing refusal into REQ-44 and REQ-45. So six rows for six
+    refusals, and the two numbers agree by a coincidence worth stating
+    rather than by construction.
+    """
+    assert len(_CHK1_REFUSALS) == 6, (
+        f"_CHK1_REFUSALS holds {len(_CHK1_REFUSALS)} rows where 6 are "
+        f"expected. Adding a refusal means adding its row; removing one means "
+        f"the refusal was withdrawn from the product, which is a much larger "
+        f"change than editing this fixture."
+    )
+    assert {entry[0] for entry in _CHK1_REFUSALS} == {
+        "REQ-01",
+        "REQ-24",
+        "REQ-39",
+        "REQ-44",
+        "REQ-45",
+        "REQ-107",
+    }
 
 
 @pytest.mark.parametrize(
@@ -619,10 +650,19 @@ def test_each_chk1_refusal_is_described_by_its_requirement(
     than merely extending it, which is why the V&V pass rated the gap
     severe: the SRS declares itself authoritative and says that on a
     discrepancy the code is corrected, not the document. Here the code
-    was right five times over.
+    was right in every one of them.
+
+    Both sides are whitespace-normalized before comparing. The sources are
+    hand-wrapped at about 72 columns, so a phrase long enough to be worth
+    pinning is very likely to straddle a newline, and a raw substring test
+    then fails for a reason that has nothing to do with content. Measured
+    here: "NARROWER than its header is NOT refused" was split across two
+    source lines, which reddened this guard while the requirement said
+    exactly what it was asked to say. A guard that a rewrap can break
+    teaches its reader to stop believing it.
     """
-    body = reqbox(identifier)
-    missing = [phrase for phrase in phrases if phrase not in body]
+    body = " ".join(reqbox(identifier).split())
+    missing = [phrase for phrase in phrases if " ".join(phrase.split()) not in body]
     assert not missing, (
         f"{identifier} does not mention {missing}, so the SRS does not "
         f"describe that {what} (ITC-20260729-1450)."

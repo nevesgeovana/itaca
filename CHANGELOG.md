@@ -10,8 +10,11 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 This is a deliberate design position, not a defect, and it is stated at
 the top of these notes because it is the first thing a user propagating
 uncertainty through this release will hit. These five are a different
-set from the five CHK-1 input refusals listed under Changed below; the
-two are unrelated and the coincidence of number is just that.
+set from the CHK-1 input refusals listed under Changed below, and the
+two sets are unrelated. The number is deliberately not repeated here:
+those are counted as five bullets in these notes and as six refusals in
+the SRS, for the reason given where they are listed, and a bare number
+in this paragraph would read as a third answer.
 
 Five operations **raise** when the VarFrame carries an UncFrame, rather
 than returning a number:
@@ -113,19 +116,47 @@ own data was affected.
   `compute(where=)` and `fill` did not touch.
 
 * **The SRS now describes the refusals this release ships** (SRS
-  document 0.2.2, `ITC-20260729-1450`, which blocked the tag). All five
-  refusals above landed against requirement text that contradicted them
-  or passed over them in silence: REQ-01 said every column becomes a
-  variable and described no row-width refusal at all, REQ-24 and REQ-107
-  described no `AxesError`, REQ-39 said a value may be any float, REQ-44
-  named `pi` and `e` as constants without saying what happens when the
-  frame carries one, and REQ-45 said `validate` refuses two things where
-  it now refuses three. Six stable requirements are amended, plus REQ-92
-  and REQ-98/REQ-26 as separate items below. REQ-01 carries two of the
-  five, the `datapoint` collision and the row-width refusal; the second
-  was missed when this list was first written and was found by the
-  independent review REV-004 (`ITC-20260729-2255`), which is why the
-  refusal count and the amended-requirement count differ. Nothing in the library
+  documents 0.2.2 and 0.2.3, `ITC-20260729-1450` and
+  `ITC-20260729-2255`, which blocked the tag). All five refusals above
+  landed against requirement text that contradicted them or passed over
+  them in silence: REQ-01 said every column becomes a variable and
+  described no row-width refusal at all, REQ-24 and REQ-107 described no
+  `AxesError`, REQ-39 said a value may be any float, REQ-44 named `pi`
+  and `e` as constants without saying what happens when the frame carries
+  one, and REQ-45 said `validate` refuses two things where it now refuses
+  three. Six stable requirements are amended, plus REQ-92 and
+  REQ-98/REQ-26 as separate items below.
+
+  **Why five bullets amend six requirements, and why the SRS counts six
+  refusals where this list counts five.** The mapping is not one to one in
+  either direction, and the two effects are separate. Upward: the concat
+  refusal is written into REQ-24 **and** REQ-107, and the
+  constant-shadowing refusal into REQ-44 **and** REQ-45, so two bullets
+  need two requirements each. Downward: REQ-01 is amended for **two** of
+  the five, the `datapoint` collision and the row-width refusal. Those net
+  out at six requirements for five bullets.
+  The SRS counts *refusals* rather than bullets, and it counts six because
+  it states `validate`'s third refusal as its own amendment (REQ-45)
+  rather than folding it into the constant-shadowing bullet as these notes
+  do. The five here are the five rules a caller can hit. Nothing is
+  missing from either document: SRS 0.2.2 closed five of the six and SRS
+  0.2.3 closed the last one, the row-width refusal, which was missed when
+  this list was first written and was found by the independent review
+  REV-004 (`ITC-20260729-2255`).
+
+* **The SRS is now built by CI, and it did not build before** (`REQ-95`,
+  `ITC-20260729-2300`, `ITC-20260729-2350`, `ITC-20260730-0010`). Nothing
+  compiled `docs/srs/` at any point in this release, so a specification
+  that could not be built was indistinguishable from one that could.
+  `pdflatex` exited non-zero with seven errors: four from a chapter whose
+  every content line carried a blank after it, making each source line its
+  own paragraph and splitting a `\caption`, and three from a single
+  unescaped underscore that put another chapter into math mode which then
+  leaked into the chapter after it. Both are fixed, both are guarded, and
+  the document now compiles with no errors and no undefined references.
+  This is listed for the same reason the requirement amendments above are:
+  the authority chain opens by calling `docs/srs/` authoritative, and for
+  two document versions it asserted a state nobody had observed. Nothing in the library
   changed: the code was correct and the specification was wrong, which
   is the direction the SRS's own note says is not supposed to happen and
   the reason this was a tag blocker.

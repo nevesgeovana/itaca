@@ -12,29 +12,78 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.3, 2026-07-30, The Sixth Refusal and the Build}
+
+A PATCH revision by chapter~9's rule: clarifications only, no requirement
+added and none withdrawn.
+
+\paragraph{Changed (REQ-01, the sixth CHK-1 refusal).} \code{itc.load}
+refuses a CSV row WIDER than its header with \code{DataError}, naming the
+row, its field count, the header, the cells that would have been
+discarded, and the suggested fix. Rows are read by header position, so
+such a cell would be dropped with no signal while Provenance went on
+hashing the complete file bytes, and the source hash would certify content
+the frame did not represent (\code{R3-ITA-009}). REQ-01 now also states
+the ASYMMETRY: a row NARROWER than its header is not refused, its absent
+trailing cells being NaN-filled exactly as an empty cell is, and the
+empty-cell rule itself is stated because the asymmetry leans on it and the
+document gave it nowhere. The asymmetry is deliberate, a too-wide row
+being a malformed file and a too-narrow one ordinary missing data, and a
+reader who meets one half infers the other wrongly.
+
+This refusal shipped in v0.2.0, marked BREAKING in \code{CHANGELOG.md},
+with its own error message citing REQ-01 while REQ-01 did not describe it.
+The 0.2.2 revision below closed five gaps of exactly this shape and missed
+this one; the independent review REV-004 found it
+(\code{ITC-20260729-2255}). So the CHK-1 checkpoint added SIX public
+refusals in total, five closed there and one here.
+
+\code{CHANGELOG.md} counts FIVE, and both numbers are right about
+different things. It counts the rules a caller can hit and folds
+\code{validate}'s third refusal into the constant-shadowing entry it
+shares a cause with, while this document states that one as its own
+amendment to REQ-45. Recorded in both places because a reader comparing
+them otherwise concludes one is missing a refusal.
+
+\paragraph{Changed (REQ-95, the specification build).} REQ-95's CI
+enumeration gains a job that builds this document and fails on a non-zero
+exit or a logged error. Nothing compiled the specification before, so a
+document that could not be built was indistinguishable from one that
+could. Two defects had already reached \code{main} that way: chapter~7
+carried a blank line after every content line, making every source line
+its own LaTeX paragraph and splitting a \code{caption} across a paragraph
+break, and one unescaped underscore inside a code macro argument put chapter~8 into
+math mode that leaked into chapter~9. Seven \code{pdflatex} errors between
+them, on a document whose \code{main.log} was dated 2026-07-23 while
+document versions 0.2.1 and 0.2.2 both shipped after it
+(\code{ITC-20260729-2300}, \code{ITC-20260729-2350},
+\code{ITC-20260730-0010}).
+
+The chapter~7 reflow is recorded as a NON-CHANGE to content, which is the
+part worth stating: 692 source lines became 346, and the 307 non-blank
+lines are byte-identical and in the same order. REQ-96's pre-commit mirror
+deliberately does NOT gain the build, since a TeX toolchain is not a
+pre-commit dependency; that deviation from REQ-96's mirror obligation is
+stated in the requirement rather than left to be noticed.
+
 \section*{Document 0.2.2, 2026-07-29, CHK-1 Refusal Amendment}
 
 Issued to close \code{ITC-20260729-1450}, which blocked the v0.2.0 tag.
-The CHK-1 release checkpoint added six public refusals to surfaces
+The CHK-1 release checkpoint added five public refusals to surfaces
 whose requirement text did not describe them, which is the defect class
 the 0.2.1 revision above named in its own words and did not finish
 closing. The code shipped correct; the text was wrong. No requirement
 scope is added or withdrawn here.
 
-The count reads six rather than five because the sixth was found after
-this section was first written, by the independent review REV-004, and is
-closed by \code{ITC-20260729-2255}. It is recorded as part of this
-revision rather than as a later one because it is the same defect class
-from the same checkpoint, and splitting it would suggest two amendments
-where the work was one.
+A SIXTH refusal from the same checkpoint was missed by this revision and
+is closed by 0.2.3 below. The count here is left at five rather than
+corrected upward, because five is what this revision did and a revision
+entry is a record of one.
 
-\paragraph{Changed (the six CHK-1 refusals).} REQ-01 states that one
+\paragraph{Changed (the five CHK-1 refusals).} REQ-01 states that one
 name may not be both a dimension and a variable, so a source column
 named \code{datapoint} is refused at load and at VarFrame construction
-(\code{R3-ITA-008}); it also states that a CSV row wider than its header
-is refused with \code{DataError}, and that a row narrower than its header
-is still filled with NaN, an asymmetry the requirement now gives its
-reason for (\code{R3-ITA-009}). REQ-24 and REQ-107 both state that
+(\code{R3-ITA-008}). REQ-24 and REQ-107 both state that
 \code{itc.concat} raises \code{AxesError} when the inputs express a
 vector group in different axis systems, or declare one group over
 different components, with an undeclared input counting as the
@@ -63,7 +112,9 @@ different values, four and three inside the requirement itself and two
 in the workspace charter, while the normative
 Table~\ref{tab:unc-ops} still stated that \code{smooth} and \code{diff}
 propagate through their weights, which the implementation has never
-done. The list is now given once, at FIVE:
+done. The list is now given once IN THIS DOCUMENT, at FIVE (the
+workspace charter and the reviewer charters outside it still restate a
+subset, which this document cannot close and does not claim to):
 \code{smooth}, \code{diff}, \code{fitmodel}, \code{fitvalue}, and
 \code{fill} with \code{method="polyfit"}. The table gains the
 \code{fill} polyfit row, its \code{smooth}/\code{diff} row is corrected
@@ -100,7 +151,7 @@ state have the same hash, with same semantic state defined
 representationally at the floating-point boundary (DD-40). Its scope
 gains dimension and variable metadata and names the axis registry. The
 practical consequence is that unit is inside the guarantee even though
-Section~\ref{sec:dimension} calls it metadata, because
+Section~\ref{sec:dimension-object} calls it metadata, because
 \code{rotate} interprets it. REQ-107 moves from draft to stable and
 records that \code{db.rotate} updates a group's axis. REQ-36's guard is
 stated as per-subtree. REQ-45 records the \code{[constants]} collision

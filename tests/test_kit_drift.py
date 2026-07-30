@@ -135,8 +135,8 @@ class Pin:
 
 
 # The kit README manifest, inlined as the fixture, with two DELIBERATE
-# deviations marked in place below (per-file versions: a mix of 0.2.4,
-# 0.2.2 and 0.1.0 is correct; see the module docstring). This is not a
+# deviations marked in place below (per-file versions differ deliberately
+# and span several kit versions; see the module docstring). This is not a
 # verbatim copy of the manifest of record and must not be resynced from
 # it wholesale.
 MANIFEST: dict[str, Pin] = {
@@ -417,26 +417,37 @@ def _env_located() -> list[tuple[str, Path]]:
     validator = os.environ.get("ITACA_PLAN_VALIDATOR")
     if validator:
         target = Path(validator)
-        if target.suffix == ".py" and not target.is_file():
-            # ITC-20260727-1542. A .py value naming a file that exists
-            # NOWHERE must not be reinterpreted as its parent directory.
-            # ITACA_PLAN_VALIDATOR was once set to a retired
-            # check_plan_entries.py; the parent happened to hold a
-            # version-matched check_plan_kit.py, so the derivation below
-            # succeeded and this suite stayed green while the plan skill
-            # resolved the same variable to a path that does not exist and
-            # validation silently skipped. Pointing at the configured value
-            # itself makes the caller's is_file assertion name the real
-            # error instead of hiding it one directory up.
+        if target.suffix == ".py":
+            # ITC-20260727-1542. A `.py` value NAMES THE CHECKER, and the
+            # parent is never substituted for it. The old derivation took
+            # `target.parent` and looked for `check_plan_kit.py` inside it,
+            # so a value naming a retired `check_plan_entries.py` resolved to
+            # the version-matched sibling and this suite stayed green while
+            # the plan skill resolved the same variable to a file that does
+            # not exist and validation silently skipped.
+            #
+            # Restricting the repair to values that do not EXIST was measured
+            # insufficient by a reviewer: a value naming a real but wrong file
+            # (the directory also holds the sister repository's
+            # `check_plan.py`) was still reinterpreted, so the drift check
+            # certified a checker the plan skill would never run. Naming the
+            # configured path itself in both cases lets the caller's is_file
+            # and manifest assertions report the real error.
+            #
+            # This matches `_resolve` in tests/test_plan_validator.py, which
+            # has always read the `.py` form this way. The companion still
+            # sits beside the checker, which is what `.parent` is for here.
             located.append(("check_plan_kit.py", target))
-        else:
-            directory = target.parent if target.suffix == ".py" else target
-            located.append(("check_plan_kit.py", directory / "check_plan_kit.py"))
             located.append(
                 (
                     "check_plan_kit_mutations.py",
-                    directory / "check_plan_kit_mutations.py",
+                    target.parent / "check_plan_kit_mutations.py",
                 )
+            )
+        else:
+            located.append(("check_plan_kit.py", target / "check_plan_kit.py"))
+            located.append(
+                ("check_plan_kit_mutations.py", target / "check_plan_kit_mutations.py")
             )
     return located
 
@@ -473,6 +484,48 @@ def test_env_located_shared_tools_match_the_manifest() -> None:
         _assert_matches_manifest(key, path)
 
 
+def test_the_derivation_never_reinterprets_a_py_value_as_its_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Falsify the derivation fix itself, hermetically.
+
+    ``ITC-20260727-1542``. This is the only BEHAVIOUR change in that repair,
+    and on this machine the ambient ``ITACA_PLAN_VALIDATOR`` is a directory,
+    so the ``.py`` branch never runs and the fix was covered by nothing: a
+    reviewer measured the new line as unexecuted and confirmed that deleting
+    it left the suite green. The test below is the falsifier that was
+    missing, and it does not depend on how any machine is configured.
+
+    Two shapes are checked, both of which the old derivation resolved to the
+    sibling checker and so certified a file the plan skill would never run:
+
+    1. a ``.py`` value naming a file that does not exist;
+    2. a ``.py`` value naming a file that DOES exist but is not the kit
+       checker, which is the shape that survived the first repair (the
+       directory beside it holds the sister repository's ``check_plan.py``,
+       so this is reachable by one plausible typo).
+    """
+    beside = tmp_path / "check_plan_kit.py"
+    beside.write_text("# a valid-looking sibling\n", encoding="utf-8")
+
+    for name, exists in (("retired.py", False), ("check_plan.py", True)):
+        configured = tmp_path / name
+        if exists:
+            configured.write_text("# real file, wrong checker\n", encoding="utf-8")
+        monkeypatch.setenv("ITACA_PLAN_VALIDATOR", str(configured))
+        monkeypatch.delenv("ITACA_INCIDENT_LEDGER", raising=False)
+        located = dict(_env_located())
+        assert located["check_plan_kit.py"] == configured, (
+            f"the derivation resolved ITACA_PLAN_VALIDATOR={configured} to "
+            f"{located['check_plan_kit.py']}, reinterpreting a .py value as "
+            f"its parent directory and so certifying a checker beside the "
+            f"configured path instead of the configured path itself. That is "
+            f"the structural cause of ITC-20260727-1542, where the sibling "
+            f"happened to be version-matched and this suite stayed green "
+            f"while plan validation silently skipped."
+        )
+
+
 def test_a_configured_locator_names_something_that_exists() -> None:
     """A locator naming nothing must fail, never be reinterpreted.
 
@@ -492,15 +545,25 @@ def test_a_configured_locator_names_something_that_exists() -> None:
     would have failed in exactly the same way. This test checks the
     CONFIGURED value itself, so no parent directory can stand in for it.
     """
+    # All THREE members of the locator family, not two. A reviewer measured
+    # that ITACA_MANAGEMENT_ROOT was the one member no test read from the live
+    # environment, so a root pointed at a path that does not exist skipped
+    # green while handoffs and ledger entries would go somewhere nobody reads.
+    # That is ITC-20260727-1542 one variable over.
     configured = [
         (name, Path(value))
-        for name in ("ITACA_INCIDENT_LEDGER", "ITACA_PLAN_VALIDATOR")
+        for name in (
+            "ITACA_INCIDENT_LEDGER",
+            "ITACA_PLAN_VALIDATOR",
+            "ITACA_MANAGEMENT_ROOT",
+        )
         if (value := os.environ.get(name))
     ]
     if not configured:
         pytest.skip(
-            "neither ITACA_INCIDENT_LEDGER nor ITACA_PLAN_VALIDATOR is set; "
-            "there is no configured locator to check"
+            "no member of the locator family is set (ITACA_INCIDENT_LEDGER, "
+            "ITACA_PLAN_VALIDATOR, ITACA_MANAGEMENT_ROOT); there is no "
+            "configured locator to check"
         )
     missing = [f"{name}={path}" for name, path in configured if not path.exists()]
     assert not missing, (
@@ -527,7 +590,7 @@ def test_snap_script_matches_the_manifest_where_it_is_deployed() -> None:
 def test_the_run_reports_which_pins_it_could_not_check() -> None:
     """Name the unchecked pins, so a skip is an inventory and not a shrug.
 
-    Four of the nine manifest entries are reachable only through an
+    The env-located manifest entries are reachable only through an
     environment locator, and CI sets none, so they are routinely unchecked
     there. A pin nobody reads can be moved to anything and the suite stays
     green, which is the failure this repository already names elsewhere as

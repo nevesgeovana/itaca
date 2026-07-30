@@ -51,20 +51,22 @@ well as this entry point. The cost is stated rather than hidden: no
 rename operation exists to recover with, and that gap is OQ-41.
 
 A CSV row may not be WIDER than its header. Rows are read by header
-position, so every cell past that width was dropped with no signal while
-Provenance went on hashing the complete file bytes: the source hash
-certified content the frame did not represent. Such a row is refused with
-\code{DataError}, naming the row, its field count, the header, and the
-cells that would have been discarded (\code{R3-ITA-009}).
+position, so a cell past that width would be dropped with no signal while
+Provenance hashed the complete file bytes: the source hash would certify
+content the frame did not represent. Such a row is refused with
+\code{DataError}, naming the row, its field count, the header, the cells
+that would have been discarded, and the suggested fix, which is to correct
+the header or quote the field containing the delimiter (REQ-81,
+\code{R3-ITA-009}).
 
-A row NARROWER than its header is NOT refused: its absent trailing cells
-are filled with NaN, exactly as an empty cell is. The asymmetry is
-deliberate, and it is stated here because a reader who meets one half of
-it will otherwise infer the other wrongly. A row wider than its header is
-a malformed file, either a truncated header or a delimiter inside an
-unquoted field, and neither of those is repaired by discarding data; a
-row narrower than its header is ordinary missing data, which this format
-already represents as NaN everywhere else.
+An empty cell is read as NaN. A row NARROWER than its header is NOT
+refused: its absent trailing cells are filled with NaN, exactly as an
+empty cell is. The asymmetry is deliberate, and it is stated here because a
+reader who meets one half of it will otherwise infer the other wrongly. A
+row wider than its header is a malformed file, either a truncated header
+or a delimiter inside an unquoted field, and neither of those is repaired
+by discarding data; a row narrower than its header is ordinary missing
+data, which this format already represents as NaN everywhere else.
 \end{reqbox}
 
 \begin{reqbox}{REQ-02}{\stable}
@@ -373,8 +375,8 @@ The inputs must also agree on the axis system of every vector group they
 carry. \code{concat} records ONE source axis for the merged frame, and
 REQ-107 makes that recorded axis the thing that keeps a repeated
 rotation an identity, so a body-axis input joined to an already-rotated
-wind-axis input came out claiming one axis for every row and the next
-\code{db.rotate} transformed the rotated rows a second time
+wind-axis input would come out claiming one axis for every row and the
+next \code{db.rotate} would transform the rotated rows a second time
 (\code{CHK1-003}). A disagreement therefore raises \code{AxesError}, as
 does one group declared over different components across the inputs. The
 comparison is driven by the UNION of the declared group names, and an
@@ -953,7 +955,7 @@ REQ-100).\\
 \end{reqbox}
 
 \section{Expression Engine}
-\label{sec:rpn-engine}
+\label{sec:ast-engine}
 
 \begin{reqbox}{REQ-44}{\stable}
 \textbf{Expression operator coverage.}\\

@@ -192,6 +192,124 @@ def test_every_srs_label_is_reached_by_a_real_latex_command() -> None:
     assert not offenders, f"label reached without a reference command: {offenders}"
 
 
+_PROHIBITION = "FORBIDDEN to run any command that mutates git state"
+_VENDORED_CHARTERS = ("incident-analyst.md",)
+
+
+def _charter_tools(text: str) -> list[str]:
+    """The frontmatter ``tools:`` list of an agent charter."""
+    for line in text.splitlines():
+        if line.startswith("tools:"):
+            return [item.strip() for item in line[len("tools:") :].split(",")]
+    return []
+
+
+def test_every_bash_holding_charter_carries_the_git_prohibition() -> None:
+    """Bind the capability to the restriction, instead of trusting prose.
+
+    ``INC-20260729-2355-itaca``. A reviewer agent holding ``Bash`` ran a git
+    restore while a lane carried uncommitted review fixes and silently reverted
+    two files of nine, losing three edits. The prohibition that answers it was
+    written into three charters by hand, and three reviewers independently
+    raised the same objection: this repository's incident rule says
+    documentation is not a guard, so a re-vendor, a reformat, or a new seat
+    granting ``Bash`` tomorrow drops the section with no signal. Measured at
+    the time: the prohibition was in three of the FOUR local charters holding
+    ``Bash``.
+
+    So the invariant is mechanical from here: hold ``Bash``, carry the
+    prohibition. A new reviewer seat inherits it by failing this test rather
+    than by someone remembering.
+
+    ``incident-analyst.md`` is exempted BY NAME and the exemption is the
+    finding, not a shrug: it is a vendored kit body whose sha256 is pinned by
+    ``tests/test_kit_drift.py``, so itaca cannot add the section without
+    reddening the drift test, and the fix belongs to the kit and to the sister
+    repository that runs the same charter. It is the seat most likely to
+    reconstruct state while reproducing a failure, which is what makes the gap
+    worth naming here rather than leaving to the commit log. Routed as
+    ``ITC-20260730-0180``.
+    """
+    charters = sorted((_ROOT / ".claude" / "agents").glob("*.md"))
+    assert len(charters) >= 5, (
+        f"only {len(charters)} agent charters were found under "
+        f"{_ROOT / '.claude' / 'agents'}; a walk that finds nothing would "
+        f"otherwise report green."
+    )
+    offenders: list[str] = []
+    exempt_seen: list[str] = []
+    for path in charters:
+        text = path.read_text(encoding="utf-8")
+        if "Bash" not in _charter_tools(text):
+            continue
+        if path.name in _VENDORED_CHARTERS:
+            exempt_seen.append(path.name)
+            continue
+        if _PROHIBITION not in text:
+            offenders.append(path.name)
+    assert not offenders, (
+        f"these charters grant Bash without carrying the git-mutation "
+        f"prohibition: {offenders}. A lens that can execute can destroy "
+        f"uncommitted work, which is INC-20260729-2355-itaca. Add the section, "
+        f"or remove Bash from the charter."
+    )
+    assert exempt_seen == list(_VENDORED_CHARTERS), (
+        f"the vendored-charter exemption names {list(_VENDORED_CHARTERS)} but "
+        f"{exempt_seen} were the Bash-holding vendored charters found. If a "
+        f"vendored charter stopped granting Bash, or the kit shipped the "
+        f"prohibition, remove it from the exemption so the gap closes here too."
+    )
+
+
+def test_both_workflows_build_the_srs_and_check_the_log() -> None:
+    """Pin the build itself, so deleting it cannot reopen the P0 in silence.
+
+    ``ITC-20260730-0010`` is "nothing compiles the specification, so a broken
+    document is indistinguishable from a working one". The remedy is a CI job,
+    and a remedy that is one deletion away from gone with the suite green is
+    the shape this repository refuses. A reviewer raised exactly that: no test
+    parsed the workflow for it, though two other tests already parse the same
+    file for other properties.
+
+    Three properties, and the third is the one that carries the P0. The build
+    must be reachable from BOTH callers, since their triggers are disjoint and
+    a tag push would otherwise publish a document nobody compiled; and the run
+    must check the log rather than only the exit status, because a nonstopmode
+    build can emit a PDF while having logged errors.
+    """
+    workflows = _ROOT / ".github" / "workflows"
+    reusable = workflows / "srs_build.yml"
+    assert reusable.is_file(), (
+        f"{reusable} is absent, so nothing builds the specification "
+        f"(ITC-20260730-0010)."
+    )
+    body = reusable.read_text(encoding="utf-8")
+    assert "latexmk" in body and "docs/srs" in body, (
+        "the SRS build workflow no longer runs latexmk over docs/srs, so it "
+        "does not build the document it exists to build."
+    )
+    assert "main.log" in body, (
+        "the SRS build no longer inspects main.log. Exit status alone is not "
+        "enough: a nonstopmode build emits a PDF while logging errors, which "
+        "is this repository's own 'read the count, not only the exit code'."
+    )
+    for caller in ("ci.yml", "release.yml"):
+        text = (workflows / caller).read_text(encoding="utf-8")
+        assert "srs_build.yml" in text, (
+            f"{caller} does not call srs_build.yml, so on the path it governs "
+            f"the specification is never compiled. Both callers need it: the "
+            f"triggers are disjoint, and a tag push that skips the build "
+            f"publishes a document no machine has read (ITC-20260730-0010)."
+        )
+    release = (workflows / "release.yml").read_text(encoding="utf-8")
+    assert "needs: [srs]" in release, (
+        "the release gate no longer waits on the SRS build, so the build runs "
+        "beside publication instead of before it. release.yml's own header "
+        "gives the reason this matters: a check outside the publishing job's "
+        "needs closure is advisory, and the tag push starts both at once."
+    )
+
+
 def test_no_srs_source_is_blank_line_doubled() -> None:
     """A blank after EVERY content line makes each line its own paragraph.
 
@@ -220,23 +338,53 @@ def test_no_srs_source_is_blank_line_doubled() -> None:
     """
     root = _ROOT / "docs" / "srs"
     offenders: list[str] = []
+    scanned: list[str] = []
     for path in sorted(root.rglob("*.tex")):
         lines = path.read_text(encoding="utf-8").splitlines()
+        scanned.append(path.name)
         nonblank = [index for index, line in enumerate(lines) if line.strip()]
-        # A very short include has no room for the ratio to mean anything.
-        if len(nonblank) < 10:
-            continue
-        followed = sum(
-            1
+        followed_flags = [
+            index + 1 < len(lines) and not lines[index + 1].strip()
             for index in nonblank
-            if index + 1 < len(lines) and not lines[index + 1].strip()
-        )
-        ratio = followed / len(nonblank)
-        if ratio >= 0.9:
+        ]
+        followed = sum(followed_flags)
+        # The FILE-level signal: a whole source that is doubled throughout.
+        if len(nonblank) >= 10:
+            ratio = followed / len(nonblank)
+            if ratio >= 0.9:
+                offenders.append(
+                    f"{path.name}: {len(lines)} lines, {len(nonblank)} "
+                    f"non-blank, {followed} of them followed by a blank "
+                    f"(ratio {ratio:.2f})"
+                )
+                continue
+        # The SCALE-INVARIANT signal, which the ratio alone misses. A reviewer
+        # measured that a HALF-doubled chapter, a doubled 40-line block, and a
+        # fully doubled 6-line include all passed the ratio test, while
+        # rendering exactly as badly over the affected region. A run of content
+        # lines each followed by exactly one blank is the doubling signature
+        # regardless of how much of the file carries it. Authored prose does
+        # not reach 8: the longest such run across the fourteen healthy sources
+        # is well below it, because real paragraphs are several lines long.
+        longest = current = 0
+        for flag in followed_flags:
+            current = current + 1 if flag else 0
+            longest = max(longest, current)
+        if longest >= 8:
             offenders.append(
-                f"{path.name}: {len(lines)} lines, {len(nonblank)} non-blank, "
-                f"{followed} of them followed by a blank (ratio {ratio:.2f})"
+                f"{path.name}: {longest} consecutive content lines each "
+                f"followed by exactly one blank, which is the doubling "
+                f"signature over a region rather than a whole file"
             )
+    # A discovery that silently returns nothing passes every check vacuously,
+    # which this module refuses elsewhere and must refuse here: the walk is the
+    # working tree, so a moved or renamed docs/srs would green this guard.
+    assert len(scanned) >= 10 and "06_functional_requirements.tex" in scanned, (
+        f"the SRS walk reached {len(scanned)} .tex sources ({scanned}) under "
+        f"{root}, which is not the tree this guard exists to read. Ten or more "
+        f"sources including 06_functional_requirements.tex are expected; a walk "
+        f"that finds nothing would otherwise report green."
+    )
     assert not offenders, (
         f"an SRS source is blank-line doubled, so every content line renders "
         f"as its own LaTeX paragraph: {offenders}. The inverse transform is "

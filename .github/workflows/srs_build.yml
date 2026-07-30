@@ -1,0 +1,115 @@
+# Build the SRS and refuse a document that does not compile cleanly.
+#
+# ITC-20260730-0010, and REQ-95 names this check. The authority chain opens
+# with "docs/srs/ is the authoritative specification", and until this existed
+# nothing built it. `main.log` was dated 2026-07-23 while document versions
+# 0.2.1 and 0.2.2 both shipped after it, each asserting in its own revision
+# history that the document had changed. Two build defects reached `main` that
+# way and neither was found by a machine: chapter 7 was blank-line doubled
+# (ITC-20260729-2300) and one unescaped underscore inside \code{} put chapter 8
+# into math mode that leaked past the end of the chapter into chapter 9
+# (ITC-20260729-2350).
+#
+# THIS IS A REUSABLE WORKFLOW, and it is itaca's own rather than the kit's, so
+# it carries no kit provenance marker and no drift pin is owed. It is reusable
+# for one reason: the document must be built on the RELEASE path as well as on
+# CI, and the first version of this lived only in `ci.yml`. A reviewer measured
+# what that meant: a tag push, the only path that publishes, never built the
+# document, and `release.yml` itself condemns exactly that arrangement for the
+# library ("CI's triggers are disjoint from this one, so on a tag push the two
+# ran in parallel and publish could finish first"). Defining the job once and
+# calling it from both callers keeps the two paths from drifting, which is the
+# same argument that made CI and Release share one gate.
+#
+# THE ERROR DECOMPOSITION, because two ledger entries record it differently and
+# whoever reads this next needs the reproducible number. Measured with the
+# command below, on a tree where `docs/figures` sits beside `docs/srs` so the
+# logo resolves: the pre-fix tree gives `latexmk` exit 12 and 7 error lines,
+# four from chapter 7 (three at l.309, one at l.355) and three from chapter 8
+# l.129, the third of which surfaces at `09_contributing.tex:4` where the
+# unclosed math mode meets the first blank line. The fixed tree gives exit 0
+# and 0 error lines. `pdflatex` alone exits 1 rather than 12 on the same tree;
+# the tool is named beside each number because the two are not comparable.
+# ITC-20260729-2300 recorded 3 + 3 + 1 from an isolated copy that could NOT
+# resolve the logo, so its seventh error was that artifact; with the logo
+# present the seventh is the chapter 9 cascade instead. Both total seven, for
+# different reasons.
+name: SRS build
+
+on:
+  workflow_call:
+
+jobs:
+  srs:
+    name: SRS builds (latexmk)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      # No TeX distribution is present on the runner. This set was sufficient
+      # for this document's preamble as of 2026-07-30 and is NOT claimed to be
+      # minimal: a local build on a full TeX install cannot evidence a
+      # runner-package claim, and the first green run is what evidences it.
+      # newtx is in fonts-extra; tcolorbox, titlesec, lettrine, enumitem and
+      # multirow in latex-extra; natbib, mathtools, microtype and hyperref in
+      # latex-recommended. Two additions a reviewer caught by reading the
+      # preamble rather than trusting the list: `pictures`, because main.tex
+      # uses tikzpicture, \fill and \foreach directly (reached transitively
+      # through tcolorbox's skins, so leaning on latex-extra's own Depends
+      # would be an undeclared dependency), and `lang-english`, because
+      # \usepackage[american]{babel} needs english.ldf, which is a Recommends
+      # that --no-install-recommends drops.
+      - name: Install TeX Live
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            latexmk \
+            texlive-latex-recommended \
+            texlive-latex-extra \
+            texlive-fonts-recommended \
+            texlive-fonts-extra \
+            texlive-bibtex-extra \
+            texlive-pictures \
+            texlive-lang-english
+      - name: Build the SRS
+        working-directory: docs/srs
+        run: latexmk -pdf -file-line-error -interaction=nonstopmode main.tex
+      # Three refusals, not one, which is this repository's own rule applied to
+      # a new checker: "read a checker's entry count and not only its exit
+      # code". latexmk in nonstopmode can emit a PDF while having logged
+      # errors, and an 85-page PDF built from a document that fell into math
+      # mode is exactly the artifact that looks like a success. The same
+      # argument covers `??`: a reviewer found this document already shipped
+      # two, from a `sec:dimension` reference with no label, and a gate that
+      # passes those is passing a specification whose cross-references do not
+      # resolve.
+      - name: Refuse a build that logged errors or left a reference undefined
+        working-directory: docs/srs
+        run: |
+          # An absent log is not an absent error: `grep` on a missing file
+          # exits 2, and `if grep` reads that as "nothing matched".
+          test -f main.log || {
+            echo "::error::main.log is absent, so the build produced no log to check"
+            exit 1
+          }
+          if grep -nE '^(!|[^ ]+:[0-9]+: )' main.log; then
+            echo "::error::the SRS build logged LaTeX errors; see the lines above"
+            exit 1
+          fi
+          if grep -nE "Reference .* undefined|There were undefined references" main.log; then
+            echo "::error::the SRS has undefined cross-references, so it ships ?? where a reference belongs"
+            exit 1
+          fi
+          echo "no LaTeX errors and no undefined references in main.log"
+      - name: Show the errors on failure
+        if: failure()
+        working-directory: docs/srs
+        run: |
+          if [ -f main.log ]; then
+            grep -nE '^(!|[^ ]+:[0-9]+: )|Reference .* undefined' main.log || true
+            echo "----- last 60 lines of main.log -----"
+            tail -60 main.log || true
+          else
+            echo "main.log is absent; the failure came before or during the build"
+          fi

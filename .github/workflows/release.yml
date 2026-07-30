@@ -27,7 +27,24 @@ on:
     tags: ["v*"]
 
 jobs:
+  # The specification build, gating publication rather than running beside it.
+  # REQ-95 requires it and ITC-20260730-0010 is why it exists. It is declared
+  # here as well as in `ci.yml` because the two triggers are disjoint, which is
+  # the same reason this file's own header gives for deleting the old parallel
+  # publish path: a check that does not sit in the publishing job's `needs`
+  # closure is advisory, and on a tag push nothing else would build the
+  # document at all. The body is defined once, in the itaca-owned reusable, so
+  # the two callers cannot drift.
+  srs:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/srs_build.yml
+
   gate:
+    # Publication waits on the document compiling. A release whose
+    # authoritative specification does not build is the case this ordering
+    # exists to make impossible.
+    needs: [srs]
     uses: ./.github/workflows/release_gate.yml
     permissions:
       # Declaring ANY permission sets every undeclared one to none, and

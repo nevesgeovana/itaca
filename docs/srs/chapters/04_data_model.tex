@@ -160,7 +160,7 @@ identically to both uncertainty components (validated 2026-07-21,
 OQ-23 in the companion log). By default all correlations are zero and
 Equation~\eqref{eq:lpu} reduces to the independence form. Partial derivatives
 are obtained symbolically via chain rule on the AST expression tree
-(Section~\ref{sec:rpn-engine}).
+(Section~\ref{sec:ast-engine}).
 
 \begin{noteinfo}[Monte Carlo for discrete-branch models]
 The symbolic propagation in Equation~\eqref{eq:lpu} assumes the derived
@@ -290,7 +290,7 @@ arrays and variable metadata; the ordered
 operation sequence with normalized arguments and comments; the
 uncertainty, correlation, and origin-tag arrays when present; and the
 axis registry. Unit is covered even though
-Section~\ref{sec:dimension} calls it metadata, because \code{rotate}
+Section~\ref{sec:dimension-object} calls it metadata, because \code{rotate}
 interprets it (REQ-101): a field an operation acts on is part of the
 state, whatever it is called elsewhere. It excludes
 every volatile field: timestamps, user identity, source file paths, and the

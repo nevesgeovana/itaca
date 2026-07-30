@@ -55,6 +55,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from management_root import (  # the single home of the resolution rule
+    ManagementRootError,
+    resolve_management_root,
+)
 
 _REPO = Path(__file__).resolve().parents[1]
 _SECTION = "Where the session documents live"
@@ -71,10 +75,6 @@ _SESSION_SHAPES = (
     "_log.md",
 )
 
-#: Subdirectories or files whose presence means _private/ still holds the
-#: session documents, so the unset fallback is the pre-migration layout
-#: rather than a hollow tree.
-_ROOT_MARKERS = ("plan", "handoffs", "inbox", "NEXT_SESSION.md")
 
 #: The heading of the single home, as every skill quotes it.
 _HEADING = re.compile(rf"(?m)^#{{1,6}}\s+{re.escape(_SECTION)}\b")
@@ -102,98 +102,6 @@ _BINARY_SUFFIXES = {
     ".woff2",
     ".zip",
 }
-
-
-class ManagementRootError(RuntimeError):
-    """A configuration error in locating the session-document root."""
-
-
-def resolve_management_root(configured: str | None, *, repo: Path) -> tuple[Path, str]:
-    """Resolve the management root, or raise with a three-part message.
-
-    This is CLAUDE.md, "Where the session documents live", as code.
-    Returns the root and which branch produced it, ``"variable"`` or
-    ``"fallback"``, because a resolution that is never announced cannot
-    be noticed when it is wrong.
-
-    Parameters
-    ----------
-    configured
-        The value of ``ITACA_MANAGEMENT_ROOT``, or None when unset.
-    repo
-        The repository root, holding the ``_private/`` fallback.
-
-    Returns
-    -------
-    tuple of (Path, str)
-        The resolved root, and the branch that produced it.
-
-    Raises
-    ------
-    ManagementRootError
-        When the configured root does not exist, is not itaca's, or when
-        the variable is unset and the fallback holds no session
-        documents.
-
-    Examples
-    --------
-    >>> resolve_management_root(None, repo=Path("/nowhere"))
-    Traceback (most recent call last):
-    ManagementRootError: ...
-    """
-    if configured:
-        root = Path(configured)
-        if not root.is_dir():
-            raise ManagementRootError(
-                f"ITACA_MANAGEMENT_ROOT is set to {root}, which is not a "
-                f"directory; session documents cannot be written; set it to "
-                f"the itaca management root, or unset it to use _private/."
-            )
-        if not _is_itacas(root):
-            raise ManagementRootError(
-                f"ITACA_MANAGEMENT_ROOT is set to {root}, whose plan/README.md "
-                f"is missing or does not name the ITACA plan ledger, so it is "
-                f"not itaca's management root; session documents would go to "
-                f"another project; point it at the itaca management root, or "
-                f"restore that README's heading if it was retitled."
-            )
-        return root, "variable"
-
-    fallback = repo / "_private"
-    if not _holds_documents(fallback):
-        raise ManagementRootError(
-            f"ITACA_MANAGEMENT_ROOT is unset and {fallback} holds no session "
-            f"documents; writing them there would put them where nobody reads "
-            f"them; set ITACA_MANAGEMENT_ROOT to the management root."
-        )
-    return fallback, "fallback"
-
-
-def _is_itacas(root: Path) -> bool:
-    """Whether a directory is itaca's management root, not a sibling's.
-
-    Existence is not identity: the sibling projects sit under one parent,
-    so the marker is the ledger README's own heading, anchored rather
-    than matched anywhere in the file, since a sister README could
-    mention the ITACA ledger in a cross-reference.
-    """
-    marker = root / "plan" / "README.md"
-    if not marker.is_file():
-        return False
-    for line in marker.read_text(encoding="utf-8").splitlines():
-        if line.startswith("#"):
-            return "ITACA plan ledger" in line
-    return False
-
-
-def _holds_documents(fallback: Path) -> bool:
-    """Whether _private/ still holds session documents.
-
-    Not "is non-empty": _private/ is also documented as local staging for
-    proprietary material, so one staged file must not be mistaken for the
-    pre-migration layout.
-    """
-    return fallback.is_dir() and any((fallback / m).exists() for m in _ROOT_MARKERS)
 
 
 def _tracked() -> list[str]:

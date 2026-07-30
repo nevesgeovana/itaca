@@ -351,6 +351,61 @@ def test_r3_ita_009_csv_row_wider_than_the_header_is_refused(tmp_path: Path) -> 
         itc.load(path)
 
 
+def test_r3_ita_009_the_refusal_message_names_every_part_req01_promises(
+    tmp_path: Path,
+) -> None:
+    """REQ-01 describes this message in detail, so all of it is pinned.
+
+    The requirement (SRS 0.2.3) says the refusal names the row, its field
+    count, the header, the cells that would have been discarded, and the
+    suggested fix. Only the third of those was asserted before, by a
+    ``match=`` on one phrase, so dropping ``row[len(header):]`` from the
+    message would have kept the suite green and made REQ-01 false.
+    """
+    path = tmp_path / "wide.csv"
+    path.write_text("alpha,CT\n0.0,0.1\n2.0,0.2,9.9\n", encoding="utf-8")
+    with pytest.raises(DataError) as caught:
+        itc.load(path)
+    message = str(caught.value)
+    for part in (
+        "row 3",  # the row
+        "3 fields",  # its field count
+        "['alpha', 'CT']",  # the header
+        "['9.9']",  # the cells that would have been discarded
+        "Suggested fix",  # REQ-81's three-part contract
+        "quote the field",  # the fix itself
+    ):
+        assert part in message, (
+            f"the refusal message omits {part!r}, which REQ-01 states it "
+            f"names. Message: {message!r}"
+        )
+
+
+def test_r3_ita_009_a_row_narrower_than_the_header_is_still_nan_filled(
+    tmp_path: Path,
+) -> None:
+    """The lenient half of the asymmetry REQ-01 states, and it had no test.
+
+    REQ-01 says a row NARROWER than its header is not refused and its absent
+    trailing cells are NaN-filled. Nothing asserted it: the only ragged
+    fixture in the suite raises on its wide row before any narrow row is
+    parsed, and the empty-cell test uses a full-width row. So generalizing
+    ``len(row) > len(header)`` to ``!=``, which is the natural "ragged is
+    malformed" reading, would have left the whole suite green while
+    contradicting the requirement.
+    """
+    path = tmp_path / "narrow.csv"
+    path.write_text("a,b\n1\n4,5\n", encoding="utf-8")
+    db = itc.load(path)
+    values, _dims = db.to_numpy(return_dims=True)
+    assert np.isnan(values["b"][0]), (
+        f"a row narrower than its header must NaN-fill its absent trailing "
+        f"cells, per REQ-01. Got {values['b']!r}"
+    )
+    assert values["a"][0] == 1.0
+    assert values["b"][1] == 5.0
+
+
 def test_r3_ita_008_a_variable_cannot_collide_with_the_synthetic_dimension() -> None:
     """``dims`` and ``vars`` must not intersect.
 
