@@ -110,6 +110,56 @@ class TestCombineUncertainty:
         assert np.allclose(result.uncertainty.systematic["CT"], 3.0)
 
 
+class TestCombineJacobianDtype:
+    """FND-035: the Jacobian is a derivative, not a sample of the data.
+
+    The invariant is stated as an EQUIVALENCE rather than as "every
+    partial is a float array", because that stronger form is false and
+    harmlessly so: the partial of ``product`` with respect to one operand
+    IS the other operand, and an integer one is exact. What must never
+    differ is the propagated uncertainty, which is what a user reads.
+    """
+
+    @staticmethod
+    def _as_int(db: VarFrame, u: float) -> VarFrame:
+        """Retype the values to int64 without changing them.
+
+        Not reachable through ``itc.load``, which casts to float64, so
+        the frame is retyped directly; the defect is latent behind that
+        cast rather than absent.
+        """
+        ints = np.asarray(db.vars["CT"].values, dtype=np.int64)
+        ints.setflags(write=False)
+        typed = db.set_uncertainty({"CT": u})
+        return dataclasses.replace(
+            typed,
+            vars={"CT": dataclasses.replace(typed.vars["CT"], values=ints)},
+        )
+
+    @pytest.mark.parametrize(
+        "op", ["sum", "diff", "product", "ratio", "mean", "weighted_mean"]
+    )
+    def test_integer_inputs_propagate_the_same_uncertainty_as_floats(
+        self, op: str
+    ) -> None:
+        whole = _frame([10.0, 20.0])
+        other = _frame([2.0, 5.0])
+        weights = (1.0, 3.0) if op == "weighted_mean" else None
+        kwargs = {} if weights is None else {"weights": weights}
+        as_float = whole.set_uncertainty({"CT": 3.0}).combine(
+            other.set_uncertainty({"CT": 4.0}), op=op, **kwargs
+        )
+        as_int = self._as_int(whole, 3.0).combine(
+            self._as_int(other, 4.0), op=op, **kwargs
+        )
+        assert as_float.uncertainty is not None
+        assert as_int.uncertainty is not None
+        assert np.allclose(
+            np.asarray(as_int.uncertainty.systematic["CT"], dtype=float),
+            np.asarray(as_float.uncertainty.systematic["CT"], dtype=float),
+        )
+
+
 class TestCombineTags:
     def test_worst_case_rule(self, left: VarFrame, right: VarFrame) -> None:
         # OQ-10: -1 beats +1 beats 0.

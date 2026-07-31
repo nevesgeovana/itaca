@@ -233,7 +233,6 @@ def test_chk1_001_a_correction_reading_a_shadowed_channel_is_refused_at_validate
     assert "e" in str(raised.value)
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-002: open at 730649f")
 def test_r3_ita_002_combine_jacobians_do_not_inherit_an_integer_dtype() -> None:
     """The mean jacobian must stay 0.5, not truncate to 0 on an int array.
 
@@ -241,6 +240,14 @@ def test_r3_ita_002_combine_jacobians_do_not_inherit_an_integer_dtype() -> None:
     through ``itc.load``, which casts to float64, so the frame is built
     directly here; the defect is latent behind that cast rather than
     absent.
+
+    FIXED, and the marker removed with the fix (FND-035). Measured on the
+    base with ``--runxfail``: ``[0., 0.]`` against ``2.5 +/- 2.5e-06``.
+    The partials of ``mean`` and ``weighted_mean`` are now built with
+    ``np.full`` on the operand's shape. The behavior itself is covered in
+    ``tests/core/test_combine.py::TestCombineJacobianDtype``, which states
+    the invariant over every operation of the REQ-37 table rather than
+    over this one.
     """
     base = _frame(["i", "F"], [[0, 10], [1, 20]], ["i"])
     ints = np.array([10, 20], dtype=np.int64)

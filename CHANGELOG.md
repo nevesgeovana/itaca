@@ -6,7 +6,7 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
-No signature change. One observable behavior change, under Fixed, and
+No signature change. Two observable behavior changes, under Fixed, and
 release infrastructure, recorded here because it changes how a release
 reaches PyPI and the next tag runs on it.
 
@@ -44,6 +44,14 @@ names `release.yml` with environment `pypi`. A publisher naming
 
 ### Fixed
 
+* `db.combine(op='mean')` and `db.combine(op='weighted_mean')` no longer
+  collapse the propagated uncertainty to zero on integer-valued frames.
+  The constant partials were built with `np.full_like`, which inherits
+  the operand's dtype, so the 0.5 of `mean` truncated to 0: measured
+  `u = [0, 0]` where the same values as float64 gave `[2.5, 2.5]`. Only
+  frames whose arrays were retyped after `itc.load` could reach it, since
+  `itc.load` casts to float64, so this was latent rather than absent.
+  REQ-37, FND-035.
 * `db.pivot(auto_detect=True)` no longer writes to stdout. It announced
   the dimension list it resolved on every call, with no argument a caller
   could pass to stop it, which corrupts the output of any program using

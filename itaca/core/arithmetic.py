@@ -45,7 +45,22 @@ class CombineOperation:
 def operations(
     weights: tuple[float, float] | None,
 ) -> dict[str, CombineOperation]:
-    """Build the REQ-37 operation table, closing over the weights."""
+    """Build the REQ-37 operation table, closing over the weights.
+
+    A constant partial is built with :func:`numpy.full` on the operand's
+    SHAPE, never with :func:`numpy.full_like` on the operand itself.
+    ``full_like`` inherits the operand's dtype, so an integer-valued frame
+    truncated the 0.5 of ``mean`` to 0 and the propagated uncertainty
+    collapsed to zero: measured ``u = [0, 0]`` where float64 inputs gave
+    ``[2.5, 2.5]``, same frames and same declared uncertainties (FND-035).
+
+    ``ones_like`` in ``sum`` and ``diff`` is left as it is, and that is
+    not an oversight: 1 survives the same cast exactly, so those partials
+    are correct at any dtype. What the guard pins is the equivalence a
+    user can read, not the dtype of an intermediate; ``product`` would
+    fail a dtype rule and is exact, because its partial with respect to
+    one operand IS the other operand.
+    """
     table = {
         "sum": CombineOperation(
             "sum",
@@ -74,8 +89,8 @@ def operations(
         "mean": CombineOperation(
             "mean",
             lambda a, b: 0.5 * (a + b),
-            lambda a, b: np.full_like(a, 0.5),
-            lambda a, b: np.full_like(b, 0.5),
+            lambda a, b: np.full(np.shape(a), 0.5),
+            lambda a, b: np.full(np.shape(b), 0.5),
         ),
     }
     if weights is not None:
@@ -84,8 +99,8 @@ def operations(
         table["weighted_mean"] = CombineOperation(
             "weighted_mean",
             lambda a, b: (wa * a + wb * b) / total,
-            lambda a, b: np.full_like(a, wa / total),
-            lambda a, b: np.full_like(b, wb / total),
+            lambda a, b: np.full(np.shape(a), wa / total),
+            lambda a, b: np.full(np.shape(b), wb / total),
         )
     return table
 
