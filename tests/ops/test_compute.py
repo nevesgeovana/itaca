@@ -7,6 +7,8 @@ Usage example (the contract under test)::
     db = db.compute("CL = FZ / (q * 0.1963)")
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -99,6 +101,143 @@ class TestWhereFill:
         u = result.uncertainty.systematic["f"]
         assert np.isnan(u[0])
         assert u[2] == pytest.approx(0.2)
+
+
+class TestWhereEvaluatesOnlyInsideItsMask:
+    """FND-073: `where=` masked the RESULT and not the EVALUATION.
+
+    Values and derivatives were computed over the whole grid first and
+    the mask applied to what came out, so a cell the caller excluded
+    still went through the arithmetic. On a domain violation that is
+    visible: `sqrt` over a masked-out negative emitted RuntimeWarnings
+    the mask should have prevented, twice with an uncertainty carrier,
+    once without.
+
+    The warnings are the symptom worth testing because they are what a
+    caller sees. The cause is that the excluded cell was evaluated at
+    all, which is also why the fill value is asserted beside them: a
+    silenced warning over a still-wrong result would pass a warning
+    test alone.
+    """
+
+    @staticmethod
+    def _signed() -> VarFrame:
+        arr = np.column_stack([np.array([-1.0, 1.0]), np.array([1.0, 1.0])])
+        return itc.load(arr, names=["v", "w"])
+
+    def test_no_warning_from_a_masked_out_domain_violation(self) -> None:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = self._signed().compute("y = sqrt(v)", where="v >= 0", fill=99.0)
+        assert [str(w.message) for w in caught] == []
+        assert np.allclose(result.vars["y"].values, [99.0, 1.0])
+
+    def test_no_warning_when_a_carrier_makes_derivatives_run_too(self) -> None:
+        """The second half of the measurement, and a different code path.
+
+        Without a carrier the value evaluation warns once; with one the
+        derivative warns as well, from `operators.py` rather than from
+        `expression.py`. A fix that masked only the value evaluation
+        would leave this case warning.
+        """
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = (
+                self._signed()
+                .set_uncertainty({"v": 0.1})
+                .compute("y = sqrt(v)", where="v >= 0", fill=99.0)
+            )
+        assert [str(w.message) for w in caught] == []
+        assert result.uncertainty is not None
+        u = result.uncertainty.systematic["y"]
+        assert u[1] == pytest.approx(0.1 / (2.0 * np.sqrt(1.0)))
+
+    def test_the_in_mask_result_is_unchanged(self) -> None:
+        """All-positive data through the identical call.
+
+        The control that keeps the fix from being "evaluate less": what
+        the mask includes must come out exactly as before.
+        """
+        arr = np.column_stack([np.array([4.0, 9.0]), np.array([1.0, 1.0])])
+        db = itc.load(arr, names=["v", "w"])
+        result = db.compute("y = sqrt(v)", where="v >= 0", fill=99.0)
+        assert np.allclose(result.vars["y"].values, [2.0, 3.0])
+
+
+class TestFillNoneKeepsThePriorState:
+    """FND-090: `fill=None` kept the prior VALUE and erased the prior u.
+
+    `fill=None` means this compute does not touch that cell. A cell that
+    was not touched keeps both halves of its state, and it kept one:
+    the value survived and the uncertainty came back NaN, so a surviving
+    number was paired with an uncertainty that is not a number.
+    """
+
+    @staticmethod
+    def _frame() -> VarFrame:
+        arr = np.column_stack([np.array([100.0, 4.0]), np.array([0.0, 1.0])])
+        return itc.load(arr, names=["x", "i"])
+
+    def test_the_masked_out_cell_keeps_its_prior_uncertainty(self) -> None:
+        db = self._frame().set_uncertainty({"x": 10.0})
+        result = db.compute("x = x / 2", where="i > 0", fill=None)
+        assert np.allclose(result.vars["x"].values, [100.0, 2.0])
+        assert result.uncertainty is not None
+        u = np.asarray(result.uncertainty.systematic["x"], dtype=float)
+        assert u[0] == pytest.approx(10.0)
+        assert u[1] == pytest.approx(5.0)
+
+    def test_both_components_are_preserved(self) -> None:
+        db = (
+            self._frame()
+            .set_uncertainty({"x": 10.0})
+            .set_uncertainty({"x": 1.0}, component="random")
+        )
+        result = db.compute("x = x / 2", where="i > 0", fill=None)
+        assert result.uncertainty is not None
+        assert result.uncertainty.systematic["x"][0] == pytest.approx(10.0)
+        assert result.uncertainty.random["x"][0] == pytest.approx(1.0)
+
+    def test_a_prior_uncertainty_survives_an_expression_with_no_carrier(
+        self,
+    ) -> None:
+        """The case that would be half a rule if it were left out.
+
+        With no carrier the propagation returns nothing and the target's
+        component is dropped entirely, which erases the untouched cell's
+        uncertainty by a different route than the mask. The in-mask cell
+        still loses it, correctly: that cell WAS recomputed and the new
+        expression implies no uncertainty for it (REQ-91, ITACA-024).
+        """
+        db = self._frame().set_uncertainty({"x": 10.0})
+        result = db.compute("x = 7.0", where="i > 0", fill=None)
+        assert np.allclose(result.vars["x"].values, [100.0, 7.0])
+        assert result.uncertainty is not None
+        u = np.asarray(result.uncertainty.systematic["x"], dtype=float)
+        assert u[0] == pytest.approx(10.0)
+        assert np.isnan(u[1])
+
+    def test_an_explicit_fill_still_clears_the_uncertainty(self) -> None:
+        """`fill=value` DOES touch the cell, so it does not keep a prior.
+
+        The two fill modes must not converge: an explicit fill writes a
+        value the expression did not produce, and pairing it with an
+        uncertainty declared for the value it replaced would be a wrong
+        number rather than a missing one.
+        """
+        db = self._frame().set_uncertainty({"x": 10.0})
+        result = db.compute("x = x / 2", where="i > 0", fill=0.0)
+        assert result.uncertainty is not None
+        u = np.asarray(result.uncertainty.systematic["x"], dtype=float)
+        assert np.isnan(u[0])
+
+    def test_a_new_target_under_fill_none_still_has_no_prior(self) -> None:
+        db = self._frame().set_uncertainty({"x": 0.5})
+        result = db.compute("y = x * 2", where="i > 0", fill=None)
+        assert result.uncertainty is not None
+        u = np.asarray(result.uncertainty.systematic["y"], dtype=float)
+        assert np.isnan(u[0])
+        assert u[1] == pytest.approx(1.0)
 
 
 class TestNumpyGuard:

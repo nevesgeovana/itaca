@@ -1719,10 +1719,17 @@ class VarFrame:
             evaluation, and the partials before applying (REQ-34).
         where : str or None, optional
             Condition string; the equation applies only where it holds
-            (REQ-35).
+            (REQ-35). The expression is EVALUATED only where it holds
+            too, so a domain violation in an excluded cell neither
+            warns nor enters the propagation.
         fill : float or None, optional
             Value at filtered-out points: NaN (default), a scalar, or
-            ``None`` to retain existing values of ``VAR``.
+            ``None`` to retain existing values of ``VAR``. ``None``
+            retains the existing UNCERTAINTY of those points as well:
+            a point this call did not touch keeps both halves of its
+            state. A scalar or NaN fill replaces the value, so the
+            uncertainty of the value it replaced is dropped rather
+            than carried onto a number it does not describe.
         method : str, optional
             ``"symbolic"`` (default). ``"mcm"`` ships in v0.3.0.
         history : bool, optional

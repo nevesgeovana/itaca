@@ -103,6 +103,30 @@ def compute(
         if db.uncertainty is not None
         else []
     )
+    mask: NDArray[Any] | None = None
+    if where is not None:
+        # FND-073. The mask is resolved HERE, on the untouched
+        # environment, and then applied to the environment itself.
+        # `where=` used to mask only the RESULT: values and derivatives
+        # were evaluated over the whole grid and the mask applied to
+        # what came out, so a cell the caller excluded still went
+        # through the arithmetic. Measured on `sqrt` over a masked-out
+        # negative: two RuntimeWarnings with an uncertainty carrier,
+        # from expression.py (the value) and operators.py (the
+        # derivative), one without, none on all-positive data.
+        #
+        # NaN is what excludes a cell, rather than a sentinel or a
+        # gather-and-scatter, because NaN is already the library's
+        # absent value and because NumPy propagates it through every
+        # operator here WITHOUT warning: `sqrt(nan)` is `nan` in
+        # silence where `sqrt(-1)` is not. Every out-of-mask result is
+        # overwritten below, so what those cells evaluate to is never
+        # read.
+        mask = np.broadcast_to(condition_mask(where, known, env), db.shape)
+        env = {
+            var: np.where(mask, np.asarray(values, dtype=float), np.nan)
+            for var, values in env.items()
+        }
     if debug:
         _debug_report(name, text, tree, env, db, carriers)
     values = np.broadcast_to(
@@ -118,8 +142,7 @@ def compute(
     content = content_of(db)
     tags = dict(content.tags) if content.tags is not None else {}
     new_tag = np.ones(db.shape, dtype=np.int8)
-    if where is not None:
-        mask = np.broadcast_to(condition_mask(where, known, env), db.shape)
+    if mask is not None:
         if fill is None:
             base = (
                 content.values[name]
@@ -129,11 +152,41 @@ def compute(
         else:
             base = np.full(db.shape, fill, dtype=float)
         values = np.where(mask, values, base)
-        # REQ-35: uncertainty only for filtered-in points.
-        if unc_sys is not None:
-            unc_sys = np.where(mask, np.broadcast_to(unc_sys, db.shape), np.nan)
-        if unc_rand is not None:
-            unc_rand = np.where(mask, np.broadcast_to(unc_rand, db.shape), np.nan)
+
+        # REQ-35: uncertainty only for filtered-in points, and FND-090:
+        # under `fill=None` the out-of-mask cell is not a filtered-out
+        # point, it is a point this compute did not touch. It kept its
+        # prior VALUE through `base` above and lost its prior
+        # UNCERTAINTY here, so a surviving number came back paired with
+        # `u = NaN`. Measured: x = [100., 2.] with u(x) = [nan, 0.2]
+        # where the prior was [10., 0.4].
+        #
+        # An explicit `fill` is the other case and stays as it was: it
+        # WRITES a value the expression did not produce, so carrying the
+        # uncertainty of the value it replaced would pair a number with
+        # an uncertainty belonging to a different one.
+        priors = (content.systematic or {}, content.random or {})
+
+        def _masked(
+            propagated: NDArray[Any] | None, prior: NDArray[Any] | None
+        ) -> NDArray[Any] | None:
+            keep = prior if fill is None else None
+            if propagated is None and keep is None:
+                return None
+            inside = (
+                np.broadcast_to(propagated, db.shape)
+                if propagated is not None
+                else np.full(db.shape, np.nan)
+            )
+            outside = (
+                np.broadcast_to(keep, db.shape)
+                if keep is not None
+                else np.full(db.shape, np.nan)
+            )
+            return np.asarray(np.where(mask, inside, outside))
+
+        unc_sys = _masked(unc_sys, priors[0].get(name))
+        unc_rand = _masked(unc_rand, priors[1].get(name))
         previous_tag = (
             tags.get(name, np.zeros(db.shape, dtype=np.int8))
             if fill is None

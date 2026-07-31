@@ -6,7 +6,7 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
-No signature change. Six observable behavior changes, under Fixed, and
+No signature change. Eight observable behavior changes, under Fixed, and
 release infrastructure, recorded here because it changes how a release
 reaches PyPI and the next tag runs on it.
 
@@ -44,6 +44,23 @@ names `release.yml` with environment `pypi`. A publisher naming
 
 ### Fixed
 
+* `db.compute(..., where=...)` now EVALUATES only inside its mask. The
+  mask was applied to the result, while values and derivatives were
+  computed over the whole grid first, so a domain violation in a cell
+  the caller excluded still ran: `compute("y = sqrt(v)", where="v >= 0")`
+  over `v = [-1, 1]` emitted `invalid value encountered in sqrt` twice
+  with an uncertainty carrier and once without, for a cell that never
+  reached the output. Excluded cells are now NaN in the evaluation
+  environment, which NumPy carries through every supported operator
+  without warning. In-mask results are unchanged.
+* `db.compute(..., where=..., fill=None)` now keeps the masked-out
+  cell's prior UNCERTAINTY as well as its prior value. It kept the
+  value and wrote `u = NaN`, so a surviving number came back paired
+  with an uncertainty that is not a number: from `x = [100., 4.]` with
+  `u(x) = [10., 0.4]`, `compute("x = x / 2", where="i > 0", fill=None)`
+  gave `u(x) = [nan, 0.2]`. `fill=<value>` and the default `fill=nan`
+  are unchanged: those WRITE the cell, so the uncertainty of the value
+  they replaced is still dropped. REQ-35, REQ-91, FND-073, FND-090.
 * `db.average(along=...)` no longer drops an infinity as if the cell
   were empty. Its presence mask was `np.isfinite`, while REQ-27 says
   "arithmetic mean of non-NaN values": the mean of `[1.0, +inf]` came
