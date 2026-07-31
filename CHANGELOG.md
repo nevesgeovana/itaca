@@ -6,10 +6,14 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
-One new public exception, `UncertaintyLineageError`. Eight observable
-behavior changes, under Changed and Fixed, and
-release infrastructure, recorded here because it changes how a release
-reaches PyPI and the next tag runs on it.
+One new public exception, `UncertaintyLineageError`, and one new dev-only
+test dependency. The observable behavior changes are the bullets under
+Changed and Fixed below rather than a count restated here, since the
+count has now been wrong twice: seven when the entries had grown past
+seven, and eight when a restructure made it ten. A number that has to be
+maintained by hand beside a list it describes is a second copy of that
+list. Also release infrastructure, recorded because it changes how a
+release reaches PyPI and the next tag runs on it.
 
 **How v0.2.0 was published, stated plainly.** The v0.2.0 files on PyPI
 were uploaded by hand, over the artifact the release gate had built. The
@@ -41,8 +45,9 @@ names `release.yml` with environment `pypi`. A publisher naming
 
 * **The uncertainty engine now refuses compositions it cannot propagate
   correctly, instead of returning a wrong number.** It is exact WITHIN
-  one expression, where the chain rule sees the whole tree, and carries
-  no lineage BETWEEN operations. Measured before this change: `p = 3*x`,
+  one expression, where the chain rule sees the whole tree, to the same
+  first order it always worked to, and carries no lineage BETWEEN
+  operations. Measured before this change: `p = 3*x`,
   `q = 2*x`, `r = p - q` gave `u(r) = 0.3606` where `0.1` is correct, a
   3.6x overstatement; `y = 2*x` then `z = y - 2*x` gave `0.2828` where
   zero is exact; two sequential `translate_moments` understated by 29

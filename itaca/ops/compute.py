@@ -19,8 +19,10 @@ from itaca.core.variable import Variable
 from itaca.ops._content import content_of, rebuild
 from itaca.uncertainty._lineage import (
     describe_roots,
+    describe_unreadable,
     shared_ancestry,
     single_expression,
+    unknown_only,
 )
 from itaca.uncertainty.expression import (
     Node,
@@ -130,6 +132,28 @@ def compute(
                 "correct because the chain rule sees the whole tree at once"
             )
         )
+        if unknown_only(roots):
+            # VV-10. Saying "both were derived from" about two variables
+            # that may well be independent roots is a false statement,
+            # and the rewrite advice that follows it cannot be carried
+            # out when there is no derivation to rewrite. This frame is
+            # refused for a different reason and says so, and the way out
+            # is the declaration, which IS executable.
+            raise UncertaintyLineageError(
+                f"variables '{name_a}' and '{name_b}' in equation '{equation}'",
+                f"this frame's History records "
+                f"{describe_unreadable(db.history, groups)}, whose effect on "
+                f"where a variable came from compute cannot read, so it "
+                f"cannot rule out that these two share an origin. They may "
+                f"well be independent; what is missing is the evidence, not "
+                f"the independence",
+                f"if you know the pair, declare it and compute proceeds: "
+                f"db.set_correlation({{('{name_a}', '{name_b}'): 0.0}}) for "
+                f"independent, or the coefficient if they are correlated. "
+                f"Otherwise rebuild the quantity from the original variables "
+                f"in a single expression on a frame whose History compute can "
+                f"read (SEAT-UNC, REQ-41)",
+            )
         raise UncertaintyLineageError(
             f"variables '{name_a}' and '{name_b}' in equation '{equation}'",
             f"both were derived from {describe_roots(roots)}, so they are "

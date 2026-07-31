@@ -165,9 +165,7 @@ def _substitute(text: str, definitions: dict[str, _Derivation]) -> str:
     return re.sub(r"\b[A-Za-z_]\w*\b", _replace, text)
 
 
-_STEPLESS_SAFE = frozenset(
-    {"load", "pivot", "set_uncertainty", "set_correlation", "concat", "declare_vector"}
-)
+_STEPLESS_SAFE = frozenset({"load", "pivot", "set_uncertainty", "set_correlation"})
 """Step-less operations that confer no cross-variable ancestry.
 
 A History entry with no ``step`` is non-replayable, and reading every one
@@ -180,9 +178,18 @@ variables (review finding ARCH-3).
 Reading every one of them as poison is not the answer either: ``load``
 is step-less on every frame ever built, so that would refuse everything.
 This is the allowlist, and it is an allowlist rather than a denylist so
-an operation added later is conservative by default. ``concat`` is here
-because it joins along a DIMENSION and never mixes one variable into
-another.
+an operation added later is conservative by default.
+
+``concat`` was here on the reasoning that it joins along a DIMENSION and
+never mixes one variable into another. True of the VALUES, false of the
+RECORD: ``itaca/ops/concat.py`` rebuilds from the first input alone, so
+every other input's derivation entries are discarded. Measured with
+``p`` and ``q`` as roots in frame one and derived from a shared ``x`` in
+frame two, ``compute("r = p - q")`` on the joined frame returned
+``u = 0.3606`` where ``0.1`` is correct on frame two's rows: FND-058's
+exact shape, 3.6x over, through a third door after the cross-variable
+calls closed the second (ARCH-5). The entries in this set are the ones
+that build or annotate a frame without deriving anything.
 """
 
 _CROSS_VARIABLE_CALLS = frozenset({"translate_moments", "rotate"})
@@ -295,6 +302,25 @@ def derivations(
                         poisoned.add(step.call)
                         continue
                     _mix(tuple(members), tuple(members))
+            continue
+        if step.call == "set_uncertainty":
+            # VV-8. A declared uncertainty OVERRIDES what propagation
+            # produced, so this variable's recorded equation no longer
+            # accounts for its stored uncertainty and any expansion past
+            # it would reinstate the value the user replaced. Marked
+            # here, in the forward walk, rather than checked at the
+            # splice site: checking the splice caught only the FIRST
+            # level, and `p` re-declared then `q = 2*p` then
+            # `r = q - x` still offered a suggestion returning about 0.5
+            # against the 10.0 the frame implies.
+            spec = step.kwargs.get("spec")
+            if isinstance(spec, Mapping):
+                for name in spec:
+                    known = found.get(str(name))
+                    if known is not None:
+                        found[str(name)] = _Derivation(
+                            roots=known.roots, expanded=known.expanded, faithful=False
+                        )
             continue
         if step.call != "compute":
             continue
@@ -442,38 +468,8 @@ def single_expression(
     spliced = [name for name in names if name in lineage.derived]
     if not all(lineage.derived[name].faithful for name in spliced):
         return None
-    redeclared = _redeclared_after_derivation(history)
-    if any(name in redeclared for name in spliced):
-        return None
     equation = f"{target} = {_substitute(text, lineage.derived)}"
     return equation if len(equation) <= _MAX_SUGGESTION else None
-
-
-def _redeclared_after_derivation(history: History) -> frozenset[str]:
-    """Variables whose uncertainty was assigned AFTER they were derived.
-
-    VV-4. ``set_uncertainty`` overrides what propagation produced, so the
-    stored uncertainty no longer follows from the recorded equation and
-    an expansion past that variable would quietly reinstate the value the
-    user replaced.
-    """
-    derived_so_far: set[str] = set()
-    overridden: set[str] = set()
-    for entry in history:
-        step = entry.step
-        if step is None:
-            continue
-        if step.call == "compute":
-            equation = step.kwargs.get("equation")
-            match = _EQUATION.match(equation) if isinstance(equation, str) else None
-            if match is not None:
-                derived_so_far.add(match.group(1))
-                overridden.discard(match.group(1))
-        elif step.call == "set_uncertainty":
-            spec = step.kwargs.get("spec")
-            if isinstance(spec, Mapping):
-                overridden |= {str(key) for key in spec} & derived_so_far
-    return frozenset(overridden)
 
 
 def earlier_transfer(history: History) -> tuple[float, float, float] | None:
@@ -539,6 +535,30 @@ def interpolated_dims(history: History) -> frozenset[str]:
                 if isinstance(value, str):
                     touched.add(value)
     return frozenset(touched)
+
+
+def describe_unreadable(
+    history: History, groups: Mapping[str, Sequence[str]] | None = None
+) -> str:
+    """Name the operations that made this frame's origins unreadable."""
+    names = sorted(derivations(history, groups).unreadable)
+    if not names:
+        return "an operation it cannot read"
+    return ", ".join(f"'{name}'" for name in names)
+
+
+def unknown_only(roots: Iterable[str]) -> bool:
+    """Whether the shared origin is only that something could not be read.
+
+    The two cases need different messages. "Both were derived from 'x'"
+    is a statement of fact; saying it about two INDEPENDENT roots that
+    merely sit in a frame carrying an unreadable operation is false, and
+    the workaround that follows it cannot be executed because there is no
+    derivation to rewrite. Measured in review: ``combine`` then
+    ``compute("z = x + y")`` on plain roots refused while claiming they
+    were derived from a common origin (VV-10).
+    """
+    return set(roots) == {_UNKNOWN}
 
 
 def describe_roots(roots: Iterable[str]) -> str:

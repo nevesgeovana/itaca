@@ -1503,3 +1503,63 @@ reduction path refuses or expands; the numerical analyst on the
 interaction with OQ-43.
 
 **SRS:** REQ-41, REQ-45, REQ-53, REQ-99.
+
+## OQ-51: Should translate_moments record the correlation it induces, as rotate already does?
+
+**Raised:** 2026-07-31, lane ITA-2B, while writing the guard for the
+FND-074 refusal (PUSH review round two).
+**Status:** open (numerical analyst, with the product owner).
+
+**What was measured, and it was not what this lane expected.** Writing a
+test to prove that `rotate` loses induced correlation the way
+`translate_moments` does, the test failed: `rotate` does not lose it.
+Measured on a stability rotation of a declared force group with
+`u(FX) = 0.1` and `u(FZ) = 0.2`:
+
+    turned.correlation  ->  {('FX', 'FZ'): 0.47379635782970037}
+
+`rotate` computes the correlation its own Jacobian induces and writes it
+into the frame as an ordinary declared pair. A later `compute` over the
+two rotated components therefore reads that coefficient through the
+clause-5 formula and is CORRECT, and the SEAT-UNC refusal steps aside on
+its own, because a declared pair is already the documented escape hatch.
+
+`translate_moments` is the same kind of operation, a fixed linear map
+with an exact Jacobian, and it does the opposite: it DROPS the pairs
+naming the moments it rewrote and writes no induced pair in their place.
+That asymmetry, between two operations of the same mathematical shape in
+the same library, is why FND-074 is a defect and the rotate case is not.
+
+**The question.** Should `translate_moments` write the induced
+force-moment correlation the way `rotate` writes the induced
+component-component correlation? If it should, the FND-074 refusal
+disappears and is replaced by a correct number, which is strictly better
+than a refusal with a workaround.
+
+**What has to be answered first, and why this lane did not just do it.**
+
+* A `CorrelationMatrix` pair is ONE scalar for a whole variable pair,
+  while the induced coefficient generally varies per grid cell: it
+  depends on the offset and on the force values at that cell. `rotate`
+  resolves to a scalar; whether that resolution is sound in general, or
+  is sound only for the cases rotate faces, is a numerical-analyst
+  question and it applies to both operations.
+* Writing a correlation the USER did not declare changes what
+  `db.correlation` means. Today it is a record of user statements, and
+  every message in the library that says "the declared correlation"
+  would become ambiguous. `rotate` already crossed that line, which may
+  itself be worth revisiting rather than replicating.
+* It is the same boundary SEAT-UNC drew. Recording an induced
+  coefficient is one step from recording sensitivities, which is the
+  v0.3.0 lineage work this lane was told not to build through.
+
+**What ships in the interim.** The refusal, which is correct and
+conservative whatever the answer. If the answer is yes, REQ-100's
+refusal paragraph is replaced by a propagation statement and the
+`translate_moments` half of this lane is superseded.
+
+**Who decides:** the numerical analyst on whether a scalar pair can
+represent the induced covariance soundly; the product owner on whether
+`db.correlation` may hold coefficients the user did not write.
+
+**SRS:** REQ-40, REQ-41, REQ-98, REQ-100.

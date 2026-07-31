@@ -15,8 +15,8 @@ it adds or modifies.
 \section*{Document 0.2.8, 2026-07-31, The Engine States Its Scope: One Expression}
 
 A MINOR revision adding no requirement and withdrawing none, and
-narrowing two stable ones to what the implementation can deliver. Both
-changes close a silence that a user could only discover by getting a
+narrowing FIVE stable ones to what the implementation can deliver. Every
+change closes a silence that a user could only discover by getting a
 wrong number, which is the drift this document is monitored for.
 
 \paragraph{Changed (REQ-41, the scope of symbolic propagation).} The
@@ -84,6 +84,53 @@ applies where a partial is silently WRONG, not merely infinite:
 \code{sqrt} and \code{log} at zero return an infinite partial, and an
 infinity in a result is not something a reader mistakes for a
 measurement.
+
+\paragraph{Changed (REQ-98, what the normative table is a claim ABOUT).}
+Table~\ref{tab:unc-ops} states, row by row, how each operation carries
+the UncFrame, and every row was and remains correct. What it never said
+is what it is a claim about. Each row describes the operation acting on
+inputs whose correlation is either independent or DECLARED; none of them
+is a statement about composition, because the frame carries no record of
+the correlation an operation INDUCES. Read as licensing compositions,
+the table contradicted the behavior this revision installs. The preamble
+now says so, and points at REQ-41. No row changed.
+
+\paragraph{Changed (REQ-99, the random reduction's independence
+assumption).} The $1/\sqrt{N}$ gain is the root sum of squares, which is
+the propagation rule for INDEPENDENT points. After \code{interpolate}
+each point along that dimension is a linear combination of the same
+source points, so the assumption fails: measured
+\code{u = 0.5590169944} where \code{0.7071067812} is correct, 21\% low,
+with both routes computing the identical function $0.5 Y_0 + 0.5 Y_1$ so
+the gap isolates covariance loss and not the reduction rule.
+\code{average} and \code{integrate} now refuse that case.
+
+The asymmetry is the part worth stating, because it is a real property
+and not an artifact of where the check sits. The SYSTEMATIC rule is the
+absolute weighted sum, which already assumes FULL correlation across
+points, and an assumption of full correlation stays valid when
+interpolation makes points more correlated. So a systematic-only frame
+reduces exactly as before, and only the random half is refused.
+
+\paragraph{Changed (REQ-100, one transfer per frame while uncertainty is
+present).} The rigid transfer makes $\mathbf{M}'$ a linear function of
+$\mathbf{F}$, so the two groups are correlated afterwards however
+independent they were before, and that INDUCED correlation has nowhere
+to live: a declared matrix holds what the USER declared, not what an
+operation created. A second transfer therefore read them as independent
+and understated, measured 1.414 against a correct 2.0, 29\% low. A
+transfer applied to a frame an earlier transfer already moved now
+raises when any channel carries uncertainty, naming the single
+equivalent call from the original reference point. With no uncertainty
+declared there is nothing to lose and repeated transfers compose
+exactly.
+
+Worth recording beside it, because it shows the shape of the eventual
+fix: \code{db.rotate} faces the same situation and DOES record what it
+induces, writing an ordinary declared pair between the rotated
+components, so a later \code{compute} over them propagates correctly and
+is not refused. Whether \code{translate\_moments} should do likewise,
+which would remove this refusal rather than document it, is OQ-51.
 
 \section*{Document 0.2.7, 2026-07-30, Two Requirements Catch Up With Two Fixes}
 

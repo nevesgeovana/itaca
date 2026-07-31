@@ -28,6 +28,7 @@ import numpy as np
 import pytest
 
 import itaca as itc
+from itaca.core.dimension import Dimension
 from itaca.core.errors import (
     UncertaintyCompatibilityError,
     UncertaintyLineageError,
@@ -123,7 +124,12 @@ class TestComputeSharedAncestry:
         db = _frame_with_recorded_equation("p = 3*x ((", carrier="p")
         with pytest.raises(UncertaintyLineageError) as caught:
             db.compute("r = p - x")
-        assert "does not record" in str(caught.value)
+        message = str(caught.value)
+        # VV-10's wording: an unreadable record is not evidence that the
+        # two ARE related, so the message says what is missing rather
+        # than asserting a derivation it cannot see.
+        assert "cannot rule out" in message
+        assert "compute('p = ...')" in message
 
     def test_an_unreadable_operation_poisons_even_root_variables(self) -> None:
         # ARCH-3. A step-less entry that is not a known-safe preparation
@@ -168,6 +174,58 @@ class TestComputeSharedAncestry:
         chain = db.compute("p = 3*x").set_uncertainty({"p": 0.9}).compute("q = 2*x")
         with pytest.raises(UncertaintyLineageError) as caught:
             chain.compute("r = p - q")
+        assert _suggested_equation(str(caught.value)) is None
+
+    def test_concat_does_not_carry_the_other_inputs_derivations(self) -> None:
+        # ARCH-5. concat joins along a DIMENSION and never mixes one
+        # variable into another, which is why it looked safe. True of the
+        # values, false of the record: concat rebuilds from the FIRST
+        # input alone, so every other input's derivation entries are
+        # discarded. Measured with p and q as roots in frame one and
+        # derived from a shared x in frame two, the joined frame allowed
+        # r = p - q and returned u = 0.3606 where 0.1 is correct on frame
+        # two's rows. FND-058's exact shape, through a third door.
+        first = itc.load(
+            np.column_stack(
+                [
+                    np.array([1.0]),
+                    np.array([2.0]),
+                    np.array([1.0]),
+                    np.array([8.0]),
+                ]
+            ),
+            names=["x", "p", "q", "t"],
+        ).pivot(dims=["t"])
+        first = first.set_uncertainty({"p": 0.3, "q": 0.2, "x": 0.1})
+        second = itc.load(
+            np.column_stack(
+                [
+                    np.array([1.0]),
+                    np.array([0.0]),
+                    np.array([0.0]),
+                    np.array([9.0]),
+                ]
+            ),
+            names=["x", "p", "q", "t"],
+        ).pivot(dims=["t"])
+        second = second.set_uncertainty({"x": 0.1})
+        second = second.compute("p = 3*x").compute("q = 2*x")
+        joined = itc.concat([first, second], along="t")
+        with pytest.raises(UncertaintyLineageError):
+            joined.compute("r = p - q")
+
+    def test_a_redeclared_ancestor_suppresses_it_transitively(self) -> None:
+        # VV-8. The first fix checked only names spliced DIRECTLY into
+        # the refused equation, so one more level of indirection walked
+        # past it: with u(p) declared 5.0 and q = 2*p, the suggestion
+        # r = (2*(3*x)) - x returned about 0.5 against the 10.0 the frame
+        # implies. Re-declaration is now marked on the derivation itself,
+        # in the forward walk, so it travels to everything that splices it.
+        arr = np.column_stack([np.array([1.0, 2.0])])
+        db = itc.load(arr, names=["x"]).set_uncertainty({"x": 0.1})
+        chain = db.compute("p = 3*x").set_uncertainty({"p": 5.0}).compute("q = 2*p")
+        with pytest.raises(UncertaintyLineageError) as caught:
+            chain.compute("r = q - x")
         assert _suggested_equation(str(caught.value)) is None
 
     def test_a_variable_carrying_no_uncertainty_is_not_a_carrier(self) -> None:
@@ -309,6 +367,34 @@ class TestSequentialMomentTransfer:
         # And it reaches the same moments the refused two-step would have.
         assert np.allclose(repaired.vars["MY"].values, once.vars["MY"].values + 3.0)
 
+    def test_the_suggestion_starts_where_the_journey_started(self) -> None:
+        # QA Q2. The recorded-from_point branch never executed, because
+        # every test's first transfer omitted from_point and took the
+        # origin default; deleting the branch passed the full suite. A
+        # user whose first transfer NAMED a reference point was being
+        # handed a suggestion starting from the origin instead, which is
+        # a wrong workaround, and DD-46 says that is worse than none.
+        base = self._frame()
+        once = base.translate_moments(
+            to_point=[1.0, 0.0, 0.0], from_point=[5.0, 0.0, 0.0]
+        )
+        with pytest.raises(UncertaintyLineageError) as caught:
+            once.translate_moments(to_point=[2.0, 0.0, 0.0], from_point=[1.0, 0.0, 0.0])
+        suggested = _suggested_transfer(str(caught.value))
+        assert suggested == {"to_point": [2.0, 0.0, 0.0], "from_point": [5.0, 0.0, 0.0]}
+        # And it reproduces the two-step journey's moments exactly. Run on
+        # the uncertainty-free twin, where the second transfer is
+        # permitted so both routes can be compared at all.
+        plain = _plain_loads()
+        direct = plain.translate_moments(**suggested)
+        stepwise = plain.translate_moments(
+            to_point=[1.0, 0.0, 0.0], from_point=[5.0, 0.0, 0.0]
+        ).translate_moments(to_point=[2.0, 0.0, 0.0], from_point=[1.0, 0.0, 0.0])
+        for component in ("MX", "MY", "MZ"):
+            assert np.allclose(
+                direct.vars[component].values, stepwise.vars[component].values
+            )
+
     def test_a_first_transfer_is_untouched(self) -> None:
         moved = self._frame().translate_moments(to_point=[2.0, 0.0, 0.0])
         assert moved.uncertainty is not None
@@ -350,6 +436,92 @@ class TestSequentialMomentTransfer:
             assert np.allclose(
                 direct.vars[component].values, stepwise.vars[component].values
             )
+
+
+class TestCrossVariableOperations:
+    """Ancestry conferred by operations that are not ``compute``.
+
+    QA Q1: the block that fixes ARCH-1 and VV-1 shipped with NO test.
+    Setting ``_CROSS_VARIABLE_CALLS`` to an empty set passed 490 tests,
+    which is the same shape as the finding it was answering, one round
+    earlier. These are the guards for that guard.
+    """
+
+    @staticmethod
+    def _loads() -> VarFrame:
+        arr = np.column_stack(
+            [
+                np.array([0.0]),
+                np.array([2.0]),
+                np.array([3.0]),
+                np.array([0.0]),
+                np.array([0.0]),
+                np.array([0.0]),
+            ]
+        )
+        frame = itc.load(arr, names=["FX", "FY", "FZ", "MX", "MY", "MZ"])
+        return frame.set_uncertainty({"FZ": 1.0})
+
+    def test_a_transferred_moment_shares_ancestry_with_the_force(self) -> None:
+        # Measured before the fix: u = 1.41421356 for BOTH of these,
+        # where MY - FZ is exactly 0 and MY + FZ is 2.0, because after
+        # the transfer dMY'/dFZ is +1. FND-058's own shape, through the
+        # translate_moments door.
+        once = self._loads().translate_moments(to_point=[1.0, 0.0, 0.0])
+        with pytest.raises(UncertaintyLineageError) as caught:
+            once.compute("c = MY - FZ")
+        assert "FZ" in str(caught.value)
+
+    def test_the_transfer_is_what_confers_it(self) -> None:
+        # The control: without the transfer, MY and FZ are independent
+        # roots and the same expression is fine. This is what stops the
+        # test above from passing for the wrong reason.
+        result = self._loads().compute("c = MY - FZ")
+        assert result.uncertainty.systematic["c"] == pytest.approx(1.0)
+
+    def test_a_rotated_group_shares_ancestry_across_its_components(self) -> None:
+        alpha = [0.4]
+        rows = [[a, 1.0, 2.0, 3.0] for a in alpha]
+        frame = itc.load(np.array(rows), names=["alpha", "FX", "FY", "FZ"]).pivot(
+            dims=["alpha"]
+        )
+        frame = dataclasses.replace(
+            frame,
+            dims={"alpha": Dimension(name="alpha", coords=np.array(alpha), unit="rad")},
+        )
+        frame = frame.declare_vector("force", ["FX", "FY", "FZ"])
+        frame = frame.set_uncertainty({"FX": 0.1, "FZ": 0.2})
+        turned = frame.rotate("stability")
+
+        # rotate DOES record what it induces, as an ordinary declared
+        # pair, which is exactly what translate_moments does not do. So
+        # the composition is permitted and CORRECT: the clause-5 engine
+        # reads the coefficient rotate wrote. This is the contrast worth
+        # pinning, and it is why FND-074 is a defect while this is not.
+        assert turned.correlation is not None
+        assert ("FX", "FZ") in turned.correlation.pairs
+        result = turned.compute("c = FX - FZ")
+        assert result.uncertainty is not None
+
+        # The ancestry net is the backstop for when that declaration
+        # stops being there. Dropping the pair leaves two variables the
+        # rotation genuinely mixed and nothing saying so, and then it
+        # refuses rather than treating them as independent.
+        stripped = dataclasses.replace(turned, correlation=None)
+        with pytest.raises(UncertaintyLineageError):
+            stripped.compute("c = FX - FZ")
+
+    def test_an_unresolvable_group_poisons_rather_than_guesses(self) -> None:
+        # When the recorded group cannot be resolved against the frame's
+        # registry, the operation is unreadable, which refuses. Guessing
+        # would be the miss this whole module exists to avoid.
+        arr = np.column_stack([np.array([1.0]), np.array([2.0])])
+        frame = itc.load(arr, names=["a", "b"]).set_uncertainty({"a": 0.1, "b": 0.2})
+        forged = _append_step(
+            frame, "rotate(...)", "rotate", {"vector_groups": ["absent"]}
+        )
+        with pytest.raises(UncertaintyLineageError):
+            forged.compute("c = a - b")
 
 
 class TestNonDifferentiablePoint:
@@ -402,6 +574,21 @@ def _suggested_equation(message: str) -> str | None:
     return found.group(1) if found is not None else None
 
 
+def _plain_loads() -> VarFrame:
+    """The six load channels with no uncertainty, for value comparisons."""
+    arr = np.column_stack(
+        [
+            np.array([0.0]),
+            np.array([2.0]),
+            np.array([3.0]),
+            np.array([0.0]),
+            np.array([0.0]),
+            np.array([0.0]),
+        ]
+    )
+    return itc.load(arr, names=["FX", "FY", "FZ", "MX", "MY", "MZ"])
+
+
 def _suggested_transfer(message: str) -> dict[str, list[float]] | None:
     """Pull the suggested one-call transfer out of a refusal message."""
     found = re.search(
@@ -427,6 +614,21 @@ def _replace_history(db: VarFrame, entries: tuple[HistoryEntry, ...]) -> VarFram
     posture rests on.
     """
     return dataclasses.replace(db, history=History(entries=entries))
+
+
+def _append_step(
+    db: VarFrame, operation: str, call: str, kwargs: dict[str, object]
+) -> VarFrame:
+    """Append a replayable entry, for records no public call reaches here."""
+    last = db.history[len(db.history) - 1]
+    forged = HistoryEntry(
+        index=len(db.history) + 1,
+        operation=operation,
+        timestamp=last.timestamp,
+        state_hash=last.state_hash,
+        step=PipelineStep(call=call, kwargs=kwargs),
+    )
+    return _replace_history(db, (*db.history.entries, forged))
 
 
 def _append_stepless(db: VarFrame, operation: str) -> VarFrame:
