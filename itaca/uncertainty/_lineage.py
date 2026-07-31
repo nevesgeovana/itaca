@@ -165,7 +165,9 @@ def _substitute(text: str, definitions: dict[str, _Derivation]) -> str:
     return re.sub(r"\b[A-Za-z_]\w*\b", _replace, text)
 
 
-_STEPLESS_SAFE = frozenset({"load", "pivot", "set_uncertainty", "set_correlation"})
+_STEPLESS_SAFE = frozenset(
+    {"load", "pivot", "set_uncertainty", "set_correlation", "concat", "declare_vector"}
+)
 """Step-less operations that confer no cross-variable ancestry.
 
 A History entry with no ``step`` is non-replayable, and reading every one
@@ -180,16 +182,23 @@ is step-less on every frame ever built, so that would refuse everything.
 This is the allowlist, and it is an allowlist rather than a denylist so
 an operation added later is conservative by default.
 
-``concat`` was here on the reasoning that it joins along a DIMENSION and
-never mixes one variable into another. True of the VALUES, false of the
-RECORD: ``itaca/ops/concat.py`` rebuilds from the first input alone, so
-every other input's derivation entries are discarded. Measured with
-``p`` and ``q`` as roots in frame one and derived from a shared ``x`` in
-frame two, ``compute("r = p - q")`` on the joined frame returned
-``u = 0.3606`` where ``0.1`` is correct on frame two's rows: FND-058's
-exact shape, 3.6x over, through a third door after the cross-variable
-calls closed the second (ARCH-5). The entries in this set are the ones
-that build or annotate a frame without deriving anything.
+``concat`` is here, and it took two rounds to land on why. It joins
+along a DIMENSION and never mixes one variable into another, which is
+true of the VALUES and false of the RECORD: it rebuilds from the first
+input alone, so every other input's derivation entries are discarded and
+a shared origin in a later input goes unrecorded (ARCH-5, measured at
+3.6x). Removing it from this set answered that by poisoning EVERY
+concatenated frame, which refused two inputs of plain roots with no
+derivation anywhere, and that is REQ-24 mainline usage (ARCH-8).
+
+Neither reading of this set was the fix. The information is lost at the
+concat itself, so that is where it is now refused, narrowly and with a
+message that can still name the inputs: see
+``_refuse_discarded_lineage`` in :mod:`itaca.ops.concat`. By the time a
+frame reaches this module the evidence is gone, and a set membership
+cannot recover it.
+
+The entries here build or annotate a frame without deriving anything.
 """
 
 _CROSS_VARIABLE_CALLS = frozenset({"translate_moments", "rotate"})
@@ -261,6 +270,8 @@ def derivations(
     """
     found: dict[str, _Derivation] = {}
     poisoned: set[str] = set()
+    redeclared_roots: set[str] = set()
+    consumed_roots: set[str] = set()
 
     def _roots_of(name: str) -> frozenset[str]:
         previous = found.get(name)
@@ -315,12 +326,28 @@ def derivations(
             # against the 10.0 the frame implies.
             spec = step.kwargs.get("spec")
             if isinstance(spec, Mapping):
-                for name in spec:
-                    known = found.get(str(name))
+                for raw in spec:
+                    name = str(raw)
+                    known = found.get(name)
                     if known is not None:
-                        found[str(name)] = _Derivation(
+                        found[name] = _Derivation(
                             roots=known.roots, expanded=known.expanded, faithful=False
                         )
+                    elif name in consumed_roots:
+                        # A ROOT can be re-declared too, and marking only
+                        # derived names missed it by one level: with
+                        # u(x) re-declared to 5.0 AFTER p = 3*x, the
+                        # suggestion r = (3*x) - x was offered as
+                        # "already correct" while returning 10.0, outside
+                        # every value the frame's own stored
+                        # uncertainties admit (QA round three).
+                        #
+                        # Only a root some derivation has already CONSUMED
+                        # counts. Declaring a root before deriving from it
+                        # is the ordinary opening move of every workflow
+                        # in this library, and marking that made the whole
+                        # suggestion machinery go silent.
+                        redeclared_roots.add(name)
             continue
         if step.call != "compute":
             continue
@@ -332,6 +359,9 @@ def derivations(
             continue
         target, text = match.group(1), match.group(2)
         names = _referenced_names(text)
+        redeclared_roots.discard(target)
+        if names is not None:
+            consumed_roots |= {name for name in names if name not in found}
         if names is None:
             # An equation this module cannot read is treated as an
             # UNREADABLE OPERATION, not as a target with an unknown root.
@@ -352,8 +382,10 @@ def derivations(
         # but its equation AND every ancestor it splices in was faithful
         # too. `where=`, `fill=` and `method=` all change what the call
         # produced, and the expansion drops them silently (ARCH-2).
-        faithful = set(step.kwargs) <= {"equation"} and all(
-            found[name].faithful for name in names if name in found
+        faithful = (
+            set(step.kwargs) <= {"equation"}
+            and all(found[name].faithful for name in names if name in found)
+            and not (names & redeclared_roots)
         )
         found[target] = _Derivation(
             roots=frozenset(roots),

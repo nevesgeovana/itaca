@@ -125,12 +125,20 @@ equivalent call from the original reference point. With no uncertainty
 declared there is nothing to lose and repeated transfers compose
 exactly.
 
-Worth recording beside it, because it shows the shape of the eventual
-fix: \code{db.rotate} faces the same situation and DOES record what it
-induces, writing an ordinary declared pair between the rotated
-components, so a later \code{compute} over them propagates correctly and
-is not refused. Whether \code{translate\_moments} should do likewise,
-which would remove this refusal rather than document it, is OQ-51.
+Worth recording beside it, with the qualification review round three
+supplied. \code{db.rotate} faces the same situation and DOES record
+what it induces, writing an ordinary declared pair between the rotated
+components, so a later \code{compute} over them propagates correctly
+and is not refused. But it does that only where the coefficient
+resolves to ONE scalar across the grid: on a two-condition sweep, the
+ordinary REQ-101 case, it records \code{correlation\_not\_stored}
+and drops the pair rather than inventing a number, and this revision's
+detector is then what stops the understatement. So the asymmetry is
+real and narrower than it first appears: \code{translate\_moments}
+never stores the induced pair, \code{rotate} stores it when it is
+representable. Whether \code{translate\_moments} should do likewise,
+and what either should do where the coefficient is not representable,
+is OQ-51.
 
 \section*{Document 0.2.7, 2026-07-30, Two Requirements Catch Up With Two Fixes}
 

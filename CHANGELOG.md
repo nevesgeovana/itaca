@@ -54,7 +54,7 @@ names `release.yml` with environment `pypi`. A publisher naming
   percent; `interpolate` then `average` understated the random component
   by 21 percent.
 
-  Three operations are affected, and each refusal names a way forward:
+  Four situations are affected, and each refusal names a way forward:
 
   * `db.compute` when two uncertainty carriers in the equation share an
     origin. The message carries the equivalent SINGLE expression, built
@@ -66,10 +66,27 @@ names `release.yml` with environment `pypi`. A publisher naming
     a dimension an earlier `interpolate` produced. The systematic
     component is unaffected: its rule already assumes full correlation.
 
+  * Any `db.compute` with two carriers on a frame whose History this
+    engine cannot interpret, which means a `combine` or a schema-1
+    archive restored without its replay steps. Here the refusal is about
+    absent EVIDENCE rather than a known shared origin, and it says so;
+    the variables may well be independent. `db.set_correlation` settles
+    it, including with a declared zero.
+
   A pair declared with `db.set_correlation` is propagated rather than
   refused, since the coefficient is then a statement the engine uses.
-  Independent derivations are untouched, so the documented
-  `q = 0.5*rho*V**2` then `CL = FZ/(q*S)` workflow still propagates.
+  Independent derivations with a readable History are untouched, so the
+  documented `q = 0.5*rho*V**2` then `CL = FZ/(q*S)` workflow still
+  propagates.
+
+* **`itc.concat` refuses to discard a derivation that carries
+  uncertainty.** It keeps the History of its FIRST input only, so a
+  variable derived in any other input loses the record of where it came
+  from: measured, `p` and `q` derived from a shared `x` in the second
+  input gave `u = 0.3606` on the joined frame where `0.1` is correct on
+  those rows. It now refuses at the concat, naming the input and the
+  variables, and only when a discarded derivation actually carries an
+  uncertainty. An ordinary concat of loaded frames is untouched.
 
   Lineage with sensitivities, which would propagate these compositions
   rather than refuse them, is v0.3.0 work.

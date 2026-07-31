@@ -176,44 +176,6 @@ class TestComputeSharedAncestry:
             chain.compute("r = p - q")
         assert _suggested_equation(str(caught.value)) is None
 
-    def test_concat_does_not_carry_the_other_inputs_derivations(self) -> None:
-        # ARCH-5. concat joins along a DIMENSION and never mixes one
-        # variable into another, which is why it looked safe. True of the
-        # values, false of the record: concat rebuilds from the FIRST
-        # input alone, so every other input's derivation entries are
-        # discarded. Measured with p and q as roots in frame one and
-        # derived from a shared x in frame two, the joined frame allowed
-        # r = p - q and returned u = 0.3606 where 0.1 is correct on frame
-        # two's rows. FND-058's exact shape, through a third door.
-        first = itc.load(
-            np.column_stack(
-                [
-                    np.array([1.0]),
-                    np.array([2.0]),
-                    np.array([1.0]),
-                    np.array([8.0]),
-                ]
-            ),
-            names=["x", "p", "q", "t"],
-        ).pivot(dims=["t"])
-        first = first.set_uncertainty({"p": 0.3, "q": 0.2, "x": 0.1})
-        second = itc.load(
-            np.column_stack(
-                [
-                    np.array([1.0]),
-                    np.array([0.0]),
-                    np.array([0.0]),
-                    np.array([9.0]),
-                ]
-            ),
-            names=["x", "p", "q", "t"],
-        ).pivot(dims=["t"])
-        second = second.set_uncertainty({"x": 0.1})
-        second = second.compute("p = 3*x").compute("q = 2*x")
-        joined = itc.concat([first, second], along="t")
-        with pytest.raises(UncertaintyLineageError):
-            joined.compute("r = p - q")
-
     def test_a_redeclared_ancestor_suppresses_it_transitively(self) -> None:
         # VV-8. The first fix checked only names spliced DIRECTLY into
         # the refused equation, so one more level of indirection walked
@@ -493,35 +455,107 @@ class TestCrossVariableOperations:
         frame = frame.set_uncertainty({"FX": 0.1, "FZ": 0.2})
         turned = frame.rotate("stability")
 
-        # rotate DOES record what it induces, as an ordinary declared
-        # pair, which is exactly what translate_moments does not do. So
-        # the composition is permitted and CORRECT: the clause-5 engine
-        # reads the coefficient rotate wrote. This is the contrast worth
-        # pinning, and it is why FND-074 is a defect while this is not.
+        # rotate records what it induces WHEN IT CAN, as an ordinary
+        # declared pair, and the coefficient is asserted by value: a
+        # version of rotate that wrote 0.0 here, claiming independence,
+        # passed the earlier membership-only assertion (QA round three).
         assert turned.correlation is not None
-        assert ("FX", "FZ") in turned.correlation.pairs
+        assert turned.correlation.get("FX", "FZ") == pytest.approx(0.47379635782970037)
         result = turned.compute("c = FX - FZ")
         assert result.uncertainty is not None
 
-        # The ancestry net is the backstop for when that declaration
-        # stops being there. Dropping the pair leaves two variables the
-        # rotation genuinely mixed and nothing saying so, and then it
-        # refuses rather than treating them as independent.
+        # The ancestry net is the backstop for when that declaration is
+        # not there. Dropping the pair leaves two variables the rotation
+        # genuinely mixed and nothing saying so, and then it refuses.
         stripped = dataclasses.replace(turned, correlation=None)
         with pytest.raises(UncertaintyLineageError):
             stripped.compute("c = FX - FZ")
 
-    def test_an_unresolvable_group_poisons_rather_than_guesses(self) -> None:
-        # When the recorded group cannot be resolved against the frame's
-        # registry, the operation is unreadable, which refuses. Guessing
-        # would be the miss this whole module exists to avoid.
-        arr = np.column_stack([np.array([1.0]), np.array([2.0])])
-        frame = itc.load(arr, names=["a", "b"]).set_uncertainty({"a": 0.1, "b": 0.2})
-        forged = _append_step(
-            frame, "rotate(...)", "rotate", {"vector_groups": ["absent"]}
+    def test_rotate_refuses_to_invent_a_coefficient_it_cannot_represent(
+        self,
+    ) -> None:
+        # VV-13. The contrast above holds only where the induced
+        # coefficient resolves to ONE scalar across the grid. A
+        # CorrelationMatrix pair is a single number, and on an ordinary
+        # REQ-101 condition sweep the induced value varies per cell, so
+        # rotate declines to store it and records
+        # `correlation_not_stored` instead. This is the case that makes
+        # OQ-51 a real question rather than a copy of rotate: the
+        # asymmetry with translate_moments is narrower than it looks.
+        alpha = [0.2, 0.5]
+        rows = [[a, 1.0, 2.0, 3.0] for a in alpha]
+        frame = itc.load(np.array(rows), names=["alpha", "FX", "FY", "FZ"]).pivot(
+            dims=["alpha"]
         )
+        frame = dataclasses.replace(
+            frame,
+            dims={"alpha": Dimension(name="alpha", coords=np.array(alpha), unit="rad")},
+        )
+        frame = frame.declare_vector("force", ["FX", "FY", "FZ"])
+        frame = frame.set_uncertainty({"FX": 0.1, "FZ": 0.2})
+        turned = frame.rotate("stability")
+
+        assert turned.correlation is None
+        assert "correlation_not_stored" in turned.history.last.operation
+        # And the ancestry net is what stops the understatement there.
         with pytest.raises(UncertaintyLineageError):
-            forged.compute("c = a - b")
+            turned.compute("c = FX - FZ")
+
+
+class TestConcatDiscardedLineage:
+    """ARCH-5 and ARCH-8: concat keeps only the first input's History."""
+
+    @staticmethod
+    def _roots(t: float) -> VarFrame:
+        arr = np.column_stack([np.array([1.0]), np.array([2.0]), np.array([t])])
+        frame = itc.load(arr, names=["x", "y", "t"]).pivot(dims=["t"])
+        return frame.set_uncertainty({"x": 0.1, "y": 0.2})
+
+    def test_an_ordinary_concat_of_roots_is_untouched(self) -> None:
+        # ARCH-8. The first attempt treated concat as unreadable, which
+        # refused EVERY multi-carrier compute on any concatenated frame,
+        # including two inputs of plain roots with no derivation
+        # anywhere. That is REQ-24 mainline usage.
+        joined = itc.concat([self._roots(1.0), self._roots(2.0)], along="t")
+        result = joined.compute("z = x + y")
+        assert result.uncertainty.systematic["z"] == pytest.approx(np.hypot(0.1, 0.2))
+
+    def test_a_discarded_derivation_is_refused_at_the_concat(self) -> None:
+        # ARCH-5. The second input derived p and q from a shared x, and
+        # concat keeps only the first input's History, so that shared
+        # origin would vanish: measured u = 0.3606 where 0.1 is correct
+        # on the second input's rows. Refused where the loss happens.
+        def frame(t: float, derive: bool) -> VarFrame:
+            arr = np.column_stack(
+                [
+                    np.array([1.0]),
+                    np.array([2.0]),
+                    np.array([1.0]),
+                    np.array([t]),
+                ]
+            )
+            built = itc.load(arr, names=["x", "p", "q", "t"]).pivot(dims=["t"])
+            if not derive:
+                return built.set_uncertainty({"p": 0.3, "q": 0.2, "x": 0.1})
+            built = built.set_uncertainty({"x": 0.1})
+            return built.compute("p = 3*x").compute("q = 2*x")
+
+        with pytest.raises(UncertaintyLineageError) as caught:
+            itc.concat([frame(8.0, False), frame(9.0, True)], along="t")
+        message = str(caught.value)
+        assert "input 2 of 2" in message
+        assert "'p'" in message and "'q'" in message
+
+    def test_a_discarded_derivation_without_uncertainty_is_allowed(self) -> None:
+        # Nothing to lose: with no uncertainty on the derived variables
+        # there is no covariance the joined frame could get wrong.
+        def frame(t: float) -> VarFrame:
+            arr = np.column_stack([np.array([1.0]), np.array([0.0]), np.array([t])])
+            built = itc.load(arr, names=["x", "p", "t"]).pivot(dims=["t"])
+            return built.compute("p = 3*x")
+
+        joined = itc.concat([frame(8.0), frame(9.0)], along="t")
+        assert joined.uncertainty is None
 
 
 class TestNonDifferentiablePoint:

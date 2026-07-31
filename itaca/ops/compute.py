@@ -121,6 +121,8 @@ def compute(
     origin = shared_ancestry(db.history, carriers, db.correlation, groups)
     if origin is not None:
         name_a, name_b, roots = origin
+        # Built AFTER the unknown branch above, which never uses it and
+        # on which it is always None anyway (ARCH-11).
         suggestion = single_expression(db.history, name, text, groups)
         fix = (
             f"write it as one expression, which is already correct: "

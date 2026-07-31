@@ -939,6 +939,26 @@ pair the user has declared with \code{set\_correlation} is propagated
 rather than refused: the coefficient is then a statement the engine
 uses. Measured overstatement 3.6x and understatement 29\% before the
 refusal (SEAT-UNC, 2026-07-31).
+
+A FOURTH case is not about a known common origin but about the absence
+of evidence either way. Ancestry is read out of History, so an entry
+this engine cannot interpret leaves every variable's origin unknown and
+a multi-carrier \code{compute} is refused even for quantities that were
+never derived. It arises from a non-replayable record: a
+\code{combine}, or a schema-1 archive whose entries were restored
+without their replay steps. The message says which operation could not
+be read and states that the evidence is what is missing rather than the
+independence, and \code{set\_correlation} settles it either way,
+including a declared zero. Refusing on absent evidence is the
+conservative direction and it is stated here rather than left to the
+code, because it is wider than the three cases above and a reader of
+those three would not predict it.
+
+\code{concat} is deliberately NOT one of these. It keeps the History of
+its first input alone, so a derivation in any other input is discarded;
+that is refused at the concat itself, where the evidence still exists
+and the message can name the input, rather than by poisoning every
+frame a concat produced (REQ-24).
 \end{reqbox}
 
 \begin{reqbox}{REQ-42}{\stable}

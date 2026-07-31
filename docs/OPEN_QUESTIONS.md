@@ -1512,23 +1512,38 @@ FND-074 refusal (PUSH review round two).
 
 **What was measured, and it was not what this lane expected.** Writing a
 test to prove that `rotate` loses induced correlation the way
-`translate_moments` does, the test failed: `rotate` does not lose it.
-Measured on a stability rotation of a declared force group with
-`u(FX) = 0.1` and `u(FZ) = 0.2`:
+`translate_moments` does, the test failed: on a SINGLE-condition frame,
+`rotate` does not lose it. With `u(FX) = 0.1` and `u(FZ) = 0.2` on a
+declared force group:
 
     turned.correlation  ->  {('FX', 'FZ'): 0.47379635782970037}
 
-`rotate` computes the correlation its own Jacobian induces and writes it
-into the frame as an ordinary declared pair. A later `compute` over the
-two rotated components therefore reads that coefficient through the
-clause-5 formula and is CORRECT, and the SEAT-UNC refusal steps aside on
-its own, because a declared pair is already the documented escape hatch.
+It computes the coefficient its own Jacobian induces and writes it into
+the frame as an ordinary declared pair. A later `compute` over the two
+rotated components reads that coefficient through the clause-5 formula
+and is CORRECT, and the SEAT-UNC refusal steps aside on its own, because
+a declared pair is already the documented escape hatch.
 
-`translate_moments` is the same kind of operation, a fixed linear map
-with an exact Jacobian, and it does the opposite: it DROPS the pairs
-naming the moments it rewrote and writes no induced pair in their place.
-That asymmetry, between two operations of the same mathematical shape in
-the same library, is why FND-074 is a defect and the rotate case is not.
+**And the qualification that makes this a real question rather than a
+copy-this-code ticket.** Review round three measured the other shape and
+it is the ordinary one. On a two-condition sweep, which is exactly the
+REQ-101 case:
+
+    turned.correlation  ->  None
+    operation           ->  rotate(..., correlation_not_stored=[('FX','FZ')])
+
+A `CorrelationMatrix` pair is ONE scalar for a whole variable pair, and
+the induced coefficient generally varies per grid cell. `rotate` stores
+it only when it resolves to a single constant across cells, and
+otherwise records `correlation_not_stored` and drops it rather than
+inventing a number. So `rotate` does NOT solve the general problem; it
+solves the representable case and declines the rest, and in the declined
+case this lane's ancestry detector is what stops the understatement.
+
+That is the honest statement of the asymmetry: `translate_moments` never
+stores the induced pair, `rotate` stores it when it is representable.
+The gap between them is real but narrower than one operation doing the
+right thing and the other doing the wrong one.
 
 **The question.** Should `translate_moments` write the induced
 force-moment correlation the way `rotate` writes the induced
@@ -1552,6 +1567,14 @@ than a refusal with a workaround.
 * It is the same boundary SEAT-UNC drew. Recording an induced
   coefficient is one step from recording sensitivities, which is the
   v0.3.0 lineage work this lane was told not to build through.
+
+**A third option the answer should consider.** REQ-38 already says
+`correlation_not_stored` is recorded rather than raising, so that
+"refusing to invent a coefficient must not break the REQ-101 case". Per
+the measurement above that case is now refused one operation later, by
+this lane's detector. So the REQ-38 rationale and the REQ-41 behavior
+point in opposite directions, and whoever answers this should say which
+one moves (VV-15).
 
 **What ships in the interim.** The refusal, which is correct and
 conservative whatever the answer. If the answer is yes, REQ-100's

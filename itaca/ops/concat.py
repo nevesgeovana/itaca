@@ -23,9 +23,11 @@ from itaca.core.errors import (
     DimensionNotFoundError,
     OperatingModeMixError,
     UncertaintyError,
+    UncertaintyLineageError,
 )
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import content_of, rebuild, recoord
+from itaca.uncertainty._lineage import derivations
 
 
 def _validate_inputs(frames: Sequence[VarFrame], along: str) -> None:
@@ -174,6 +176,60 @@ def _validate_inputs(frames: Sequence[VarFrame], along: str) -> None:
         )
 
 
+def _refuse_discarded_lineage(frames: Sequence[VarFrame]) -> None:
+    """Refuse a concat that would DISCARD a derivation the result needs.
+
+    ARCH-5 and ARCH-8, which are the two halves of one problem and were
+    found one review round apart.
+
+    The result carries the History of ``frames[0]`` alone, so every other
+    input's derivation record is dropped. When one of those inputs
+    derived a variable that carries uncertainty, the joined frame holds
+    values whose shared origin nothing records any more: measured, with
+    ``p`` and ``q`` as roots in the first input and derived from a common
+    ``x`` in the second, ``compute("r = p - q")`` on the joined frame
+    returned ``u = 0.3606`` where ``0.1`` is correct on the second
+    input's rows.
+
+    The first attempt at this treated ``concat`` as an unreadable
+    operation, which poisoned the whole frame and refused EVERY
+    multi-carrier ``compute`` on any concatenated frame, including two
+    inputs of plain roots with no derivation anywhere. That is REQ-24
+    mainline usage and it was far too wide (ARCH-8).
+
+    So the refusal moves to the operation that loses the information,
+    which is the only place that can still see it. It fires only when a
+    non-first input actually carries a derived variable with
+    uncertainty, and an ordinary concat of loaded frames is untouched.
+    Failing at the point of loss also gives a message that can say what
+    to do, where a refusal three operations later cannot.
+    """
+    for position, frame in enumerate(frames[1:], start=2):
+        if frame.uncertainty is None:
+            continue
+        carriers = set(frame.uncertainty.systematic) | set(frame.uncertainty.random)
+        derived = set(derivations(frame.history, frame.axes.vector_groups).derived)
+        lost = sorted(carriers & derived)
+        if not lost:
+            continue
+        raise UncertaintyLineageError(
+            f"input {position} of {len(frames)}, whose {lost} carry both a "
+            f"derivation and an uncertainty",
+            "concat keeps the History of the FIRST input only, so these "
+            "variables' derivations would be discarded and the joined frame "
+            "would hold quantities whose shared origin nothing records; a "
+            "later compute would then treat them as independent",
+            "concatenate the INPUTS of that derivation and derive once on "
+            "the joined frame, which is also cheaper; or put the frame "
+            "carrying the derivations first, if its History covers every "
+            "derivation in the result; or drop the uncertainty from those "
+            "variables if it is not wanted downstream. Carrying several "
+            "inputs' derivation records into one joined History needs "
+            "lineage that survives a merge and is v0.3.0 work (SEAT-UNC, "
+            "REQ-24, REQ-41)",
+        )
+
+
 def concat(
     frames: Sequence[VarFrame],
     *,
@@ -240,6 +296,7 @@ def concat(
             "pass the frames to concatenate (REQ-24)",
         )
     _validate_inputs(frames, along)
+    _refuse_discarded_lineage(frames)
     first = frames[0]
     content = content_of(first)
     axis = list(content.dims).index(along)
