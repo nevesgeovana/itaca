@@ -3,7 +3,8 @@ name: handoff
 description: Session closure documentation for itaca. Writes the outgoing session handoff under the management root's handoffs/, refreshes its NEXT_SESSION.md forward prompt, and can also ingest an incoming capture. Use at the end of every working session, when a session must hand its context to an integrator who was not in the room, or when a capture from another session or a web thread needs to be folded into itaca's state.
 argument-hint: "[out|in <file>]"
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
-disable-model-invocation: false
+disable-model-invocation: true
+side-effects: writes handoff briefs into another workspace           # handoff
 ---
 
 Operation: `$ARGUMENTS`

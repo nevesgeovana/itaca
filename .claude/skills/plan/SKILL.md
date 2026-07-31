@@ -3,7 +3,8 @@ name: plan
 description: Planning state over the itaca plan ledger and the milestone map. Report progress, add agreed items, or propose the next work window, then validate the ledger. Use when the author asks for plan status or the state of the milestone, when the author asks to propose the next work window, when a review or a decision produces work that must be registered, or whenever an entry lands in the plan ledger and its shape should be checked. Session close is the handoff skill's trigger, not this one; that skill writes the forward prompt, drawing on the window this skill proposes.
 argument-hint: "[status|add|next]"
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
-disable-model-invocation: false
+disable-model-invocation: true
+side-effects: writes plan ledger entries          # plan
 ---
 
 Operation: `$ARGUMENTS`
