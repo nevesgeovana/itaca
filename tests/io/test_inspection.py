@@ -12,6 +12,7 @@ import pytest
 
 import itaca as itc
 from itaca.core.errors import DataError
+from itaca.core.varframe import VarFrame
 
 
 def write_csv(path: Path, header: list[str], rows: list[list[object]]) -> Path:
@@ -118,6 +119,60 @@ class TestDiagnostics:
         assert "CT" in csv_path.read_text(encoding="utf-8")
         payload = json.loads(json_path.read_text(encoding="utf-8"))
         assert payload["missing"]["CT"] == 1
+
+
+class TestDiagnosticsNonFinite:
+    """FND-083: a variable with no usable value produced no warning.
+
+    The report already COUNTED infinities, into `non_finite`, and then
+    said nothing about them: an all-infinity variable came back with
+    `coverage = 1.0` and an empty `warnings` tuple, while the all-NaN
+    control through the same call warned twice. A count nobody is told
+    to read is not a data-quality report.
+
+    Whether an infinity should also lower COVERAGE is not decided here.
+    OQ-49 carries that question, together with the reduction half.
+    """
+
+    @staticmethod
+    def _var(values: list[float]) -> VarFrame:
+        return itc.load(np.array(values).reshape(-1, 1), names=["CT"])
+
+    def test_an_all_infinity_variable_is_warned_about(self) -> None:
+        report = self._var([np.inf, np.inf]).diagnostics()
+        assert any("CT" in warning for warning in report.warnings)
+
+    def test_one_infinity_among_finite_values_is_warned_about(self) -> None:
+        """Not only the degenerate case. One bad cell is the one a
+        reader is least likely to notice unaided."""
+        report = self._var([1.0, 2.0, np.inf]).diagnostics()
+        assert any("CT" in warning for warning in report.warnings)
+
+    def test_the_warning_names_the_count_and_reaches_the_printed_report(
+        self,
+        capsys,  # type: ignore[no-untyped-def]
+    ) -> None:
+        report = self._var([1.0, -np.inf, np.inf]).diagnostics()
+        matching = [w for w in report.warnings if "CT" in w]
+        assert len(matching) == 1
+        assert "2" in matching[0]
+        assert matching[0] in capsys.readouterr().out
+
+    def test_finite_data_still_warns_about_nothing(self) -> None:
+        report = self._var([1.0, 2.0]).diagnostics()
+        assert not [w for w in report.warnings if "CT" in w]
+
+    def test_the_counts_and_coverage_are_untouched(self) -> None:
+        """The fix adds a warning and changes no number.
+
+        Stated as a test rather than as a claim, because changing
+        `coverage` here is exactly the tempting half OQ-49 reserves for
+        the numerical-analyst seat.
+        """
+        report = self._var([1.0, np.inf]).diagnostics()
+        assert report.coverage == 1.0
+        assert report.non_finite["CT"] == 1
+        assert report.missing["CT"] == 0
 
 
 class TestManifest:

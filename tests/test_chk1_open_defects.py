@@ -488,12 +488,20 @@ def test_r3_ita_013_interpolation_from_one_point_fails_loud(method: str) -> None
         db.interpolate({"x": [1.0]}, method=method)
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-014: open at 730649f")
 def test_r3_ita_014_average_does_not_treat_infinity_as_missing() -> None:
     """REQ-27 says the mean skips NaN, not every non-finite value.
 
-    ``average`` filters with ``np.isfinite``, so a genuine infinity is
-    dropped and a misleadingly finite mean is reported.
+    ``average`` filtered with ``np.isfinite``, so a genuine infinity was
+    dropped and a misleadingly finite mean reported.
+
+    FIXED, and the marker removed with the fix (FND-045). Measured on the
+    base: ``1.0``, finite, where the frame carried ``[1.0, inf]``. The
+    mask is now ``~np.isnan``, and it feeds the value, the count and the
+    reduction weights alike. The behavior is covered in
+    ``tests/ops/test_average.py::TestAveragePresenceMask``.
+
+    This closes a requirement violation and does NOT settle what an
+    infinity should mean in a reduction; OQ-49 carries that question.
     """
     db = _frame(["i", "v"], [[0.0, 1.0], [1.0, np.inf]], ["i"])
     out = db.average(along="i")

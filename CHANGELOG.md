@@ -6,7 +6,7 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
-No signature change. Four observable behavior changes, under Fixed, and
+No signature change. Six observable behavior changes, under Fixed, and
 release infrastructure, recorded here because it changes how a release
 reaches PyPI and the next tag runs on it.
 
@@ -44,6 +44,20 @@ names `release.yml` with environment `pypi`. A publisher naming
 
 ### Fixed
 
+* `db.average(along=...)` no longer drops an infinity as if the cell
+  were empty. Its presence mask was `np.isfinite`, while REQ-27 says
+  "arithmetic mean of non-NaN values": the mean of `[1.0, +inf]` came
+  back as `1.0`, finite, over a set containing an infinity. The mask is
+  now `~np.isnan` and feeds the value, the populated count and the
+  REQ-98 reduction weights alike, so a mean over data containing an
+  infinity is now infinite. REQ-27, OQ-49, FND-045.
+* `db.diagnostics()` now warns when a variable carries infinite values.
+  It already counted them into `.non_finite` and said nothing, so an
+  all-infinity variable reported `coverage = 1.0` with an empty
+  `.warnings`, where an all-NaN variable warned twice. `.coverage`,
+  `.missing` and `.non_finite` are unchanged: whether an infinity should
+  count as populated is OQ-49 and belongs to the numerical-analyst seat.
+  REQ-17, REQ-90, OQ-49, FND-083.
 * `db.interpolate(..., method="linear")` and `method="cubic"` now raise
   `DataError` when the source dimension carries fewer than two points,
   instead of dividing by zero and returning `inf` under a bare

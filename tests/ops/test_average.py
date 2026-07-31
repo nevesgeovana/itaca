@@ -62,6 +62,62 @@ class TestAverageValues:
             db.average(along="beta")
 
 
+class TestAveragePresenceMask:
+    """FND-045: REQ-27 says non-NaN, and only NaN is a missing value.
+
+    The presence mask was `np.isfinite`, which is a different set. An
+    infinity is a value the data actually carries, and dropping it
+    reports a finite mean over a set that contains one, which is a
+    wrong number rather than a missing one.
+
+    What infinity should MEAN in a reduction is a separate question and
+    is not answered here: these tests pin REQ-27 as written, and OQ-49
+    asks whether the requirement itself should refuse non-finite data.
+    """
+
+    @staticmethod
+    def _rep(values: list[float]) -> VarFrame:
+        rows = np.array(
+            [[0.0, float(i + 1), v] for i, v in enumerate(values)], dtype=float
+        )
+        return itc.load(rows, names=["alpha", "rep", "CT"]).pivot(dims=["alpha", "rep"])
+
+    @pytest.mark.parametrize("sign", [1.0, -1.0])
+    def test_infinity_is_not_dropped_as_missing(self, sign: float) -> None:
+        result = self._rep([1.0, sign * np.inf]).average(along="rep")
+        value = float(np.asarray(result.vars["CT"].values).ravel()[0])
+        assert not np.isfinite(value)
+        assert np.sign(value) == sign
+
+    def test_a_nan_beside_an_infinity_is_still_skipped(self) -> None:
+        """The two are not the same case and must not merge into one.
+
+        With both present, the NaN leaves the sum and the infinity stays
+        in it, so the result is infinite rather than NaN.
+        """
+        result = self._rep([1.0, np.nan, np.inf]).average(along="rep")
+        value = float(np.asarray(result.vars["CT"].values).ravel()[0])
+        assert np.isinf(value)
+
+    def test_the_count_treats_an_infinity_as_a_populated_cell(self) -> None:
+        """The random component's 1/sqrt(N) reads the same mask.
+
+        With N counted over non-NaN cells, three populated points give
+        u/sqrt(3). Reading a different mask for the value and for the
+        count would divide the mean of one set by the size of another.
+        """
+        db = self._rep([1.0, 2.0, np.inf]).set_uncertainty(
+            {"CT": 0.3}, component="random"
+        )
+        result = db.average(along="rep")
+        assert result.uncertainty is not None
+        assert np.allclose(result.uncertainty.random["CT"], 0.3 / np.sqrt(3.0))
+
+    def test_finite_data_is_unchanged(self) -> None:
+        result = self._rep([1.0, 2.0, 3.0]).average(along="rep")
+        assert result.vars["CT"].values[0] == pytest.approx(2.0)
+
+
 class TestAverageBookkeeping:
     def test_recorded_in_history(self, db: VarFrame) -> None:
         result = db.average(along="rep", comment="repeat mean")

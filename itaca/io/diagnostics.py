@@ -32,7 +32,12 @@ class DiagnosticsReport:
     partial_vars : tuple of str
         Variables with some, but not all, values missing.
     coverage : float
-        Populated fraction over all variables (1.0 when complete).
+        Populated fraction over all variables (1.0 when complete). A
+        cell is populated when it is not NaN, so an infinity counts
+        toward coverage and a variable of nothing but infinities reads
+        as complete. That is deliberate for now and it is not settled:
+        OQ-49 asks whether coverage should be finite-based instead, and
+        ``warnings`` carries a line whenever a variable has any.
     n_missing : int
         Total NaN count.
     warnings : tuple of str
@@ -100,14 +105,30 @@ def diagnostics(db: VarFrame, log: str | Path | None = None) -> DiagnosticsRepor
     for name, variable in db.vars.items():
         values = variable.values
         n_nan = int(np.isnan(values).sum())
+        n_inf = int(np.isinf(values).sum())
         missing[name] = n_nan
-        non_finite[name] = int(np.isinf(values).sum())
+        non_finite[name] = n_inf
         total_cells += values.size
         total_missing += n_nan
         if values.size and n_nan == values.size:
             warnings.append(f"variable '{name}' has no finite values")
         elif n_nan:
             partial.append(name)
+        # FND-083. The count above existed and nothing was ever said
+        # about it, so an all-infinity variable reported coverage 1.0
+        # and an EMPTY warnings tuple, where the all-NaN control warned
+        # twice. A count no one is told to read is not a report.
+        #
+        # The warning states what the FIGURE does and stops there. It
+        # does not say the value is wrong, and it does not change
+        # coverage: whether an infinity is populated data or invalid
+        # data is OQ-49, and answering it inside a warning string would
+        # be deciding it.
+        if n_inf:
+            warnings.append(
+                f"variable '{name}' has {n_inf} infinite value(s), which "
+                f"the coverage figure counts as populated"
+            )
     for name, dim in db.dims.items():
         if dim.cardinality == 1:
             warnings.append(f"dimension '{name}' has a single point")

@@ -57,12 +57,21 @@ def average(
     new_rand: dict[str, NDArray[Any]] = {}
     new_tags: dict[str, NDArray[Any]] = {}
     for name, values in content.values.items():
-        finite = np.isfinite(values)
-        counts = np.sum(finite, axis=axes)
+        # REQ-27 says non-NaN, and this mask used to say `np.isfinite`,
+        # which is a smaller set. An infinity is a value the data
+        # carries; dropping it reported a FINITE mean over a set that
+        # contains one, which is a wrong number rather than a missing
+        # one. Measured: mean of [1.0, +inf] was [1.] (FND-045).
+        #
+        # The same mask feeds the value, the count and the weights on
+        # purpose. Reading a different mask for the mean than for N
+        # would divide the sum of one set by the size of another.
+        present = ~np.isnan(values)
+        counts = np.sum(present, axis=axes)
         with np.errstate(invalid="ignore"):
             mean = np.where(
                 counts > 0,
-                np.nansum(np.where(finite, values, 0.0), axis=axes)
+                np.nansum(np.where(present, values, 0.0), axis=axes)
                 / np.maximum(counts, 1),
                 np.nan,
             )
@@ -70,7 +79,7 @@ def average(
         # Per-cell mean weights 1/N over the populated cells; collapse
         # the joint axes one at a time by moving them last.
         weights = np.where(
-            finite,
+            present,
             1.0 / np.maximum(np.expand_dims(counts, axes), 1),
             0.0,
         )

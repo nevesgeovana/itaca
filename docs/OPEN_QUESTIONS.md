@@ -1331,3 +1331,62 @@ to stdout at all and on what replaces the auditability REQ-48 and DD-17
 promise if it may not.
 
 **SRS:** P-08, REQ-14, REQ-48, REQ-76. **DD:** DD-17.
+
+---
+
+## OQ-49: What does an infinity mean to a reduction and to a coverage count?
+
+**Raised:** 2026-07-30, lane ITA-2G, while closing FND-045 and FND-083
+(BRF-059).
+**Status:** open (numerical-analyst seat).
+
+Two independent findings, one question under both. Neither is answered
+here, because both fixes closed a violation of what the code and the SRS
+already SAY, and neither needed the answer.
+
+**What was measured.** `average()` used `np.isfinite` as its presence
+mask, so the mean of `[1.0, +inf]` was `[1.]`: a finite mean over a set
+containing an infinity, reported with nothing said. `db.diagnostics()`
+counted an infinity into `non_finite` and then said nothing about it, so
+an all-infinity variable reported `coverage = 1.0` and an EMPTY
+`warnings` tuple, where the all-NaN control reported `coverage = 0.0`
+and two warnings.
+
+**What the fixes did, and deliberately did not do.** `average` now masks
+on `~np.isnan`, because REQ-27 is stable and says "arithmetic mean of
+non-NaN values", so the code was contradicting its own requirement.
+`diagnostics` now warns when a variable carries non-finite values,
+because REQ-17 exists to carry data-quality warnings and silence about a
+variable with no usable value is not one. Neither fix decides the
+question below.
+
+**The question, in two faces.**
+
+*In a reduction.* An infinity now enters the mean and the result is
+infinite. That is REQ-27 read literally and it is arguably the honest
+answer: the data says infinity, so the mean says infinity. The
+alternative is that a reduction should REFUSE non-finite data the way
+`set_uncertainty` refuses a non-finite magnitude, on the ground that an
+infinity in measured aerodynamic data is a defect of acquisition rather
+than a value. That would be an SRS change to REQ-27 and it would apply
+to `integrate` and `smooth` alike, not to `average` alone.
+
+*In a coverage count.* `DiagnosticsReport.coverage` is documented as a
+"populated fraction", and an infinity occupies its cell, so 1.0 is
+defensible. REQ-90 pulls the other way: it describes the sparse backing
+store as "the underlying NumPy arrays plus a finite-mask", and a
+finite-mask does not include an infinity. If coverage is finite-based,
+an all-infinity variable is 0.0 covered and REQ-90's sparse threshold
+fires on it. The two readings differ for exactly the data that motivated
+the finding, and no requirement adjudicates between them.
+
+**Why they are one question.** Both ask whether this library treats an
+infinity as DATA or as INVALID. Answering one and not the other would
+leave a frame whose mean is infinite and whose coverage is complete, or
+one whose coverage is zero and whose mean carries the value anyway. The
+seat should answer once.
+
+**Who decides:** the numerical analyst, with the product owner where the
+answer changes REQ-27, REQ-17 or REQ-90.
+
+**SRS:** REQ-17, REQ-27, REQ-90.
