@@ -163,6 +163,51 @@ class TestWhereEvaluatesOnlyInsideItsMask:
         result = db.compute("y = sqrt(v)", where="v >= 0", fill=99.0)
         assert np.allclose(result.vars["y"].values, [2.0, 3.0])
 
+    def test_a_reduction_still_reads_the_whole_grid(self) -> None:
+        """The precondition, pinned from the side that would break.
+
+        REQ-36 admits any `np.*` function when nothing carries
+        uncertainty, and a reduction reads cells other than its own. An
+        unconditional NaN substitution therefore reaches the cells the
+        mask was protecting: measured, this call returned `[99., nan,
+        nan]` where it must return the grid-wide maximum in the two
+        in-mask cells. `is_elementwise` is what keeps those trees on the
+        whole-grid path.
+        """
+        arr = np.column_stack([np.array([-1.0, 1.0, 3.0]), np.array([1.0, 1.0, 1.0])])
+        db = itc.load(arr, names=["v", "w"])
+        result = db.compute("y = np.max(v)", where="v >= 0", fill=99.0)
+        assert np.allclose(result.vars["y"].values, [99.0, 3.0, 3.0])
+
+    def test_a_reduction_inside_a_larger_expression_is_caught_too(self) -> None:
+        """The predicate is over the TREE, not over the root node."""
+        arr = np.column_stack([np.array([-1.0, 1.0, 3.0]), np.array([1.0, 1.0, 1.0])])
+        db = itc.load(arr, names=["v", "w"])
+        result = db.compute("y = v + np.mean(v)", where="v >= 0", fill=99.0)
+        assert np.allclose(result.vars["y"].values, [99.0, 2.0, 4.0])
+
+    def test_an_all_false_mask_writes_the_fill_everywhere(self) -> None:
+        arr = np.column_stack([np.array([-1.0, -2.0]), np.array([1.0, 1.0])])
+        db = itc.load(arr, names=["v", "w"])
+        result = db.compute("y = sqrt(v)", where="v >= 0", fill=99.0)
+        assert np.allclose(result.vars["y"].values, [99.0, 99.0])
+
+    def test_debug_reports_the_frames_data_not_the_mask(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """REQ-34's report reads the frame, so the mask must not reach it.
+
+        Reported after the substitution it printed `v = nan` whenever
+        grid point zero fell outside the mask, which is the ordinary
+        case for a filter.
+        """
+        arr = np.column_stack([np.array([4.0, 9.0]), np.array([0.0, 1.0])])
+        db = itc.load(arr, names=["v", "i"])
+        db.compute("y = v * 2", where="i > 0", debug=True)
+        out = capsys.readouterr().out
+        assert "v = 4" in out, out
+        assert "nan" not in out, out
+
 
 class TestFillNoneKeepsThePriorState:
     """FND-090: `fill=None` kept the prior VALUE and erased the prior u.

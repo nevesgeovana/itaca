@@ -20,6 +20,7 @@ from itaca.ops._content import content_of, rebuild
 from itaca.uncertainty.expression import (
     Node,
     condition_mask,
+    is_elementwise,
     parse_expression,
 )
 from itaca.uncertainty.propagation import propagate
@@ -103,6 +104,17 @@ def compute(
         if db.uncertainty is not None
         else []
     )
+    if debug:
+        # REQ-34's report reads the FRAME's data, so it is produced
+        # before the mask substitution below and not after. Reported
+        # after, it printed NaN for every variable whenever grid point
+        # zero fell outside the mask, which is the ordinary case for a
+        # filter, and a debug surface that hides the data at the moment
+        # a user asks to see it is worse than the warning it avoids.
+        # The consequence is stated rather than hidden: under
+        # `debug=True` the sample evaluation runs over the full grid, so
+        # a masked-out domain violation can still warn there.
+        _debug_report(name, text, tree, env, db, carriers)
     mask: NDArray[Any] | None = None
     if where is not None:
         # FND-073. The mask is resolved HERE, on the untouched
@@ -118,17 +130,24 @@ def compute(
         # NaN is what excludes a cell, rather than a sentinel or a
         # gather-and-scatter, because NaN is already the library's
         # absent value and because NumPy propagates it through every
-        # operator here WITHOUT warning: `sqrt(nan)` is `nan` in
-        # silence where `sqrt(-1)` is not. Every out-of-mask result is
-        # overwritten below, so what those cells evaluate to is never
-        # read.
+        # ELEMENTWISE operator WITHOUT warning: `sqrt(nan)` is `nan` in
+        # silence where `sqrt(-1)` is not.
+        #
+        # `is_elementwise` is the precondition and not a precaution.
+        # REQ-36 lets any `np.*` function into an expression carrying no
+        # uncertainty, and a reduction reads cells other than its own,
+        # so the sentinel would reach the cells the mask was protecting:
+        # measured, `y = np.max(v)` over `v = [-1, 1, 3]` with
+        # `where='v >= 0'` returned `nan` IN the mask where it had
+        # returned 3.0. Those trees keep the whole-grid evaluation and
+        # therefore keep the warning; the limit is documented on the
+        # public method rather than silently accepted.
         mask = np.broadcast_to(condition_mask(where, known, env), db.shape)
-        env = {
-            var: np.where(mask, np.asarray(values, dtype=float), np.nan)
-            for var, values in env.items()
-        }
-    if debug:
-        _debug_report(name, text, tree, env, db, carriers)
+        if is_elementwise(tree):
+            env = {
+                var: np.where(mask, np.asarray(values, dtype=float), np.nan)
+                for var, values in env.items()
+            }
     values = np.broadcast_to(
         np.asarray(tree.evaluate(env), dtype=float), db.shape
     ).copy()

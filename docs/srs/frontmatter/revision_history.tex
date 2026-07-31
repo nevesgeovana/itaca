@@ -10,6 +10,29 @@
 \textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Summary}\\
 \midrule
 \midrule
+0.2.7 & 2026-07-30 & Geovana Neves &
+Two requirements catch up with two fixed defects. A PATCH revision adding
+no requirement and withdrawing none. REQ-25 now states that
+\code{"linear"} and \code{"cubic"} need at least two source points and
+refuse at one, where the kernels divided by a zero-width segment and
+returned \code{inf} under a bare \code{RuntimeWarning}; the refusal is
+scoped to those two methods, because \code{"nearest"} and
+\code{"polyfit"} with \code{deg=0} are defined at one point and refusing
+them would remove working operations to fix broken ones. REQ-35 now
+states that \code{fill=None} retains the filtered-out point's
+UNCERTAINTY together with its value, where retaining the value alone
+left a surviving number paired with \code{u = NaN}, and that the
+EVALUATION is confined to the filtered-in points and not only the
+result, with the one \code{np.*} reduction exemption stated rather than
+implied. Both requirements were silent rather than wrong, which is why
+this is a clarification: the code was fixed and the text did not say
+what the fix decided, and an unwritten rule is the drift this document
+is monitored for. A third fix in the same lane was REVERTED for the
+mirror reason: a check refusing a relative uncertainty spec resolved
+against non-finite data worked and was taken back out, because REQ-39
+states that scope in its own normative text and the code may not outrun
+it (FND-040, OQ-40).
+\\[4pt]
 0.2.6 & 2026-07-30 & Geovana Neves &
 Release review: three claims withdrawn. A PATCH revision adding no
 requirement and withdrawing none. REQ-70 promised

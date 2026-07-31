@@ -400,6 +400,15 @@ recomputation at all target coordinates.
 The HistoryFrame is updated: \code{+1} for points within the convex hull of
 the original axis, \code{-1} outside.
 
+\code{"linear"} and \code{"cubic"} interpolate BETWEEN samples and
+therefore require at least two source points along the dimension; a
+single point raises \code{DataError} before any kernel runs, rather than
+dividing by a zero-width segment and returning \code{inf} under a bare
+\code{RuntimeWarning}. The refusal is scoped to those two methods:
+\code{"nearest"} copies the sample and \code{"polyfit"} with
+\code{deg=0} fits a constant, both defined at one point, and
+\code{deg $\geq$ n} already refuses every degree above it.
+
 Axis translation (replacing a dimension with a variable as the sweep axis) is a special form:
 \begin{lstlisting}
 db_cl = db.interpolate(
@@ -573,6 +582,28 @@ The condition string supports comparisons (\code{>}, \code{<}, \code{>=},
 \code{<=}, \code{==}, \code{!=}) and logical operators (\code{and},
 \code{or}, \code{not}) referencing any variable present in the VarFrame.
 Uncertainty is propagated only for filtered-in points.
+
+\code{fill=None} retains the existing UNCERTAINTY of the filtered-out
+points as well as their existing value. The two halves of a point's
+state are retained together, because a point this call did not touch is
+not described by an uncertainty this call did not compute: retaining the
+value alone left a surviving number paired with \code{u = NaN}. The
+other two fill modes WRITE the point, so they drop the uncertainty of
+the value they replaced rather than carrying it onto a number it does
+not describe. This is a statement about RETENTION and does not widen the
+propagation rule above: nothing is propagated outside the mask under any
+fill mode.
+
+The evaluation, and not only the result, is confined to the filtered-in
+points, so a domain violation at a filtered-out point (a negative under
+\code{sqrt}, a zero denominator) neither raises a \code{RuntimeWarning}
+nor enters the propagation. ONE class of expression is exempt and the
+exemption is stated rather than implied: REQ-36 admits any
+\code{np.*} function into an expression carrying no uncertainty, and a
+reduction such as \code{np.max} reads cells other than its own, so an
+expression containing one is evaluated over the whole grid as before.
+Confining it would change the value of the reduction itself, which is a
+different question from this requirement's.
 \end{reqbox}
 
 \begin{reqbox}{REQ-36}{\stable}

@@ -269,6 +269,48 @@ class NumpyCall:
         return out
 
 
+def is_elementwise(node: Node) -> bool:
+    """Report whether every value in the tree depends on its cell alone.
+
+    The ITACA operator set of REQ-44 is entirely elementwise: a constant,
+    a variable lookup, and the unary and binary operators all map cell to
+    cell. ``np.*`` calls are the one escape hatch REQ-36 opens and they
+    are NOT, because ``np.max`` and ``np.mean`` read the whole array.
+
+    A caller that substitutes a per-cell sentinel into the environment
+    must ask this first. ``compute(where=)`` does: it replaces
+    out-of-mask cells with NaN so that an excluded domain violation is
+    never evaluated, and that is sound only while no node can see a cell
+    other than its own. Measured on ``y = np.max(v)`` with
+    ``where='v >= 0'`` over ``v = [-1, 1, 3]``, an unconditional
+    substitution turned the in-mask result from ``3.0`` into ``nan``.
+
+    Parameters
+    ----------
+    node : Node
+        Root of the parsed expression tree.
+
+    Returns
+    -------
+    bool
+        ``True`` when the tree contains no ``np.*`` call.
+
+    Examples
+    --------
+    >>> is_elementwise(parse_expression("sqrt(x) + 1", {"x"}))
+    True
+    >>> is_elementwise(parse_expression("np.max(x)", {"x"}))
+    False
+    """
+    if isinstance(node, NumpyCall):
+        return False
+    if isinstance(node, Unary):
+        return is_elementwise(node.a)
+    if isinstance(node, Binary):
+        return is_elementwise(node.a) and is_elementwise(node.b)
+    return True
+
+
 def parse_expression(text: str, known: Set[str]) -> Node:
     """Parse an expression string into the ITACA operator tree (DD-20).
 

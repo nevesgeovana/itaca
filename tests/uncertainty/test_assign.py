@@ -70,13 +70,22 @@ class TestSetUncertainty:
 
 
 class TestRelativeSpecResolution:
-    """FND-040: a valid spec must not resolve to an invalid uncertainty.
+    """REQ-39's stated scope, pinned so a change to it is a visible act.
 
-    The refusal is at the DECLARATION boundary and on the resolved array
-    only. It is deliberately not the finiteness rule on the assembled
-    UncFrame that OQ-40 asks about: `compute(where=)` writes NaN into that
-    array on purpose, so the rule there cannot be added until the two
-    meanings of NaN are distinguishable, and this one does not need it.
+    The finiteness rule is scoped to the DECLARED magnitude, and REQ-39
+    says so in its own normative text rather than leaving it implied: a
+    relative spec resolves against the data, so `"5%"` over a variable
+    carrying NaN yields a non-finite standard uncertainty and nothing
+    refuses it. That is a known hole, not an oversight; its structural
+    home is `UncFrame` and it is blocked on OQ-40.
+
+    Lane ITA-2G measured a working refusal in `_resolve_value` and
+    reverted it, because closing the hole changes what a STABLE
+    requirement describes and the SRS did not move (FND-040). These
+    tests pin the SPECIFIED behavior, so REQ-39 and the code cannot
+    drift apart in either direction while the question is open; the
+    ratchet for the hole itself lives in
+    `tests/test_chk1_open_defects.py::test_r3_ita_007_a_relative_spec_cannot_inherit_a_non_finite_value`.
     """
 
     @staticmethod
@@ -84,34 +93,26 @@ class TestRelativeSpecResolution:
         return itc.load(np.array(values).reshape(-1, 1), names=["x"])
 
     @pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
-    def test_relative_spec_over_non_finite_data_is_refused(self, bad: float) -> None:
-        with pytest.raises(UncertaintyError) as raised:
-            self._with([1.0, bad]).set_uncertainty({"x": "5%"})
-        message = str(raised.value)
-        assert "5%" in message
-        assert "'x'" in message
+    def test_a_relative_spec_resolves_against_the_data_unchecked(
+        self, bad: float
+    ) -> None:
+        result = self._with([1.0, bad]).set_uncertainty({"x": "5%"})
+        assert result.uncertainty is not None
+        u = np.asarray(result.uncertainty.systematic["x"], dtype=float)
+        assert u[0] == pytest.approx(0.05)
+        assert not np.isfinite(u[1])
 
-    def test_the_refusal_names_the_object_the_cause_and_the_fix(self) -> None:
-        """REQ-81's three parts, on the part a caller can act on.
+    def test_the_declared_magnitude_is_still_checked(self) -> None:
+        """The half REQ-39 DOES require, so the scope line is visible.
 
-        The count matters: a caller reading "1 of 2" knows the variable is
-        partly populated and that filling is the remedy, where a bare
-        "not finite" reads as a broken declaration.
+        Without this beside the case above, "unchecked" could be read as
+        "no check at all", which is not what the requirement says.
         """
-        with pytest.raises(UncertaintyError) as raised:
-            self._with([1.0, np.nan]).set_uncertainty({"x": "5%"})
-        message = str(raised.value)
-        assert "1 of 2" in message
-        assert "REQ-39" in message
+        with pytest.raises(UncertaintyError):
+            self._with([1.0, 2.0]).set_uncertainty({"x": np.nan})
 
-    def test_an_absolute_spec_over_the_same_data_is_still_accepted(self) -> None:
-        """The refusal is about RESOLUTION, not about the data.
-
-        An absolute magnitude does not read the values at all, so a
-        variable with a hole still takes one. Without this the fix would
-        be a ban on declaring uncertainty over sparse data, which is not
-        what REQ-39 says and not what was measured.
-        """
+    def test_an_absolute_spec_over_non_finite_data_is_accepted(self) -> None:
+        """An absolute magnitude does not read the values at all."""
         result = self._with([1.0, np.nan]).set_uncertainty({"x": 0.5})
         assert result.uncertainty is not None
         assert np.allclose(result.uncertainty.systematic["x"], 0.5)

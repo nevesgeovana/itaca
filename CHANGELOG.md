@@ -6,7 +6,7 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
-No signature change. Eight observable behavior changes, under Fixed, and
+No signature change. Seven observable behavior changes, under Fixed, and
 release infrastructure, recorded here because it changes how a release
 reaches PyPI and the next tag runs on it.
 
@@ -51,8 +51,13 @@ names `release.yml` with environment `pypi`. A publisher naming
   over `v = [-1, 1]` emitted `invalid value encountered in sqrt` twice
   with an uncertainty carrier and once without, for a cell that never
   reached the output. Excluded cells are now NaN in the evaluation
-  environment, which NumPy carries through every supported operator
-  without warning. In-mask results are unchanged.
+  environment, which NumPy carries through every ELEMENTWISE operator
+  without warning. In-mask results are unchanged, and that holds because
+  the substitution is applied only to expressions with no `np.*` call: a
+  reduction such as `np.max` reads cells other than its own, so those
+  expressions keep the whole-grid evaluation and keep the warning. Under
+  `debug=True` the REQ-34 sample evaluation also stays on the whole
+  grid, so the report shows the frame's data instead of the mask.
 * `db.compute(..., where=..., fill=None)` now keeps the masked-out
   cell's prior UNCERTAINTY as well as its prior value. It kept the
   value and wrote `u = NaN`, so a surviving number came back paired
@@ -60,7 +65,9 @@ names `release.yml` with environment `pypi`. A publisher naming
   `u(x) = [10., 0.4]`, `compute("x = x / 2", where="i > 0", fill=None)`
   gave `u(x) = [nan, 0.2]`. `fill=<value>` and the default `fill=nan`
   are unchanged: those WRITE the cell, so the uncertainty of the value
-  they replaced is still dropped. REQ-35, REQ-91, FND-073, FND-090.
+  they replaced is still dropped. Both rules are now stated in REQ-35
+  (SRS document 0.2.7), which was silent on them. REQ-35, REQ-91,
+  FND-073, FND-090.
 * `db.average(along=...)` no longer drops an infinity as if the cell
   were empty. Its presence mask was `np.isfinite`, while REQ-27 says
   "arithmetic mean of non-NaN values": the mean of `[1.0, +inf]` came
@@ -82,17 +89,9 @@ names `release.yml` with environment `pypi`. A publisher naming
   segment lookup collapsed to a zero-width segment at one point. The
   refusal is a preflight, so nothing is computed and no warning is
   emitted before it. `method="nearest"` and `method="polyfit"` with
-  `deg=0` are defined at one point and are unchanged. REQ-25, FND-044.
-* `db.set_uncertainty({var: "5%"})` is now refused when the variable
-  carries a non-finite value, instead of silently writing a non-finite
-  standard uncertainty. A relative magnitude is resolved against the
-  data, so `"5%"` on `[1.0, nan]` produced `u = [0.05, nan]` and nothing
-  downstream refused it. **This makes a call that used to succeed
-  raise.** The remedy is one of two: declare an absolute magnitude, which
-  does not read the values and is still accepted over a variable with
-  holes, or `db.fill(...)`/`db.select(...)` the non-finite cells before
-  declaring a relative one. The refusal names how many cells of how many
-  are not finite. REQ-39, OQ-40, FND-040.
+  `deg=0` are defined at one point and are unchanged. The rule is now
+  stated in REQ-25 (SRS document 0.2.7), which was silent on source
+  cardinality. REQ-25, FND-044.
 * `db.combine(op='mean')` and `db.combine(op='weighted_mean')` no longer
   collapse the propagated uncertainty to zero on integer-valued frames.
   The constant partials were built with `np.full_like`, which inherits

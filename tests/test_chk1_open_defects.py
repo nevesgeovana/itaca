@@ -353,24 +353,33 @@ def test_r3_ita_007_set_uncertainty_refuses_a_non_finite_value(value: object) ->
         db.set_uncertainty({"x": value})
 
 
+@pytest.mark.xfail(strict=True, reason="R3-ITA-007 structural half: OQ-40, and REQ-39")
 def test_r3_ita_007_a_relative_spec_cannot_inherit_a_non_finite_value() -> None:
     """The half of R3-ITA-007 the declared-magnitude check does not reach.
 
     ``"5%"`` is a valid spec and ``_resolve_value`` resolves it against
-    the data, so a variable carrying NaN yielded a NaN standard
+    the data, so a variable carrying NaN yields a NaN standard
     uncertainty with nothing refused.
 
-    FIXED, and the marker removed with the fix (FND-040). Measured on the
-    base: ``DID NOT RAISE``. The rule now sits in ``_resolve_value``, on
-    the RESOLVED array, which is a declaration boundary and sees only
-    what a declaration just produced.
+    STILL OPEN, and the marker now carries a second reason. The first is
+    unchanged: the structural home of the rule is ``UncFrame``, beside
+    the negativity rule and on the assembled array, and it was attempted
+    there and reverted because ``compute(where=)`` and both ``fill``
+    uncertainty paths write NaN into that array deliberately, so it
+    carries two meanings of NaN and separating them is the numerical
+    analyst's call (OQ-40).
 
-    It is NOT the fix this docstring used to predict, and OQ-40 is still
-    open. The rule on the ASSEMBLED array in ``UncFrame``, beside the
-    negativity rule, stays reverted: ``compute(where=)`` and both
-    ``fill`` uncertainty paths write NaN there deliberately for cells
-    they did not touch, so that array still carries two meanings of NaN
-    and separating them is still the numerical analyst's call.
+    The second was measured by lane ITA-2G (FND-040). A check in
+    ``_resolve_value`` DOES close it, and those tests do not reach that
+    path, so it shipped green: measured ``5 failed`` before and all green
+    after. It was reverted anyway, because REQ-39 is STABLE and states
+    this exact limit in its own text, so the fix changed the behavior a
+    requirement describes with no SRS revision behind it. The order is
+    REQ-39 first. Routed to the author with the quotation.
+
+    Two reverted attempts, two different reasons. Both are written into
+    ``uncertainty/assign.py`` so a third lane starts from the order
+    rather than from the idea.
     """
     db = itc.load(np.array([[1.0], [np.nan]]), names=["x"])
     with pytest.raises(ITACAError):

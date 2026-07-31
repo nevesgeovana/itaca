@@ -12,6 +12,68 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.7, 2026-07-30, Two Requirements Catch Up With Two Fixes}
+
+A PATCH revision adding no requirement and withdrawing none. Both changes
+are clarifications in the strict sense: the requirement was SILENT, the
+library's behavior was fixed, and the text now says what the fix decided.
+An unwritten rule is the drift this document is monitored for, so the
+silence is closed in the same change rather than registered.
+
+\paragraph{Changed (REQ-25, minimum source cardinality).} The requirement
+enumerated four interpolation methods and said nothing about how many
+source points each needs. \code{"linear"} and \code{"cubic"} interpolate
+BETWEEN samples, so at one point the segment lookup collapsed to a
+zero-width segment and the weight divided by zero: measured \code{y =
+[inf]} under a bare \code{RuntimeWarning} for both methods, where a
+two-point control through the identical call returned a finite value
+with no warning. REQ-25 now requires at least two points for those two
+methods and a refusal before any kernel runs.
+
+The scope of the refusal is the part worth stating. \code{"nearest"}
+copies the sample and \code{"polyfit"} with \code{deg=0} fits a
+constant, and both are defined at one point; refusing all four would
+have removed two working operations to fix two broken ones. A previously
+returning call now raises, which is a behavior change, and it is one
+that replaces an infinity a caller could carry a long way.
+
+\paragraph{Changed (REQ-35, what \code{fill=None} retains, and where the
+equation is evaluated).} Two additions, both closing a silence.
+
+The \code{fill=None} bullet governed the VALUE alone, and the
+implementation retained the value and erased the uncertainty: measured,
+\code{x = [100., 4.]} with \code{u(x) = [10., 0.4]} came back as
+\code{x = [100., 2.]} with \code{u(x) = [nan, 0.2]}, so a surviving
+number was paired with an uncertainty that is not a number. The
+requirement now says both halves of an untouched point's state are
+retained together, and says explicitly that the other two fill modes do
+NOT retain, because they WRITE the point and the uncertainty of a
+replaced value does not describe its replacement. The existing sentence
+that uncertainty is propagated only for filtered-in points is unchanged
+in force: retention is not propagation.
+
+The requirement also said the equation is evaluated only where the
+condition holds, and the implementation evaluated everywhere and masked
+the result. On a domain violation that was visible: measured, \code{y =
+sqrt(v)} over \code{v = [-1, 1]} with \code{where="v >= 0"} emitted two
+\code{RuntimeWarning}s with an uncertainty carrier and one without, for
+a cell that never reached the output. The code now matches the sentence,
+and the requirement states the ONE exemption rather than leaving it to
+be discovered: REQ-36 admits any \code{np.*} function into an expression
+carrying no uncertainty, a reduction reads cells other than its own, and
+confining such a tree would change the value of the reduction itself.
+
+\paragraph{Not changed, deliberately (REQ-39).} A third fix in the same
+lane refused a relative uncertainty specification that resolves against
+non-finite data. It worked and it was REVERTED, because REQ-39 states
+that scope in its own normative text: the finiteness rule is scoped to
+the DECLARED magnitude, the structural home of the wider check is the
+UncFrame, and it is blocked on OQ-40. Amending REQ-39 to admit the fix
+would have settled the boundary that entry parks on the numerical
+analyst. Recorded here because two attempts at that fix have now been
+reverted for two different reasons, and the order is the thing a third
+lane needs: REQ-39 moves first, or nothing moves.
+
 \section*{Document 0.2.6, 2026-07-30, Release Review: Three Claims Withdrawn}
 
 A PATCH revision withdrawing three claims this document made and could not

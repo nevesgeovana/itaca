@@ -1721,7 +1721,13 @@ class VarFrame:
             Condition string; the equation applies only where it holds
             (REQ-35). The expression is EVALUATED only where it holds
             too, so a domain violation in an excluded cell neither
-            warns nor enters the propagation.
+            warns nor enters the propagation. One exemption: an
+            expression containing an ``np.*`` call is evaluated over the
+            whole grid, because a reduction such as ``np.max`` reads
+            cells other than its own and confining it would change the
+            reduction's own value. Under ``debug=True`` the REQ-34
+            sample evaluation also runs over the whole grid, so that the
+            report shows the frame's data rather than the mask.
         fill : float or None, optional
             Value at filtered-out points: NaN (default), a scalar, or
             ``None`` to retain existing values of ``VAR``. ``None``

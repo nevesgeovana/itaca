@@ -138,15 +138,46 @@ class TestDiagnosticsNonFinite:
     def _var(values: list[float]) -> VarFrame:
         return itc.load(np.array(values).reshape(-1, 1), names=["CT"])
 
+    @staticmethod
+    def _infinity_warnings(report: object) -> list[str]:
+        """The warnings about infinities, and no others.
+
+        `any("CT" in w)` would be satisfied by the all-NaN branch's
+        "variable 'CT' has no finite values", which fires for a
+        different reason and existed before this fix. Selecting on the
+        word the new warning owns is what makes these assertions
+        falsifiable.
+        """
+        return [w for w in report.warnings if "infinite value" in w]  # type: ignore[attr-defined]
+
     def test_an_all_infinity_variable_is_warned_about(self) -> None:
         report = self._var([np.inf, np.inf]).diagnostics()
-        assert any("CT" in warning for warning in report.warnings)
+        matching = self._infinity_warnings(report)
+        assert len(matching) == 1
+        assert "'CT'" in matching[0]
+        assert "2" in matching[0]
 
     def test_one_infinity_among_finite_values_is_warned_about(self) -> None:
         """Not only the degenerate case. One bad cell is the one a
         reader is least likely to notice unaided."""
         report = self._var([1.0, 2.0, np.inf]).diagnostics()
-        assert any("CT" in warning for warning in report.warnings)
+        matching = self._infinity_warnings(report)
+        assert len(matching) == 1
+        assert "'CT'" in matching[0]
+
+    def test_a_variable_carrying_both_nan_and_infinity_warns_about_both(
+        self,
+    ) -> None:
+        """The two counts are separate and neither absorbs the other.
+
+        `missing` and `non_finite` partition differently, and a cell of
+        each must show in both the counts and the warnings.
+        """
+        report = self._var([1.0, np.nan, np.inf]).diagnostics()
+        assert report.missing["CT"] == 1
+        assert report.non_finite["CT"] == 1
+        assert len(self._infinity_warnings(report)) == 1
+        assert report.partial_vars == ("CT",)
 
     def test_the_warning_names_the_count_and_reaches_the_printed_report(
         self,

@@ -871,22 +871,39 @@ representable without NaN; keep NaN as missing and validate only at the
 declaration boundary, stating the rule in REQ-39; or forbid NaN in the
 array and give the untouched-cell case a zero with a tag.
 
-**Narrowed, 2026-07-30 (FND-040, lane ITA-2G).** The relative-spec half
-is closed and this question is NOT what closed it. `_resolve_value` now
-refuses when a relative magnitude resolves to a non-finite array, which
-is a rule on a DECLARATION boundary: what it sees is what a declaration
-just produced, and NaN has one meaning there. That is the second option
-above applied to the declaration boundary only, and it was taken because
-it needs no answer to the question below; REQ-39 is not amended, because
-what changed is a refusal the requirement's own "standard uncertainty"
-already implies rather than a new rule about the values.
+**A second attempt, and a second revert, 2026-07-30 (FND-040, lane
+ITA-2G).** The lane put a finiteness rule in `_resolve_value`, on the
+RESOLVED array rather than on the assembled one, reasoning that a
+declaration boundary sees only what a declaration just produced and so
+needs no answer to the question above. It worked: measured 5 failing
+tests before and the whole suite green after, and none of the tests that
+blocked the first attempt go through that path.
 
-What remains open is exactly the assembled-array half, unchanged: the
-UncFrame carries NaN both for "this cell has no propagated uncertainty"
-and for "this uncertainty is not a number", and the reverted rule stays
-reverted until they are distinguishable. The `.itc` reopen path and
-propagation results still bypass every declaration check, which is the
-same hole this entry named at the start.
+It was reverted anyway, by the V and V and architect passes, and the
+reason is worth more than the fix. REQ-39 is STABLE and states this
+exact limit in its own normative text: "The rule is scoped to the
+DECLARED magnitude, and that limit is stated rather than implied. A
+relative specification resolves against the data, so a valid `5%`
+against a variable carrying NaN still yields a non-finite standard
+uncertainty. The structural home of the check is the UncFrame ...
+blocked on OQ-40." A check anywhere changes the behavior that paragraph
+describes, so the SRS moves first or nothing moves. The lane's own note
+here claimed "REQ-39 is not amended, because what changed is a refusal
+the requirement's own 'standard uncertainty' already implies", and that
+was false; it is replaced rather than left, because a wrong reason in
+this file is what the third attempt would read.
+
+**So the question now has an order attached to it,** and that is the
+part a later session needs. Two attempts have been reverted for two
+different reasons: the first for breaking the tests that write NaN
+deliberately, the second for outrunning the requirement. Whatever the
+seat decides, REQ-39's scoping paragraph is amended in the same change,
+with the document version, the revision history and Chapter 11.
+
+What remains open is unchanged in substance: the UncFrame carries NaN
+both for "this cell has no propagated uncertainty" and for "this
+uncertainty is not a number", and the `.itc` reopen path and propagation
+results bypass every declaration check.
 
 **SRS:** REQ-39, REQ-98, REQ-99.
 
@@ -1370,6 +1387,19 @@ alternative is that a reduction should REFUSE non-finite data the way
 infinity in measured aerodynamic data is a defect of acquisition rather
 than a value. That would be an SRS change to REQ-27 and it would apply
 to `integrate` and `smooth` alike, not to `average` alone.
+
+*And in the UNCERTAINTY of that reduction,* which is the sharper half
+and was missing from the first draft of this entry. One mask feeds the
+value, the populated count and the REQ-98/REQ-99 reduction weights, so
+an infinite cell is now counted as an independent measurement and the
+random component's `1/sqrt(N)` gain shrinks the reported uncertainty of
+the mean because of a cell carrying no measurement. Reading a different
+mask for the count than for the value would be worse, dividing the sum
+of one set by the size of another, so the coupling is deliberate and it
+is pinned by a test. But it means "an infinity is data" is not only a
+statement about the value: under it, an infinity makes the mean's
+uncertainty smaller. Whoever answers the value question answers this
+one with it.
 
 *In a coverage count.* `DiagnosticsReport.coverage` is documented as a
 "populated fraction", and an infinity occupies its cell, so 1.0 is

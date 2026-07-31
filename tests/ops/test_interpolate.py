@@ -332,6 +332,20 @@ class TestSourceCardinality:
         assert np.allclose(out.vars["CT"].values, [2.0])
 
     @pytest.mark.parametrize("method", ["linear", "cubic"])
+    def test_the_axis_translation_call_site_is_covered_too(self, method: str) -> None:
+        """`_validate_method` has two callers and both must preflight.
+
+        The mapping branch and the axis-translation branch have already
+        drifted apart twice in this module's history, over `deg`, so the
+        second call site is asserted rather than assumed.
+        """
+        arr = np.column_stack([np.array([0.0]), np.array([2.0])])
+        db = itc.load(arr, names=["alpha", "CL"]).pivot(dims=["alpha"])
+        with pytest.raises(DataError) as caught:
+            db.interpolate(axisTranslation={"from": "alpha", "to": "CL"}, method=method)
+        assert "'alpha'" in str(caught.value)
+
+    @pytest.mark.parametrize("method", ["linear", "cubic"])
     def test_two_points_are_enough(self, method: str) -> None:
         out = _line([0.0, 2.0], [0.0, 4.0]).interpolate({"alpha": [1.0]}, method=method)
         assert np.allclose(out.vars["CT"].values, [2.0])
