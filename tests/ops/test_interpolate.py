@@ -278,6 +278,65 @@ def test_itaca_025d_axis_translation_drops_pairs_naming_the_target() -> None:
     assert "axis_correlation=dropped" in out.history[-1].operation
 
 
+class TestSourceCardinality:
+    """FND-044: one source point is not enough to interpolate between.
+
+    The kernels assume at least two samples. With one, the segment
+    lookup clips to `n - 2 = -1`, so `lo` and `hi` are the same point and
+    the weight is a division by zero: `inf` under a bare RuntimeWarning,
+    which is a number a caller can carry a long way before noticing.
+    """
+
+    @staticmethod
+    def _one_point(name: str = "CT") -> VarFrame:
+        arr = np.column_stack([np.array([0.0]), np.array([2.0])])
+        return itc.load(arr, names=["alpha", name]).pivot(dims=["alpha"])
+
+    @pytest.mark.parametrize("method", ["linear", "cubic"])
+    def test_one_source_point_is_refused(self, method: str) -> None:
+        with pytest.raises(DataError) as caught:
+            self._one_point().interpolate({"alpha": [1.0]}, method=method)
+        message = str(caught.value)
+        assert "'alpha'" in message, message
+        assert method in message, message
+        assert "REQ-25" in message, message
+
+    @pytest.mark.parametrize("method", ["linear", "cubic"])
+    def test_the_refusal_arrives_before_any_warning(self, method: str) -> None:
+        """The point of failing loud is that nothing was computed first.
+
+        A refusal raised after the kernel ran would still leave the
+        RuntimeWarning, and a caller filtering warnings would see the
+        division that this refusal exists to prevent.
+        """
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with pytest.raises(DataError):
+                self._one_point().interpolate({"alpha": [1.0]}, method=method)
+        assert [str(w.message) for w in caught] == []
+
+    def test_nearest_still_works_from_one_point(self) -> None:
+        """`nearest` copies rather than divides, so it is not degenerate.
+
+        Refusing every method at `n = 1` would be the easy rule and the
+        wrong one: it would remove a defined operation to fix an
+        undefined one.
+        """
+        out = self._one_point().interpolate({"alpha": [1.0]}, method="nearest")
+        assert np.allclose(out.vars["CT"].values, [2.0])
+
+    def test_polyfit_degree_zero_still_works_from_one_point(self) -> None:
+        """A constant fit through one point is defined, and `deg >= n`
+        already refuses everything above it."""
+        out = self._one_point().interpolate({"alpha": [1.0]}, method="polyfit", deg=0)
+        assert np.allclose(out.vars["CT"].values, [2.0])
+
+    @pytest.mark.parametrize("method", ["linear", "cubic"])
+    def test_two_points_are_enough(self, method: str) -> None:
+        out = _line([0.0, 2.0], [0.0, 4.0]).interpolate({"alpha": [1.0]}, method=method)
+        assert np.allclose(out.vars["CT"].values, [2.0])
+
+
 class TestNegativePolynomialDegree:
     """REV-001 ITACA-033: silent zeros where the data is a straight line.
 

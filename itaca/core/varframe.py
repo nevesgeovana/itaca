@@ -672,7 +672,9 @@ class VarFrame:
         DataError
             Unknown method; ``deg`` missing for ``"polyfit"`` or passed
             to a method that does not consume it (REQ-105); empty call;
-            or malformed targets.
+            malformed targets; or fewer than two source points for
+            ``"linear"`` or ``"cubic"``, which interpolate BETWEEN
+            samples and have nothing to interpolate between at one.
 
         Examples
         --------

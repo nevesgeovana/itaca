@@ -75,12 +75,34 @@ def _replay(base: dict[str, Any], deg: int | NoDefault) -> dict[str, Any]:
     return base if deg is no_default else {**base, "deg": deg}
 
 
-def _validate_method(db: VarFrame, method: str, deg: int | NoDefault, n: int) -> None:
+def _validate_method(
+    db: VarFrame, method: str, deg: int | NoDefault, n: int, dim: str
+) -> None:
     if method not in _METHODS:
         raise DataError(
             f"method {method!r}",
             "interpolate received an unknown method",
             f"use one of {list(_METHODS)} (REQ-25)",
+        )
+    # FND-044. A preflight rather than a guard inside the kernel, so
+    # nothing is computed before the refusal: `linear_matrix` clips the
+    # segment index to `n - 2`, which is -1 when there is one point, so
+    # `lo` and `hi` become the same sample and the weight divides by
+    # zero. Measured: `y = [inf]` under a bare RuntimeWarning naming
+    # _interp_kernels.py:29, for BOTH methods, because `cubic_matrix`
+    # falls back to `linear_matrix` below three points.
+    #
+    # Only these two. `nearest` copies the sample and `polyfit` fits a
+    # degree-0 constant, both defined at one point, and `deg >= n` below
+    # already refuses every degree above it. Refusing all four would
+    # remove two operations that work to fix two that do not.
+    if method in ("linear", "cubic") and n < 2:
+        raise DataError(
+            f"dimension '{dim}' with {n} source point(s)",
+            f"interpolate(method='{method}') needs at least two points to "
+            f"interpolate between",
+            "use method='nearest' to carry the single value across, or "
+            "densify the source dimension first (REQ-25)",
         )
     # REQ-105. `deg` is consumed by `polyfit` and by nothing else, so
     # passing it to another method is refused rather than ignored. It was
@@ -354,7 +376,7 @@ def interpolate(
                 "axis translation accepts only the target variable as an explicit grid",
                 f"pass {{{to_var!r}: new_coords}} or no mapping (REQ-25)",
             )
-        _validate_method(db, method, deg, db.dims[from_dim].cardinality)
+        _validate_method(db, method, deg, db.dims[from_dim].cardinality, from_dim)
         targets = None
         if mapping and to_var in mapping:
             targets = np.asarray(mapping[to_var], dtype=float)
@@ -429,7 +451,7 @@ def interpolate(
                 "interpolate along a string-valued dimension",
                 "numerical operations need numeric coordinates (SRS 4.1.3)",
             )
-        _validate_method(db, method, deg, db.dims[dim].cardinality)
+        _validate_method(db, method, deg, db.dims[dim].cardinality, dim)
     for dim, new_coords in mapping.items():
         targets = np.asarray(new_coords, dtype=float)
         if targets.ndim != 1:

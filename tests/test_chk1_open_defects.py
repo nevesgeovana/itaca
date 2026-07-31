@@ -467,13 +467,21 @@ def test_r3_ita_008_a_variable_cannot_collide_with_the_synthetic_dimension() -> 
         ordinary.expand("a", [0.0, 1.0])
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-013: open at 730649f")
 @pytest.mark.parametrize("method", ["linear", "cubic"])
 def test_r3_ita_013_interpolation_from_one_point_fails_loud(method: str) -> None:
     """One source point must refuse, not return infinity.
 
-    The kernels assume at least two points; the degenerate case returns
+    The kernels assume at least two points; the degenerate case returned
     ``inf`` behind a bare RuntimeWarning.
+
+    FIXED, and the marker removed with the fix (FND-044). Measured on the
+    base: ``DID NOT RAISE`` for both methods, with the warning naming
+    ``_interp_kernels.py:29``. The refusal is a preflight in
+    ``_validate_method``, so it arrives before the kernel runs and the
+    warning is gone rather than merely followed by an exception. The
+    behavior itself is covered in
+    ``tests/ops/test_interpolate.py::TestSourceCardinality``, together
+    with the two methods that ARE defined at one point and still work.
     """
     db = _frame(["x", "y"], [[0.0, 2.0]], ["x"])
     with pytest.raises(ITACAError):

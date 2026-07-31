@@ -6,7 +6,7 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
-No signature change. Three observable behavior changes, under Fixed, and
+No signature change. Four observable behavior changes, under Fixed, and
 release infrastructure, recorded here because it changes how a release
 reaches PyPI and the next tag runs on it.
 
@@ -44,6 +44,14 @@ names `release.yml` with environment `pypi`. A publisher naming
 
 ### Fixed
 
+* `db.interpolate(..., method="linear")` and `method="cubic"` now raise
+  `DataError` when the source dimension carries fewer than two points,
+  instead of dividing by zero and returning `inf` under a bare
+  `RuntimeWarning`. Both methods interpolate BETWEEN samples, and the
+  segment lookup collapsed to a zero-width segment at one point. The
+  refusal is a preflight, so nothing is computed and no warning is
+  emitted before it. `method="nearest"` and `method="polyfit"` with
+  `deg=0` are defined at one point and are unchanged. REQ-25, FND-044.
 * `db.set_uncertainty({var: "5%"})` is now refused when the variable
   carries a non-finite value, instead of silently writing a non-finite
   standard uncertainty. A relative magnitude is resolved against the
