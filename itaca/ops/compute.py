@@ -115,10 +115,11 @@ def compute(
     # BEFORE evaluating: a number that will not be returned should not be
     # computed, and the check must run ahead of the debug report so that
     # report never describes a derivation that is about to be refused.
-    origin = shared_ancestry(db.history, carriers, db.correlation)
+    groups = db.axes.vector_groups
+    origin = shared_ancestry(db.history, carriers, db.correlation, groups)
     if origin is not None:
         name_a, name_b, roots = origin
-        suggestion = single_expression(db.history, name, text)
+        suggestion = single_expression(db.history, name, text, groups)
         fix = (
             f"write it as one expression, which is already correct: "
             f'db.compute("{suggestion}")'

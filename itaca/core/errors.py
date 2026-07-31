@@ -311,8 +311,9 @@ class UncertaintyCompatibilityError(UncertaintyError):
 class UncertaintyLineageError(UncertaintyError):
     """An operation would combine quantities whose shared origin it cannot see.
 
-    The clause-5 engine is exact WITHIN one expression, where the chain
-    rule supplies every partial derivative from one operator tree. It
+    The clause-5 engine is exact WITHIN one expression, to the first
+    order REQ-41 works to, because the chain rule supplies every partial
+    derivative from one operator tree. It
     carries no lineage BETWEEN operations: a variable derived by an
     earlier ``compute`` is stored as values plus an uncertainty and
     nothing records which inputs produced it, so a later operation that

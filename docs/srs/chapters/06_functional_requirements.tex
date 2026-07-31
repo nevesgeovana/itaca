@@ -736,6 +736,22 @@ requires a resolvable force and moment group; otherwise
 \mid I\,]$ is exact; covariance between force and moment channels is
 included when declared. History records source point, target point,
 and axis.
+
+\textbf{One transfer per frame while uncertainty is present.} The
+transfer makes $\mathbf{M}'$ a linear function of $\mathbf{F}$, so the
+two groups are correlated afterwards however independent they were
+before, and that INDUCED correlation has nowhere to be recorded: a
+declared matrix holds what the user declared, not what an operation
+created. A second transfer would therefore read them as independent and
+understate, measured 1.414 against a correct 2.0, 29\% low. When any
+force or moment channel carries uncertainty, a transfer applied to a
+frame an earlier transfer already moved raises
+\code{UncertaintyLineageError}, naming the single equivalent call from
+the original reference point, which is exact because one Jacobian spans
+the whole transfer. The same induced correlation makes a later
+\code{compute} combining a transferred moment with a force refuse under
+REQ-41. With no uncertainty declared there is nothing to lose and
+repeated transfers compose exactly (SEAT-UNC).
 \end{reqbox}
 
 \begin{reqbox}{REQ-101}{\stable}
@@ -854,6 +870,20 @@ from the propagated systematic component, following AIAA
 S-071A-1999~\citep{aiaaS071A}. Every report and export states components
 separately and combined ($u = (u_{\mathrm{sys}}^2 +
 u_{\mathrm{rand}}^2)^{1/2}$).
+
+\textbf{The random reduction assumes INDEPENDENT points, and refuses
+where they are not.} The $1/\sqrt{N}$ gain is the root sum of squares,
+which is the propagation rule for independent points. After
+\code{interpolate} the points along that dimension are each a linear
+combination of the SAME source points, so the assumption fails and the
+reduction understates: measured 0.559 where 0.707 is correct, 21\% low.
+A random-component reduction (\code{average}, \code{integrate}) over a
+dimension an earlier \code{interpolate} produced therefore raises
+\code{UncertaintyLineageError} until v0.3.0 carries the point-to-point
+covariance (REQ-41, SEAT-UNC). The SYSTEMATIC rule is unaffected in
+force and in meaning: the absolute weighted sum already assumes full
+correlation across points, and that assumption stays valid when
+interpolation makes points more correlated.
 \end{reqbox}
 
 \begin{reqbox}{REQ-40}{\stable}
@@ -941,6 +971,15 @@ variable values, so propagation through the operation weights is exact;
 the Jacobian rows (\code{rotate}, \code{translate\_moments},
 \code{combine}, \code{compute}) linearize a nonlinear map. No operation
 silently drops or silently carries an UncFrame.
+
+Every row states what the operation does WITHIN itself, on inputs whose
+correlation is either independent or declared. None of them is a claim
+about composition: an operation is exact per this table and the frame
+still carries no record of the correlation an operation INDUCES, so a
+later operation reading two of its outputs would treat them as
+independent. REQ-41 governs that boundary and refuses the compositions
+it covers; the rows below are unchanged in force and are not to be read
+as licensing them (SEAT-UNC).
 
 FIVE operations are provisional, and this is the one place the list is
 given rather than restated: \code{smooth}, \code{diff},

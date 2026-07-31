@@ -1,7 +1,7 @@
 # ITACA SRS: LaTeX sources
 
 Authoritative specification of ITACA, document version 0.2.8
-(2026-07-30, REQ-25 and REQ-35 catching up with two fixed defects;
+(2026-07-31, the propagation engine states its scope: one expression;
 baseline 0.1.0 was
 the first workspace-tracked version,
 research-workspace snapshot id DLV-008). Companions: `../DECISIONS.md`

@@ -139,9 +139,18 @@ class Unary:
             bad = np.asarray(self.op.undefined_at(operand))
             if bool(np.any(bad)):
                 expression = " ".join(self.tokens())
+                # The offending VALUE, not only how many points hit it.
+                # A count alone made the message unfalsifiable in review:
+                # mutating it to "999 of 999" survived every test, and
+                # the test asserting "the offending point is named" was
+                # satisfied incidentally by the '0' in another word (F5).
+                where_bad = np.asarray(np.nonzero(np.atleast_1d(bad)))
+                first = tuple(int(axis[0]) for axis in where_bad)
+                value = float(np.atleast_1d(np.asarray(operand))[first])
                 raise UncertaintyCompatibilityError(
-                    f"'{self.op.name}' at {int(np.count_nonzero(bad))} of "
-                    f"{bad.size} point(s) in '{expression}'",
+                    f"'{self.op.name}' at operand value {value:g}, "
+                    f"{int(np.count_nonzero(bad))} of {bad.size} point(s) "
+                    f"in '{expression}'",
                     f"differentiation with respect to '{name}': "
                     f"{self.op.undefined_reason}",
                     "exclude those points with where=, shift the operand "

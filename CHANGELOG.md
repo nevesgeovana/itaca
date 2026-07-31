@@ -6,6 +6,23 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
+One new public exception, `UncertaintyLineageError`. Eight observable
+behavior changes, under Changed and Fixed, and
+release infrastructure, recorded here because it changes how a release
+reaches PyPI and the next tag runs on it.
+
+**How v0.2.0 was published, stated plainly.** The v0.2.0 files on PyPI
+were uploaded by hand, over the artifact the release gate had built. The
+automated path could not publish, for the reason under Changed below.
+Those files therefore carry no PEP 740 provenance attestation. Releases
+from the next tag onward are published by the workflow and do carry one,
+so a reader comparing the two will find that asymmetry and this is what
+explains it.
+
+**Publishing configuration.** The PyPI trusted publisher for `itaca`
+names `release.yml` with environment `pypi`. A publisher naming
+`release_gate.yml` cannot work and is not a fallback.
+
 ### Added
 
 * `UncertaintyLineageError`, a new `UncertaintyError` leaf, raised when
@@ -60,33 +77,6 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
   instead expand its equations against the roots, which would be correct
   and silent, is OQ-50.
 
-### Fixed
-
-* `abs` at zero returned `u = 0` with an uncertainty-carrying input,
-  asserting exact certainty at a point where the derivative does not
-  exist (`np.sign(0)` is `0`). It now raises
-  `UncertaintyCompatibilityError` naming the operator and the number of
-  affected points. `abs` away from zero is unchanged, and an expression
-  carrying no uncertainty still evaluates `abs(0)` normally.
-
-No signature change. Seven observable behavior changes, under Fixed, and
-release infrastructure, recorded here because it changes how a release
-reaches PyPI and the next tag runs on it.
-
-**How v0.2.0 was published, stated plainly.** The v0.2.0 files on PyPI
-were uploaded by hand, over the artifact the release gate had built. The
-automated path could not publish, for the reason under Changed below.
-Those files therefore carry no PEP 740 provenance attestation. Releases
-from the next tag onward are published by the workflow and do carry one,
-so a reader comparing the two will find that asymmetry and this is what
-explains it.
-
-**Publishing configuration.** The PyPI trusted publisher for `itaca`
-names `release.yml` with environment `pypi`. A publisher naming
-`release_gate.yml` cannot work and is not a fallback.
-
-### Changed
-
 * The publish job moved out of the shared reusable gate and into
   `release.yml`, which is now the publisher (DD-45). PyPI Trusted
   Publishing matches the file containing the publishing job, while the
@@ -106,6 +96,13 @@ names `release.yml` with environment `pypi`. A publisher naming
   records that as the open half.
 
 ### Fixed
+
+* `abs` at zero returned `u = 0` with an uncertainty-carrying input,
+  asserting exact certainty at a point where the derivative does not
+  exist (`np.sign(0)` is `0`). It now raises
+  `UncertaintyCompatibilityError` naming the operator, the offending
+  operand value and how many points hit it. `abs` away from zero is unchanged, and an expression
+  carrying no uncertainty still evaluates `abs(0)` normally.
 
 * `db.compute(..., where=...)` now EVALUATES only inside its mask. The
   mask was applied to the result, while values and derivatives were

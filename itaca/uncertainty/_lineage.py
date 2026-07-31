@@ -2,7 +2,10 @@
 
 SEAT-UNC, the author decision of 2026-07-31. The clause-5 engine in
 :mod:`itaca.uncertainty.propagation` is exact WITHIN one expression,
-where the chain rule supplies every partial from one operator tree. It
+where the chain rule supplies every partial from one operator tree.
+"Exact" here means exact to the first order REQ-41 already works to:
+the GUM linearization is not what these findings are about, and the
+oracle cannot speak to it either, being first order itself (VV-5). It
 carries nothing BETWEEN operations: ``compute`` stores a derived
 variable as values plus an uncertainty, and nothing records which inputs
 produced it, so the next ``compute`` reading two such variables treats
@@ -27,8 +30,12 @@ because the two halves look adjacent:
 So the detector adds NO state to any frame. It reads what REQ-18 already
 guarantees: every operation records itself in History, and a replayable
 ``compute`` entry carries its equation string verbatim. Ancestry is
-recovered by walking that record, which is why a frame built before this
-module existed is analyzable by it.
+recovered by walking that record, so a frame built before this module
+existed is analyzable by it wherever the record is replayable. Where it
+is not, and a schema-1 archive restores its entries WITHOUT steps, the
+detector cannot see the derivations at all: those frames REFUSE rather
+than pass, which is the only safe reading of a record it cannot read
+(ARCH-3).
 
 The detector is deliberately CONSERVATIVE. It over-approximates the
 referenced names and treats an unparsable equation as sharing ancestry
@@ -45,22 +52,31 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from itaca.uncertainty.expression import _CONSTANTS
+
 if TYPE_CHECKING:
     from itaca.core.correlation import CorrelationMatrix
     from itaca.core.history import History
 
 _EQUATION = re.compile(r"^\s*(\w+)\s*=\s*(.+?)\s*$", re.DOTALL)
 
-_EXPRESSION_CONSTANTS = frozenset({"pi", "e"})
-"""Names ``parse_expression`` resolves to numbers rather than variables."""
+_EXPRESSION_CONSTANTS = frozenset(_CONSTANTS)
+"""Names ``parse_expression`` resolves to numbers rather than variables.
+
+Read from the parser's own table rather than re-listed here. A second
+copy drifts, and drift in THIS direction invents a shared ancestor
+between two expressions that merely name the same constant, which is a
+false refusal (ARCH-4).
+"""
 
 _UNKNOWN = "?"
-"""Stand-in root for an equation this module could not parse.
+"""Stand-in root for an origin this module could not determine.
 
 It is not a legal variable name, so it can never collide with a real
-one, and it intersects only with itself. Two targets whose equations
-both failed to parse are therefore treated as sharing ancestry, which is
-the conservative direction.
+one. It is added to EVERY carrier's ancestry when anything unreadable
+appears in the record, which is what makes the unknown case refuse: a
+root that intersects only itself would have let an unparsable variable
+compose with the very root it came from.
 """
 
 _MAX_SUGGESTION = 400
@@ -74,10 +90,38 @@ of pasting an unreadable line.
 
 @dataclass(frozen=True)
 class _Derivation:
-    """What an earlier ``compute`` produced, as names only."""
+    """What an earlier operation produced, as names only."""
 
     roots: frozenset[str]
     expanded: str
+    faithful: bool = True
+    """Whether ``expanded`` reproduces this variable's VALUES exactly.
+
+    False when the recorded call carried anything beyond its equation
+    (``where=``, ``fill=``, ``method=``) or spliced in an unfaithful
+    ancestor. Review finding ARCH-2 measured the consequence: with
+    ``p = 3*x`` computed under ``where="x > 1"``, ``p`` is
+    ``[nan, 6., 9.]`` and the suggested ``r = (3*x) - (2*x)`` returns
+    ``[1., 2., 3.]``, so the "equivalent" expression silently changed the
+    values. DD-46 rests on that expression being equivalent, so an
+    unfaithful one must not be offered at all.
+    """
+
+
+@dataclass(frozen=True)
+class _Lineage:
+    """What this module could read out of a History, and what it could not."""
+
+    derived: dict[str, _Derivation]
+    unreadable: frozenset[str]
+    """Operations whose effect on ancestry this module cannot determine.
+
+    Non-empty makes EVERY variable's origin unknown, including variables
+    that were never derived, so any multi-carrier expression is refused.
+    That severity is the point: it cannot be expressed by marking entries
+    in :attr:`derived`, because a root variable is absent from that map
+    by construction and would keep reading as independent (ARCH-3).
+    """
 
 
 def _referenced_names(text: str) -> frozenset[str] | None:
@@ -121,19 +165,138 @@ def _substitute(text: str, definitions: dict[str, _Derivation]) -> str:
     return re.sub(r"\b[A-Za-z_]\w*\b", _replace, text)
 
 
-def derivations(history: History) -> dict[str, _Derivation]:
-    """Map every ``compute`` target in ``history`` to its roots and full form.
+_STEPLESS_SAFE = frozenset(
+    {"load", "pivot", "set_uncertainty", "set_correlation", "concat", "declare_vector"}
+)
+"""Step-less operations that confer no cross-variable ancestry.
+
+A History entry with no ``step`` is non-replayable, and reading every one
+of them as "no ancestry" was a miss: a schema-1 archive restores its
+entries WITHOUT steps, so a frame reopened from one had its whole
+derivation record invisible to this module, and ``combine`` is
+non-replayable by construction while genuinely mixing two frames'
+variables (review finding ARCH-3).
+
+Reading every one of them as poison is not the answer either: ``load``
+is step-less on every frame ever built, so that would refuse everything.
+This is the allowlist, and it is an allowlist rather than a denylist so
+an operation added later is conservative by default. ``concat`` is here
+because it joins along a DIMENSION and never mixes one variable into
+another.
+"""
+
+_CROSS_VARIABLE_CALLS = frozenset({"translate_moments", "rotate"})
+"""Replayable operations that rewrite a variable from OTHER variables.
+
+Found by review (ARCH-1, VV-1) and measured: after one
+``translate_moments``, ``compute("c = MY - FZ")`` returned
+``u = 1.41421356`` where zero is correct, and ``"c = MY + FZ"`` returned
+the same 1.414 where 2.0 is correct. The transfer makes ``M'`` a
+function of ``F``, so they share ancestry exactly as two ``compute``
+targets do, and reading only ``compute`` entries let FND-058's own shape
+back in through a different door.
+
+Most operations are NOT here on purpose. ``smooth``, ``diff``,
+``average``, ``select`` and ``expand`` transform a variable from ITSELF
+along a dimension; they induce point-to-point correlation, which is
+FND-088's axis and handled by :func:`interpolated_dims`, not
+variable-to-variable correlation.
+"""
+
+_DEFAULT_GROUPS = {"force": ("FX", "FY", "FZ"), "moment": ("MX", "MY", "MZ")}
+
+
+def _group_members(
+    role: str, selected: object, groups: Mapping[str, Sequence[str]] | None
+) -> tuple[str, ...] | None:
+    """Resolve a vector group to its component names, or ``None`` if it cannot be."""
+    if isinstance(selected, str):
+        found = (groups or {}).get(selected)
+        return tuple(found) if found is not None else None
+    declared = (groups or {}).get(role)
+    if declared is not None:
+        return tuple(declared)
+    return _DEFAULT_GROUPS[role]
+
+
+def derivations(
+    history: History, groups: Mapping[str, Sequence[str]] | None = None
+) -> _Lineage:
+    """Map every derived variable in ``history`` to its roots and full form.
 
     Walks the record forward once, so a target that is recomputed from
     its own previous value expands against the DEFINITION IN FORCE at
-    that point and the walk terminates. A name that was never a compute
-    target is absent from the result, and the caller reads absence as
-    "this is a root".
+    that point and the walk terminates. A name that was never derived is
+    absent from the result, and the caller reads absence as "this is a
+    root".
+
+    Parameters
+    ----------
+    history : History
+        The frame's operation record.
+    groups : mapping of str to sequence of str, or None
+        The frame's declared vector groups, needed to resolve which
+        variables a ``rotate`` or ``translate_moments`` rewrote. When a
+        group cannot be resolved the operation is treated as conferring
+        UNKNOWN ancestry on every variable, which refuses rather than
+        guesses.
+
+    Returns
+    -------
+    _Lineage
+        The derived-variable map and the names of any operations this
+        module could not read.
+
+    Notes
+    -----
+    Only NAMES are propagated here. Recording a sensitivity would make
+    this the v0.3.0 lineage engine; see the module docstring.
     """
     found: dict[str, _Derivation] = {}
+    poisoned: set[str] = set()
+
+    def _roots_of(name: str) -> frozenset[str]:
+        previous = found.get(name)
+        return previous.roots if previous is not None else frozenset({name})
+
+    def _mix(outputs: Sequence[str], inputs: Sequence[str]) -> None:
+        """Give every output the union of every input's roots."""
+        roots = frozenset().union(*(_roots_of(name) for name in inputs))
+        for name in outputs:
+            found[name] = _Derivation(roots=roots, expanded=name, faithful=False)
+
     for entry in history:
         step = entry.step
-        if step is None or step.call != "compute":
+        if step is None:
+            if entry.name not in _STEPLESS_SAFE:
+                poisoned.add(entry.name)
+            continue
+        if step.call in _CROSS_VARIABLE_CALLS:
+            if step.call == "translate_moments":
+                force = _group_members("force", step.kwargs.get("force"), groups)
+                moment = _group_members("moment", step.kwargs.get("moment"), groups)
+                if force is None or moment is None:
+                    poisoned.add(step.call)
+                    continue
+                _mix(moment, (*force, *moment))
+            else:
+                named = step.kwargs.get("vector_groups")
+                wanted = (
+                    [str(name) for name in named]
+                    if isinstance(named, (list, tuple))
+                    else list(groups or {})
+                )
+                if not wanted:
+                    poisoned.add(step.call)
+                    continue
+                for role in wanted:
+                    members = (groups or {}).get(role)
+                    if members is None:
+                        poisoned.add(step.call)
+                        continue
+                    _mix(tuple(members), tuple(members))
+            continue
+        if step.call != "compute":
             continue
         equation = step.kwargs.get("equation")
         if not isinstance(equation, str):
@@ -144,16 +307,34 @@ def derivations(history: History) -> dict[str, _Derivation]:
         target, text = match.group(1), match.group(2)
         names = _referenced_names(text)
         if names is None:
-            found[target] = _Derivation(roots=frozenset({_UNKNOWN}), expanded=text)
+            # An equation this module cannot read is treated as an
+            # UNREADABLE OPERATION, not as a target with an unknown root.
+            # Writing it as a root was measurably too weak: `_UNKNOWN`
+            # intersects only itself, so an unparsable `p` against the
+            # root `x` it may well have come from found no common origin
+            # and let the composition through (QA F1, which asked for the
+            # test that showed it).
+            poisoned.add(f"compute('{target} = ...')")
+            found[target] = _Derivation(
+                roots=frozenset({_UNKNOWN}), expanded=text, faithful=False
+            )
             continue
         roots: set[str] = set()
         for name in names:
-            previous = found.get(name)
-            roots |= previous.roots if previous is not None else {name}
-        found[target] = _Derivation(
-            roots=frozenset(roots), expanded=_substitute(text, found)
+            roots |= _roots_of(name)
+        # An expansion is faithful only when this entry recorded nothing
+        # but its equation AND every ancestor it splices in was faithful
+        # too. `where=`, `fill=` and `method=` all change what the call
+        # produced, and the expansion drops them silently (ARCH-2).
+        faithful = set(step.kwargs) <= {"equation"} and all(
+            found[name].faithful for name in names if name in found
         )
-    return found
+        found[target] = _Derivation(
+            roots=frozenset(roots),
+            expanded=_substitute(text, found),
+            faithful=faithful,
+        )
+    return _Lineage(derived=found, unreadable=frozenset(poisoned))
 
 
 def _declared(correlation: CorrelationMatrix | None, name_a: str, name_b: str) -> bool:
@@ -177,18 +358,23 @@ def shared_ancestry(
     history: History,
     carriers: Sequence[str],
     correlation: CorrelationMatrix | None,
+    groups: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[str, str, frozenset[str]] | None:
     """First carrier pair with a common origin, or ``None`` if all independent.
 
     Parameters
     ----------
     history : History
-        The frame's operation record, read for its ``compute`` entries.
+        The frame's operation record.
     carriers : sequence of str
         Expression variables that carry uncertainty. Only carriers can
         contribute a variance term, so only they can induce covariance.
     correlation : CorrelationMatrix or None
         Declared pairs, which the detector steps aside for.
+    groups : mapping of str to sequence of str, or None
+        The frame's declared vector groups, so a ``rotate`` or
+        ``translate_moments`` can be resolved to the variables it
+        rewrote.
 
     Returns
     -------
@@ -197,11 +383,17 @@ def shared_ancestry(
     """
     if len(carriers) < 2:
         return None
-    known = derivations(history)
-    if not known:
+    lineage = derivations(history, groups)
+    if not lineage.derived and not lineage.unreadable:
         return None
+    unknown = frozenset({_UNKNOWN}) if lineage.unreadable else frozenset()
     ancestry = {
-        name: (known[name].roots if name in known else frozenset({name}))
+        name: (
+            lineage.derived[name].roots
+            if name in lineage.derived
+            else frozenset({name})
+        )
+        | unknown
         for name in carriers
     }
     ordered = sorted(carriers)
@@ -213,17 +405,75 @@ def shared_ancestry(
     return None
 
 
-def single_expression(history: History, target: str, text: str) -> str | None:
+def single_expression(
+    history: History,
+    target: str,
+    text: str,
+    groups: Mapping[str, Sequence[str]] | None = None,
+) -> str | None:
     """Build the one-call equation equivalent to a refused composition.
 
     This is what makes the refusal actionable rather than a lecture: the
     same arithmetic written as a single expression is ALREADY correct,
-    because the chain rule sees the whole tree at once. Returns ``None``
-    when the expansion grows past the point of being pasteable.
+    because the chain rule sees the whole tree at once.
+
+    Returns ``None`` rather than a suggestion when the expansion would
+    not be equivalent, and the caller then gives generic advice. Three
+    ways that happens, and the first two were review findings:
+
+    * An ancestor was computed with anything beyond its equation, so the
+      expansion silently drops a ``where=`` mask or a ``fill=`` and
+      changes the VALUES (ARCH-2).
+    * An ancestor's uncertainty was RE-DECLARED after it was computed,
+      so the expansion propagates from the original roots and ignores
+      the declaration that overrode them (VV-4).
+    * The expansion grows past the point of being pasteable.
+
+    A wrong suggestion is worse than none: the whole argument for
+    refusing rather than propagating is that the named expression is
+    equivalent (DD-46).
     """
-    expanded = _substitute(text, derivations(history))
-    equation = f"{target} = {expanded}"
+    lineage = derivations(history, groups)
+    if lineage.unreadable:
+        return None
+    names = _referenced_names(text)
+    if names is None:
+        return None
+    spliced = [name for name in names if name in lineage.derived]
+    if not all(lineage.derived[name].faithful for name in spliced):
+        return None
+    redeclared = _redeclared_after_derivation(history)
+    if any(name in redeclared for name in spliced):
+        return None
+    equation = f"{target} = {_substitute(text, lineage.derived)}"
     return equation if len(equation) <= _MAX_SUGGESTION else None
+
+
+def _redeclared_after_derivation(history: History) -> frozenset[str]:
+    """Variables whose uncertainty was assigned AFTER they were derived.
+
+    VV-4. ``set_uncertainty`` overrides what propagation produced, so the
+    stored uncertainty no longer follows from the recorded equation and
+    an expansion past that variable would quietly reinstate the value the
+    user replaced.
+    """
+    derived_so_far: set[str] = set()
+    overridden: set[str] = set()
+    for entry in history:
+        step = entry.step
+        if step is None:
+            continue
+        if step.call == "compute":
+            equation = step.kwargs.get("equation")
+            match = _EQUATION.match(equation) if isinstance(equation, str) else None
+            if match is not None:
+                derived_so_far.add(match.group(1))
+                overridden.discard(match.group(1))
+        elif step.call == "set_uncertainty":
+            spec = step.kwargs.get("spec")
+            if isinstance(spec, Mapping):
+                overridden |= {str(key) for key in spec} & derived_so_far
+    return frozenset(overridden)
 
 
 def earlier_transfer(history: History) -> tuple[float, float, float] | None:
