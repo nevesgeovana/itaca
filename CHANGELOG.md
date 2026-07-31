@@ -6,7 +6,7 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
-No signature change. Two observable behavior changes, under Fixed, and
+No signature change. Three observable behavior changes, under Fixed, and
 release infrastructure, recorded here because it changes how a release
 reaches PyPI and the next tag runs on it.
 
@@ -44,6 +44,16 @@ names `release.yml` with environment `pypi`. A publisher naming
 
 ### Fixed
 
+* `db.set_uncertainty({var: "5%"})` is now refused when the variable
+  carries a non-finite value, instead of silently writing a non-finite
+  standard uncertainty. A relative magnitude is resolved against the
+  data, so `"5%"` on `[1.0, nan]` produced `u = [0.05, nan]` and nothing
+  downstream refused it. **This makes a call that used to succeed
+  raise.** The remedy is one of two: declare an absolute magnitude, which
+  does not read the values and is still accepted over a variable with
+  holes, or `db.fill(...)`/`db.select(...)` the non-finite cells before
+  declaring a relative one. The refusal names how many cells of how many
+  are not finite. REQ-39, OQ-40, FND-040.
 * `db.combine(op='mean')` and `db.combine(op='weighted_mean')` no longer
   collapse the propagated uncertainty to zero on integer-valued frames.
   The constant partials were built with `np.full_like`, which inherits

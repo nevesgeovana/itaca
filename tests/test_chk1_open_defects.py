@@ -353,21 +353,24 @@ def test_r3_ita_007_set_uncertainty_refuses_a_non_finite_value(value: object) ->
         db.set_uncertainty({"x": value})
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-007 structural half: OQ-40")
 def test_r3_ita_007_a_relative_spec_cannot_inherit_a_non_finite_value() -> None:
     """The half of R3-ITA-007 the declared-magnitude check does not reach.
 
     ``"5%"`` is a valid spec and ``_resolve_value`` resolves it against
-    the data, so a variable carrying NaN yields a NaN standard
-    uncertainty with nothing refused. The structural fix is a finiteness
-    rule on the assembled array in ``UncFrame``, beside the negativity
-    rule; it was attempted and reverted because ``compute(where=)`` and
-    both ``fill`` uncertainty paths write NaN deliberately for cells they
-    did not touch, so that array carries two meanings of NaN and
-    separating them is the numerical analyst's call (OQ-40).
+    the data, so a variable carrying NaN yielded a NaN standard
+    uncertainty with nothing refused.
 
-    Pinned here rather than left in prose, so the remaining hole is
-    visible to CI and this ratchet turns the moment OQ-40 is answered.
+    FIXED, and the marker removed with the fix (FND-040). Measured on the
+    base: ``DID NOT RAISE``. The rule now sits in ``_resolve_value``, on
+    the RESOLVED array, which is a declaration boundary and sees only
+    what a declaration just produced.
+
+    It is NOT the fix this docstring used to predict, and OQ-40 is still
+    open. The rule on the ASSEMBLED array in ``UncFrame``, beside the
+    negativity rule, stays reverted: ``compute(where=)`` and both
+    ``fill`` uncertainty paths write NaN there deliberately for cells
+    they did not touch, so that array still carries two meanings of NaN
+    and separating them is still the numerical analyst's call.
     """
     db = itc.load(np.array([[1.0], [np.nan]]), names=["x"])
     with pytest.raises(ITACAError):

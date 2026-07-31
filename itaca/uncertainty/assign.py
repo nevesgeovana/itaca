@@ -32,17 +32,20 @@ def _scalar(name: str, value: object, origin: str, display: object) -> float:
     (``ITACA-031``).
 
     Finiteness is checked here, on the DECLARED magnitude, and that is
-    known to be the proximate cause rather than the structural one. The
-    structural home is :class:`~itaca.core.uncframe.UncFrame`, beside the
-    negativity rule and on the assembled array, because a relative spec
-    resolves against the data and a valid ``"5%"`` against a variable
-    carrying NaN still produces a non-finite standard uncertainty without
-    passing through this function. That fix was attempted and reverted:
-    the array legitimately carries NaN for cells ``compute(where=)`` and
-    ``fill`` did not touch, so NaN means BOTH missing and invalid there
-    and separating the two is a numerical-analyst decision. Registered as
-    OQ-40 with the measurement; the remaining hole is pinned by an xfail
-    ratchet rather than left in prose (``R3-ITA-007``).
+    one of two declaration boundaries rather than both: a relative spec
+    resolves against the data and never passes through this function, so
+    :func:`_resolve_value` carries the same rule over the RESOLVED array
+    (FND-040).
+
+    Neither is the rule on the ASSEMBLED array in
+    :class:`~itaca.core.uncframe.UncFrame`, beside the negativity rule.
+    That one was attempted and reverted, and it stays reverted: the
+    assembled array legitimately carries NaN for cells ``compute(where=)``
+    and ``fill`` did not touch, so NaN means BOTH missing and invalid
+    there and separating the two is a numerical-analyst decision. OQ-40
+    remains open for exactly that half. The two declaration boundaries do
+    not need it, because what they see is what a declaration just
+    produced, where NaN has one meaning.
 
     ``display`` is what the caller actually passed, so the first part of
     the message names an object they can find in their own code; the
@@ -80,7 +83,32 @@ def _resolve_value(
                 'use a float (absolute) or e.g. "0.05%" (relative, REQ-39)',
             )
         fraction = _scalar(name, value[:-1], "the percentage", value) / 100.0
-        return np.asarray(fraction * np.abs(reference))
+        resolved = np.asarray(fraction * np.abs(reference))
+        # FND-040. The spec is valid and the RESOLUTION is what fails: a
+        # relative magnitude reads the data, so a non-finite datum writes a
+        # non-finite standard uncertainty that nothing downstream refuses.
+        # Measured: '5%' on [1.0, NaN] was accepted as u = [0.05, nan],
+        # while the same spec on [1.0, 2.0] gives [0.05, 0.1].
+        #
+        # This is NOT the rule OQ-40 asks about. That one lives on the
+        # ASSEMBLED array in UncFrame, and it cannot be added yet because
+        # compute(where=) writes NaN there deliberately, so that array
+        # carries two meanings of NaN. This check sees only what a
+        # declaration just produced, where NaN has one meaning and it is
+        # "invalid". OQ-40 stays open for the assembled-array half.
+        bad = int(np.count_nonzero(~np.isfinite(resolved)))
+        if bad:
+            raise UncertaintyError(
+                f"uncertainty {value!r} for '{name}'",
+                f"the relative magnitude resolved against the values of "
+                f"'{name}' and {bad} of {resolved.size} of them are not "
+                f"finite, so the standard uncertainty is not a number "
+                f"either",
+                "declare an absolute standard uncertainty for this "
+                "variable, or fill or select the non-finite cells before "
+                "declaring a relative one (REQ-39)",
+            )
+        return resolved
     return np.full(reference.shape, _scalar(name, value, "the value", value))
 
 

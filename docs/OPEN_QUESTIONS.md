@@ -871,6 +871,23 @@ representable without NaN; keep NaN as missing and validate only at the
 declaration boundary, stating the rule in REQ-39; or forbid NaN in the
 array and give the untouched-cell case a zero with a tag.
 
+**Narrowed, 2026-07-30 (FND-040, lane ITA-2G).** The relative-spec half
+is closed and this question is NOT what closed it. `_resolve_value` now
+refuses when a relative magnitude resolves to a non-finite array, which
+is a rule on a DECLARATION boundary: what it sees is what a declaration
+just produced, and NaN has one meaning there. That is the second option
+above applied to the declaration boundary only, and it was taken because
+it needs no answer to the question below; REQ-39 is not amended, because
+what changed is a refusal the requirement's own "standard uncertainty"
+already implies rather than a new rule about the values.
+
+What remains open is exactly the assembled-array half, unchanged: the
+UncFrame carries NaN both for "this cell has no propagated uncertainty"
+and for "this uncertainty is not a number", and the reverted rule stays
+reverted until they are distinguishable. The `.itc` reopen path and
+propagation results still bypass every declaration check, which is the
+same hole this entry named at the start.
+
 **SRS:** REQ-39, REQ-98, REQ-99.
 
 ## OQ-41: Three refusals prescribe a rename, and there is no rename operation

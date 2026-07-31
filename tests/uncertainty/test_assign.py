@@ -69,6 +69,59 @@ class TestSetUncertainty:
         assert result.history.last.comment == "balance cal"
 
 
+class TestRelativeSpecResolution:
+    """FND-040: a valid spec must not resolve to an invalid uncertainty.
+
+    The refusal is at the DECLARATION boundary and on the resolved array
+    only. It is deliberately not the finiteness rule on the assembled
+    UncFrame that OQ-40 asks about: `compute(where=)` writes NaN into that
+    array on purpose, so the rule there cannot be added until the two
+    meanings of NaN are distinguishable, and this one does not need it.
+    """
+
+    @staticmethod
+    def _with(values: list[float]) -> VarFrame:
+        return itc.load(np.array(values).reshape(-1, 1), names=["x"])
+
+    @pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+    def test_relative_spec_over_non_finite_data_is_refused(self, bad: float) -> None:
+        with pytest.raises(UncertaintyError) as raised:
+            self._with([1.0, bad]).set_uncertainty({"x": "5%"})
+        message = str(raised.value)
+        assert "5%" in message
+        assert "'x'" in message
+
+    def test_the_refusal_names_the_object_the_cause_and_the_fix(self) -> None:
+        """REQ-81's three parts, on the part a caller can act on.
+
+        The count matters: a caller reading "1 of 2" knows the variable is
+        partly populated and that filling is the remedy, where a bare
+        "not finite" reads as a broken declaration.
+        """
+        with pytest.raises(UncertaintyError) as raised:
+            self._with([1.0, np.nan]).set_uncertainty({"x": "5%"})
+        message = str(raised.value)
+        assert "1 of 2" in message
+        assert "REQ-39" in message
+
+    def test_an_absolute_spec_over_the_same_data_is_still_accepted(self) -> None:
+        """The refusal is about RESOLUTION, not about the data.
+
+        An absolute magnitude does not read the values at all, so a
+        variable with a hole still takes one. Without this the fix would
+        be a ban on declaring uncertainty over sparse data, which is not
+        what REQ-39 says and not what was measured.
+        """
+        result = self._with([1.0, np.nan]).set_uncertainty({"x": 0.5})
+        assert result.uncertainty is not None
+        assert np.allclose(result.uncertainty.systematic["x"], 0.5)
+
+    def test_a_relative_spec_over_finite_data_is_unchanged(self) -> None:
+        result = self._with([1.0, 2.0]).set_uncertainty({"x": "5%"})
+        assert result.uncertainty is not None
+        assert np.allclose(result.uncertainty.systematic["x"], [0.05, 0.1])
+
+
 class TestSetCorrelation:
     def test_declares_pairs(self, db: VarFrame) -> None:
         assert db.correlation is None  # REQ-91
