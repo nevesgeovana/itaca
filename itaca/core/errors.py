@@ -43,6 +43,7 @@ __all__ = [
     "UncertaintyCompatibilityError",
     "UncertaintyError",
     "UncertaintyKeyError",
+    "UncertaintyLineageError",
     "VariableNotFoundError",
     "VectorGroupError",
     "VersionResolutionError",
@@ -305,6 +306,32 @@ class UncertaintyKeyError(UncertaintyError):
 
 class UncertaintyCompatibilityError(UncertaintyError):
     """Non-differentiable function in an expression with uncertainty inputs (REQ-36)."""
+
+
+class UncertaintyLineageError(UncertaintyError):
+    """An operation would combine quantities whose shared origin it cannot see.
+
+    The clause-5 engine is exact WITHIN one expression, where the chain
+    rule supplies every partial derivative from one operator tree. It
+    carries no lineage BETWEEN operations: a variable derived by an
+    earlier ``compute`` is stored as values plus an uncertainty and
+    nothing records which inputs produced it, so a later operation that
+    reads two such variables treats them as independent when they are
+    not. The error goes both ways, and both were measured (BRF-059):
+    ``p = 3*x`` then ``q = 2*x`` then ``r = p - q`` OVERSTATED u(r) by
+    3.6x, and two sequential ``translate_moments`` UNDERSTATED u(M) by
+    29 percent.
+
+    SEAT-UNC (author decision, 2026-07-31) chose to refuse these
+    compositions for v0.2.x rather than return a number nobody should
+    trust. The refusal always names a way forward, because the same
+    arithmetic written as a single expression is already correct.
+
+    Lineage tracking with sensitivities, which would let the engine
+    propagate these compositions instead of refusing them, is owed to
+    v0.3.0. This class is the interim contract and is expected to stop
+    being raised, not to change meaning.
+    """
 
 
 class CorrelationKeyError(UncertaintyError):

@@ -10,6 +10,32 @@
 \textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Summary}\\
 \midrule
 \midrule
+0.2.8 & 2026-07-31 & Geovana Neves &
+The propagation engine states its scope, and refuses outside it. A MINOR
+revision adding no requirement and withdrawing none, but narrowing two
+stable ones to what the code can actually deliver. REQ-41 promised GUM
+clause-5 propagation and said nothing about where that promise stops:
+the chain rule sees ONE expression, and a derived variable is stored
+with no record of the inputs that produced it, so a later operation
+reading two such variables treated them as independent. Measured 3.6x
+OVERSTATEMENT for \code{p = 3*x}, \code{q = 2*x}, \code{r = p - q}, and
+29\% UNDERSTATEMENT for two sequential \code{translate\_moments}, on an
+engine whose single-expression answers are exact. REQ-41 now states the
+one-expression scope and the interim refusal
+(\code{UncertaintyLineageError}), which names the equivalent single
+expression rather than merely declining; the same refusal covers
+\code{translate\_moments} stacked on an earlier transfer (REQ-100) and a
+RANDOM-component reduction over an interpolated dimension (REQ-98,
+REQ-99), and steps aside for a pair the user declared with
+\code{set\_correlation}. REQ-36's non-differentiability guard extends
+from a non-differentiable FUNCTION to a differentiable one evaluated at
+a point where its partial does not exist: \code{abs} at zero returned
+\code{u = 0} through \code{np.sign(0)}, asserting certainty where the
+derivative has none. Lineage with sensitivities, which would propagate
+these compositions instead of refusing them, is v0.3.0 work. Author
+decision SEAT-UNC, 2026-07-31; evidence in BRF-059 (FND-058, FND-074,
+FND-088, FND-095).\\
+\addlinespace
 0.2.7 & 2026-07-30 & Geovana Neves &
 Two requirements catch up with two fixed defects. A PATCH revision adding
 no requirement and withdrawing none. REQ-25 now states that

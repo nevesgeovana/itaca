@@ -22,6 +22,7 @@ from itaca.ops._reduction import (
     reduce_systematic,
     reduce_tags,
     reduced_dims,
+    refuse_correlated_reduction,
 )
 
 
@@ -44,6 +45,7 @@ def average(
                 "average(along=...) referenced an absent dimension",
                 f"available dimensions: {list(db.dims)}",
             )
+    refuse_correlated_reduction(db, names, "average")
     content = content_of(db)
     order = list(content.dims)
     axes = tuple(sorted(order.index(name) for name in names))

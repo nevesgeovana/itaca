@@ -6,6 +6,69 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
+### Added
+
+* `UncertaintyLineageError`, a new `UncertaintyError` leaf, raised when
+  an operation would combine quantities whose shared origin the engine
+  cannot see (SRS document 0.2.8, REQ-41; author decision SEAT-UNC).
+  Exported from `itaca.core.errors`.
+* A dev-only GUM oracle under `tests/oracle/`, cross-validating the
+  propagation engine against the `uncertainties` package, and
+  metamorphic invariants for the engine under `tests/uncertainty/`.
+  DD-25 approved this oracle in M0 and no dependency group ever listed
+  the package, so the ruff rule barring it from library code named an
+  import nobody could make and the oracle was never written. It is now
+  in the `dev` extra. Reinstall with `pip install -e ".[dev]"`.
+
+### Changed
+
+* **The uncertainty engine now refuses compositions it cannot propagate
+  correctly, instead of returning a wrong number.** It is exact WITHIN
+  one expression, where the chain rule sees the whole tree, and carries
+  no lineage BETWEEN operations. Measured before this change: `p = 3*x`,
+  `q = 2*x`, `r = p - q` gave `u(r) = 0.3606` where `0.1` is correct, a
+  3.6x overstatement; `y = 2*x` then `z = y - 2*x` gave `0.2828` where
+  zero is exact; two sequential `translate_moments` understated by 29
+  percent; `interpolate` then `average` understated the random component
+  by 21 percent.
+
+  Three operations are affected, and each refusal names a way forward:
+
+  * `db.compute` when two uncertainty carriers in the equation share an
+    origin. The message carries the equivalent SINGLE expression, built
+    from the recorded equations, which is already correct.
+  * `db.translate_moments` applied to a frame an earlier transfer
+    already moved. The message names the one-call transfer from the
+    original reference point.
+  * `db.average` and `db.integrate` reducing the RANDOM component along
+    a dimension an earlier `interpolate` produced. The systematic
+    component is unaffected: its rule already assumes full correlation.
+
+  A pair declared with `db.set_correlation` is propagated rather than
+  refused, since the coefficient is then a statement the engine uses.
+  Independent derivations are untouched, so the documented
+  `q = 0.5*rho*V**2` then `CL = FZ/(q*S)` workflow still propagates.
+
+  Lineage with sensitivities, which would propagate these compositions
+  rather than refuse them, is v0.3.0 work.
+* **An `.itceq` processor whose corrections read what they correct now
+  refuses** rather than returning an understated uncertainty, since it
+  is an ordinary sequence of `compute` calls and inherits the same
+  limit. Measured 0.1 to 0.9 percent low on the reference blockage
+  workflow, growing with the coefficient. A processor whose equations
+  read only root variables is unaffected. Whether the processor should
+  instead expand its equations against the roots, which would be correct
+  and silent, is OQ-50.
+
+### Fixed
+
+* `abs` at zero returned `u = 0` with an uncertainty-carrying input,
+  asserting exact certainty at a point where the derivative does not
+  exist (`np.sign(0)` is `0`). It now raises
+  `UncertaintyCompatibilityError` naming the operator and the number of
+  affected points. `abs` away from zero is unchanged, and an expression
+  carrying no uncertainty still evaluates `abs(0)` normally.
+
 No signature change. Seven observable behavior changes, under Fixed, and
 release infrastructure, recorded here because it changes how a release
 reaches PyPI and the next tag runs on it.

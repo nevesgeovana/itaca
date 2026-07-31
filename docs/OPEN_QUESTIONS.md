@@ -1446,3 +1446,60 @@ seat should answer once.
 answer changes REQ-27, REQ-17 or REQ-90.
 
 **SRS:** REQ-17, REQ-27, REQ-90.
+
+## OQ-50: Should an .itceq processor expand its equations against the root variables?
+
+**Raised:** 2026-07-31, lane ITA-2B, while implementing the SEAT-UNC
+interim refusal (FND-058, BRF-059).
+**Status:** open (product owner, with the numerical analyst).
+
+**What was measured.** The processor is an ordinary sequence of
+`compute` calls, so it inherits the between-call lineage loss exactly.
+On the BALANCE test workflow, whose `[corrections]` compute a blockage
+factor from `CL` and then apply it to `CL`, measured on `dde261c` before
+the refusal existed, with `FZ = [100, 200, 300]`, `V = 50`,
+`rho = 1.225`:
+
+    processor       u(CL_corr) = [0.00164167 0.00166855 0.0017128 ]
+    one expression  u(CL_corr) = [0.00164342 0.00167564 0.00172907]
+    ratio                      = [0.99893605 0.99577124 0.99058533]
+
+It UNDERSTATED, by 0.1 to 0.9 percent, growing with `CL`. The magnitude
+is small on this fixture and the direction is the dangerous one, and a
+correction that depends on the coefficient it corrects is not an unusual
+workflow: it is what a blockage or a wall correction IS.
+
+**Why it is a question rather than a fix.** There is an obvious repair.
+The processor knows its whole equation set and resolves it into
+dependency order already, so it could substitute each earlier target
+into the later equations and compute every target from the ROOT
+variables in a single expression. That is the same rewrite the refusal
+suggests to a user, applied automatically, and it would make the
+processor correct and silent instead of correct and refusing.
+
+Three things stop this lane from simply doing it:
+
+* It changes what History RECORDS. The operation strings would carry
+  expanded equations rather than the lines the user wrote in the file,
+  which changes the state hash and what a reader of the provenance sees.
+  A user who wrote `CL_corr = CL * blockage` and reads back a 90
+  character expansion is owed an explanation.
+* It collides with OQ-43. A target whose uncertainty is RE-DECLARED by
+  the `[uncertainties]` section after it is written must not be expanded
+  through, because the declaration overrides the propagated value; an
+  equation expanded past it would propagate from the original roots and
+  silently ignore the declaration. That is a second wrong answer, not a
+  fix, and OQ-43 is itself open.
+* It is the `pproc` layer's behavior, not the uncertainty engine's.
+
+**What ships in the interim.** The refusal, which is SEAT-UNC's posture
+applied consistently: a processor whose corrections read what they
+correct now raises `UncertaintyLineageError` naming the pair, instead of
+returning an understated number. A processor whose equations read only
+root variables is unaffected, which is the common shape.
+
+**Who decides:** the product owner, on whether the flagship data
+reduction path refuses or expands; the numerical analyst on the
+interaction with OQ-43.
+
+**SRS:** REQ-41, REQ-45, REQ-53, REQ-99.

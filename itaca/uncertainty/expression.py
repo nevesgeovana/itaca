@@ -128,9 +128,28 @@ class Unary:
         """
         if name not in self.a.variables():
             return np.asarray(0.0)
-        return np.asarray(
-            self.op.d_da(self.a.evaluate(env)) * self.a.derivative(env, name)
-        )
+        operand = self.a.evaluate(env)
+        if self.op.undefined_at is not None:
+            # FND-095. Checked HERE and not in the operator table because
+            # the table holds pure data: the operand values only exist
+            # once the subtree has been evaluated. The dead-branch return
+            # above still precedes it, so an operator applied to a
+            # subtree that does not reference `name` is never questioned
+            # about a point whose derivative it was not going to take.
+            bad = np.asarray(self.op.undefined_at(operand))
+            if bool(np.any(bad)):
+                expression = " ".join(self.tokens())
+                raise UncertaintyCompatibilityError(
+                    f"'{self.op.name}' at {int(np.count_nonzero(bad))} of "
+                    f"{bad.size} point(s) in '{expression}'",
+                    f"differentiation with respect to '{name}': "
+                    f"{self.op.undefined_reason}",
+                    "exclude those points with where=, shift the operand "
+                    "away from the non-differentiable value, or switch to "
+                    "method='mcm' (available from v0.3.0), which needs no "
+                    "derivative (REQ-36, REQ-44)",
+                )
+        return np.asarray(self.op.d_da(operand) * self.a.derivative(env, name))
 
     def variables(self) -> set[str]:
         """Variables referenced below this node."""

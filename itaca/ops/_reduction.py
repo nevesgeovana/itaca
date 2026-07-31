@@ -18,13 +18,60 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.dimension import Dimension
+from itaca.core.errors import UncertaintyLineageError
+from itaca.uncertainty._lineage import interpolated_dims
 
 if TYPE_CHECKING:
+    from itaca.core.varframe import VarFrame
     from itaca.ops._content import Content
 
 _Array = NDArray[Any]
 
 DATAPOINT_DIM = "datapoint"
+
+
+def refuse_correlated_reduction(db: VarFrame, names: list[str], operation: str) -> None:
+    """Refuse a RANDOM reduction over points an interpolation correlated.
+
+    FND-088, SEAT-UNC. ``reduce_random`` below is the root sum of
+    squares, which is the propagation rule for INDEPENDENT points. After
+    ``interpolate`` the points along that dimension are each a linear
+    combination of the same source points, so they are not independent
+    and the rule understates: measured 0.559 where 0.707 is correct, 21
+    percent low.
+
+    Only the random component is affected, and that asymmetry is real
+    rather than an accident of where the check sits.
+    ``reduce_systematic`` is the absolute weighted sum, which already
+    assumes FULL correlation across points, and a fully correlated
+    assumption stays valid when interpolation makes points more
+    correlated. So a systematic-only frame reduces exactly as before.
+
+    Placed here, in the module both ``average`` and ``integrate`` take
+    their weight rules from, because both take ``reduce_random`` from it
+    and the defect belongs to the rule and not to either caller.
+    """
+    if db.uncertainty is None or not db.uncertainty.random:
+        return
+    touched = interpolated_dims(db.history) & set(names)
+    if not touched:
+        return
+    carried = sorted(db.uncertainty.random)
+    raise UncertaintyLineageError(
+        f"random uncertainty on {carried} over dimension(s) {sorted(touched)}",
+        f"{operation} propagates the random component as a root sum of "
+        f"squares, which is only valid for INDEPENDENT points, and "
+        f"interpolate made each point along {sorted(touched)} a linear "
+        f"combination of the same source points: the result would "
+        f"UNDERSTATE (measured 21 percent low)",
+        "reduce on the source grid and interpolate afterwards, or reduce "
+        "along a dimension the interpolation did not touch (interpolating "
+        "onto a common grid and then averaging ACROSS runs is unaffected). "
+        "A frame carrying only a systematic component is also unaffected, "
+        "since that rule already assumes full correlation. Reducing over "
+        "interpolated points correctly needs the point-to-point covariance "
+        "and is v0.3.0 work (SEAT-UNC, REQ-98, REQ-99)",
+    )
 
 
 def reduced_dims(content: Content, names: list[str]) -> dict[str, Dimension]:

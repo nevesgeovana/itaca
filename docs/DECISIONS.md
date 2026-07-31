@@ -1773,3 +1773,112 @@ REQ-96 is the pre-commit mirror obligation, and nothing here touches
 `.pre-commit-config.yaml`. No SRS revision is owed either. No requirement
 text changes, the release topology is not specified normatively, and
 REQ-95's continuous-integration obligation is still satisfied.
+
+## DD-46: The engine refuses what it cannot propagate, and names the expression that works
+
+**Date:** 2026-07-31
+**Status:** accepted (author decision SEAT-UNC)
+**Requirements:** REQ-36, REQ-41, REQ-98, REQ-99, REQ-100
+**Supersedes:** nothing
+
+### The problem
+
+The GUM clause-5 engine is exact WITHIN one expression, because the chain
+rule differentiates one operator tree and sees every occurrence of every
+variable at once. It carries nothing BETWEEN operations. `compute` stores
+a derived variable as values plus an uncertainty and records no relation
+to the inputs that produced it, so the next operation reading two such
+variables treats them as independent.
+
+Measured on `dde261c`, and the error goes both ways:
+
+| route | result | correct |
+|---|---|---|
+| `p = 3*x`, `q = 2*x`, `r = p - q` | u(r) = 0.3606 | 0.1 |
+| `y = 2*x`, `z = y - 2*x` | u(z) = 0.2828 | exactly 0 |
+| two sequential `translate_moments` | u(M) = 1.414 | 2.0 |
+| `interpolate` then `average` (random) | 0.559 | 0.707 |
+
+An overstatement is embarrassing. An understatement is a wrong number in
+an engineering report, and two of the four understate.
+
+### The options
+
+**A. Fix it structurally.** Carry lineage with sensitivities: the partial
+derivative of every derived quantity with respect to every root,
+maintained by every operation. This is correct and it is a redesign of
+what a VarFrame stores.
+
+**B. Return the number and document the limit.** Cheapest, and it makes
+the documentation the only thing standing between a user and an
+understated uncertainty. This workspace already holds the rule that
+documentation is not a guard.
+
+**C. Refuse the composition, with an actionable workaround.**
+
+### The decision
+
+**C**, as an interim measure, with **A** owed to v0.3.0.
+
+What makes C acceptable rather than mutilating is a property of this
+specific defect: **the engine is already right within one expression.**
+For every composition refused there EXISTS a single expression that
+returns the correct answer, so the refusal is never a dead end. The
+implementation exploits that directly. It reconstructs the equivalent
+one-call equation by substituting each derived variable's own recorded
+equation, and puts it in the message:
+
+    db.compute("r = (3*x) - (2*x)")
+
+That is a line to paste, not a lecture about covariance. A test takes the
+expression out of the error message, runs it, and asserts the result is
+0.1, so the workaround is verified rather than asserted.
+
+A pair the user declared with `set_correlation` is propagated rather than
+refused. The coefficient is then a statement the engine uses in the
+clause-5 formula, and this decision has no standing to overrule a
+declaration the library already honors everywhere else.
+
+### Why detection is not the structural fix in disguise
+
+The two look adjacent and are not, and the boundary is the whole reason
+this could ship separately from v0.3.0:
+
+* **Detection needs the NAMES.** Knowing which roots a quantity came from
+  is enough to know two quantities are not independent.
+* **Propagation needs the SENSITIVITIES.** Computing the covariance
+  instead of refusing needs the partials, maintained across every
+  operation.
+
+So the detector reads ancestry out of History, which REQ-18 already
+guarantees, and adds no state to any frame. A frame written before this
+version is analyzable by it. `itaca/uncertainty/_lineage.py` carries the
+rule that a function there wanting to store a derivative has crossed into
+v0.3.0.
+
+### Conservative on purpose
+
+The detector over-approximates: it may refuse a composition that would
+have been fine, and it treats an equation it cannot parse as sharing
+ancestry with everything. It must never miss one. A false refusal is an
+error message a user works around in one step; a missed one is a number
+nobody can tell is wrong.
+
+Two consequences were accepted with open eyes. An `.itceq` processor
+whose corrections read the coefficient they correct now refuses, which
+touches the flagship data-reduction path; it was understating by 0.1 to
+0.9 percent on the reference workflow, and whether the processor should
+instead expand its equations against the roots is OQ-50. And
+`translate_moments` arms on ANY earlier transfer without checking it
+moved the same group.
+
+### The fourth finding
+
+`abs` at zero is a different mechanism under the same posture. `np.sign(0)`
+is `0`, so `u(|x|)` came back as an exact ZERO at the one point where the
+derivative does not exist. The dev-only oracle (DD-25) returns 0.1 there.
+Two careful implementations disagreeing at exactly one point is what a
+non-differentiable point looks like from outside, so the point is refused
+rather than adjudicated. The rule stays narrow and covers a partial that
+is silently WRONG, not merely infinite: `sqrt` and `log` at zero return an
+infinite partial, and an infinity is not mistaken for a measurement.

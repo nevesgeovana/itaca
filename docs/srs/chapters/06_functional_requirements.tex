@@ -650,6 +650,18 @@ the structural rule that a dead branch is never evaluated, which is what
 stops a domain-invalid partial from poisoning a sum it contributes
 nothing to (see REQ-41; \code{u(x**2)} for a negative base returned
 \code{NaN} while that rule was missing).
+
+The guard extends to a differentiable operator evaluated at a point
+where its partial does not exist. \code{abs} is the case that matters,
+because \code{np.sign(0)} is \code{0} and the propagated uncertainty
+came back as an exact ZERO: the library asserted total certainty at the
+one point where \code{d|a|/da} has no value, its left and right limits
+being $-1$ and $+1$. Such a point now raises
+\code{UncertaintyCompatibilityError} naming the operator and how many
+points are affected. The rule is deliberately narrow and applies where
+a partial is silently WRONG, not merely infinite: \code{sqrt} and
+\code{log} at zero return an infinite partial, and an infinity in the
+result is not something a reader mistakes for a measurement.
 \end{reqbox}
 
 \begin{reqbox}{REQ-37}{\stable}
@@ -874,6 +886,26 @@ derivatives computed symbolically via chain rule on the AST expression
 tree. The engine handles arbitrary continuous nonlinearities; the
 linearization assumption is the GUM standard one and is documented in the
 debug output (REQ-34).
+
+\textbf{Scope: one expression.} The chain rule sees a single operator
+tree, so the engine is exact for every quantity WITHIN one
+\code{compute} call, including a variable that appears more than once.
+It carries no lineage BETWEEN operations: a derived variable is stored
+as values plus an uncertainty, and no record relates it to the inputs
+that produced it, so a later operation reading two such variables would
+treat them as independent when they are not. Until v0.3.0 supplies
+lineage with sensitivities, an operation that would combine quantities
+of common origin RAISES \code{UncertaintyLineageError} rather than
+returning a number computed from a false independence assumption, and
+the message names the equivalent single expression, which is already
+correct. The refusal applies to \code{compute} (shared ancestry among
+uncertainty carriers), to \code{translate\_moments} stacked on an
+earlier transfer (REQ-100), and to a RANDOM-component reduction over a
+dimension an earlier \code{interpolate} produced (REQ-98, REQ-99). A
+pair the user has declared with \code{set\_correlation} is propagated
+rather than refused: the coefficient is then a statement the engine
+uses. Measured overstatement 3.6x and understatement 29\% before the
+refusal (SEAT-UNC, 2026-07-31).
 \end{reqbox}
 
 \begin{reqbox}{REQ-42}{\stable}

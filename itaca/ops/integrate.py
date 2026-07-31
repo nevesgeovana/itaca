@@ -29,6 +29,7 @@ from itaca.ops._reduction import (
     reduce_systematic,
     reduce_tags,
     reduced_dims,
+    refuse_correlated_reduction,
     trapezoid_weights,
 )
 
@@ -130,6 +131,8 @@ def integrate(
             "dimensions, in that order",
             "pass over=[r_dim, theta_dim] with coords='polar' (REQ-28)",
         )
+
+    refuse_correlated_reduction(db, list(over), "integrate")
 
     content = content_of(db)
     values = np.array(content.values[var], dtype=float)

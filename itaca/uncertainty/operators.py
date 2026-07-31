@@ -31,11 +31,32 @@ class UnaryOperator:
         Elementwise evaluation ``f(a)``.
     d_da : callable
         Analytical partial ``df/da`` evaluated at ``a``.
+    undefined_at : callable or None, optional
+        Elementwise predicate marking operand values where ``d_da`` has
+        no sound value, even though it returns one. ``None`` (the
+        default) means the partial is trustworthy wherever it is finite.
+    undefined_reason : str, optional
+        What is wrong at those points, for the refusal message.
+
+    Notes
+    -----
+    ``undefined_at`` exists for a narrow case and should stay narrow
+    (FND-095). Most domain failures announce themselves: ``sqrt`` and
+    ``log`` at zero return an infinite partial, and ``asin`` at one does
+    the same, so the result carries an infinity a reader cannot mistake
+    for a measurement. ``abs`` at zero is the dangerous shape instead,
+    because ``np.sign(0)`` is ``0`` and the propagated uncertainty comes
+    back as a perfectly plausible EXACT ZERO: the library asserts total
+    certainty precisely where the function has no derivative at all. A
+    predicate is warranted when a partial is silently wrong, not merely
+    when it is infinite.
     """
 
     name: str
     evaluate: Callable[[_Array], _Array]
     d_da: Callable[[_Array], _Array]
+    undefined_at: Callable[[_Array], _Array] | None = None
+    undefined_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -71,7 +92,19 @@ UNARY: dict[str, UnaryOperator] = {
         UnaryOperator("acos", np.arccos, lambda a: -1.0 / np.sqrt(1.0 - a**2)),
         UnaryOperator("atan", np.arctan, lambda a: 1.0 / (1.0 + a**2)),
         UnaryOperator("sqrt", np.sqrt, lambda a: 0.5 / np.sqrt(a)),
-        UnaryOperator("abs", np.abs, np.sign),
+        UnaryOperator(
+            "abs",
+            np.abs,
+            np.sign,
+            undefined_at=lambda a: np.asarray(a == 0.0),
+            undefined_reason=(
+                "d|a|/da is the sign of a, which does not exist at a = 0: "
+                "the left and right derivatives are -1 and +1. np.sign "
+                "returns 0 there, so the propagated uncertainty came back "
+                "as an exact zero, asserting certainty at the one point "
+                "where the function has none"
+            ),
+        ),
         UnaryOperator("log", np.log, lambda a: 1.0 / a),
         UnaryOperator("log10", np.log10, lambda a: 1.0 / (a * np.log(10.0))),
         UnaryOperator("exp", np.exp, np.exp),

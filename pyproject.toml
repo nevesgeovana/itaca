@@ -69,6 +69,14 @@ dev = [
     # scipy is never a runtime dependency and is barred from library
     # code by the NumPy-only import policy.
     "scipy>=1.11,<2.0",
+    # Dev-only GUM oracle (DD-25), the same posture as scipy above and
+    # barred from library code by the same TID251 rule. DD-25 approved it
+    # and no dependency group ever listed it, so for two milestones the
+    # ruff rule named a package nobody could import and tests/oracle/
+    # held the geometry oracle alone: the decision was recorded and never
+    # deployed. That gap is why 96 percent line coverage sat beside four
+    # confirmed uncertainty defects (BRF-059, gap C).
+    "uncertainties>=3.2,<4.0",
     # The vendored kit release-gate checker parses workflow YAML. Without
     # PyYAML it exits 2 having verified NOTHING, rather than degrading to
     # a text scan, so a missing parser would read as an unarmed guard.

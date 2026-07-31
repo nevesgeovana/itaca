@@ -9,8 +9,8 @@ convention: `import itaca as itc`. Tagline: From data to wisdom.
 
 ## Authority chain
 
-1. `docs/srs/` is the authoritative specification (document 0.2.7,
-   2026-07-30; baseline 0.1.0 was the first workspace-tracked
+1. `docs/srs/` is the authoritative specification (document 0.2.8,
+   2026-07-31; baseline 0.1.0 was the first workspace-tracked
    version). The SRS describes desired
    behavior; code is verified against the SRS, and the SRS is changed only
    when a requirement itself is wrong or ambiguous, with the revision

@@ -730,6 +730,13 @@ class VarFrame:
         ------
         DimensionNotFoundError
             A named dimension is absent.
+        UncertaintyLineageError
+            A RANDOM component would be reduced along a dimension an
+            earlier ``interpolate`` produced. That rule is the root sum
+            of squares, valid only for independent points, and
+            interpolation makes each point a combination of the same
+            sources, so the result would understate. The systematic
+            component is unaffected (REQ-98, REQ-99, SEAT-UNC).
 
         Examples
         --------
@@ -800,6 +807,10 @@ class VarFrame:
         DataError
             Unknown ``coords`` or a polar call without exactly two
             dimensions.
+        UncertaintyLineageError
+            A RANDOM component would be reduced over a dimension an
+            earlier ``interpolate`` produced; see :meth:`average`
+            (REQ-98, REQ-99, SEAT-UNC).
 
         Examples
         --------
@@ -1467,6 +1478,14 @@ class VarFrame:
         DataError
             A reference point is not length three, the groups are in
             different axis systems, or ``axis`` differs from theirs.
+        UncertaintyLineageError
+            A transfer was already applied to this frame and a channel
+            carries uncertainty. The rigid transfer makes the new
+            moments a function of the forces, and that induced
+            correlation is not recorded, so a second transfer would
+            treat them as independent and understate. Do it in one call
+            from the original reference point, which the message names
+            (REQ-100, SEAT-UNC).
 
         Examples
         --------
@@ -1747,6 +1766,25 @@ class VarFrame:
         -------
         VarFrame
             A new VarFrame containing ``VAR`` tagged ``+1``.
+
+        Raises
+        ------
+        DataError
+            The equation is not of the form ``VAR = expression``, or the
+            method is unknown.
+        VariableNotFoundError
+            The expression references a name the VarFrame does not hold.
+        UncertaintyLineageError
+            Two uncertainty carriers in the expression were derived from
+            a common origin. Propagation is exact within ONE expression
+            and carries no lineage between calls, so the covariance term
+            would be omitted; the message names the equivalent single
+            expression, which is correct. Declaring the pair with
+            :meth:`set_correlation` also proceeds (REQ-41, SEAT-UNC).
+        UncertaintyCompatibilityError
+            The expression differentiates a non-differentiable NumPy
+            function, or an operator at a point where its partial does
+            not exist, such as ``abs`` at zero (REQ-36).
 
         Examples
         --------

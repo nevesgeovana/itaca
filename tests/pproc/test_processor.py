@@ -19,6 +19,7 @@ from itaca.core.errors import (
     ProcessorIdempotenceWarning,
     ProcessorNotFoundError,
     ProcessorValidationError,
+    UncertaintyLineageError,
 )
 from itaca.core.varframe import VarFrame
 from itaca.pproc import registry
@@ -35,10 +36,6 @@ description = "test fixture"
 [constants]
 S_ref = 0.2
 
-[uncertainties]
-FZ  = 0.005
-rho = "0.05%"
-
 [equations]
 q_inf = "0.5 * rho * V**2"
 CL    = "FZ / (q_inf * S_ref)"
@@ -47,6 +44,20 @@ CL    = "FZ / (q_inf * S_ref)"
 blockage = "1 + 0.005 * CL**2"
 CL_corr  = "CL * blockage"
 """
+
+# The same workflow with uncertainties declared. A SEPARATE fixture since
+# FND-058: a correction that depends on the coefficient it corrects
+# (blockage from CL, then CL_corr from both) is exactly the shared-ancestry
+# shape, so declaring an uncertainty anywhere upstream now makes this
+# workflow refuse. Splitting it keeps every test about ordering, recording,
+# signing and reapplication testing what it tested, and puts the new
+# uncertainty contract in one place where it is visible rather than spread
+# across sixteen incidental failures.
+BALANCE_UNC = BALANCE.replace(
+    "[equations]",
+    '[uncertainties]\nFZ  = 0.005\nrho = "0.05%"\n\n[equations]',
+    1,
+)
 
 # Reads q_inf before defining it: refused in file order, fine sorted.
 FORWARD = """\
@@ -270,13 +281,56 @@ def test_application_derives_every_target(itceq: Path, db: VarFrame) -> None:
 
 
 def test_application_propagates_the_declared_uncertainty(
-    itceq: Path, db: VarFrame
+    tmp_path: Path, db: VarFrame
 ) -> None:
-    processed = itc.processor(itceq, auto_sort=True)(db)
+    # A chain whose later equations read only ROOT variables propagates
+    # exactly as it always did. This is the half of the contract the
+    # refusal leaves untouched, and it is the common .itceq shape.
+    path = tmp_path / "roots.itceq"
+    path.write_text(
+        '[meta]\nname = "roots"\n\n[constants]\nS_ref = 0.2\n\n'
+        '[uncertainties]\nFZ  = 0.005\nrho = "0.05%"\n\n'
+        '[equations]\nq_inf = "0.5 * rho * V**2"\n'
+        'CL    = "FZ / ((0.5 * rho * V**2) * S_ref)"\n',
+        encoding="utf-8",
+    )
+    processed = itc.processor(path, auto_sort=True)(db)
     assert processed.uncertainty is not None
     systematic = processed.uncertainty.systematic
     assert systematic["FZ"][0] == pytest.approx(0.005)
     assert np.all(systematic["CL"] > 0.0)  # propagated, not assigned
+
+
+def test_a_correction_reading_what_it_corrects_is_refused(
+    tmp_path: Path, db: VarFrame
+) -> None:
+    """FND-058 reaches the processor, and it was understating.
+
+    The processor is an ordinary sequence of ``compute`` calls, so it
+    inherits the lineage loss exactly. Measured on ``dde261c``, before
+    the refusal existed, over the BALANCE workflow with FZ = [100, 200,
+    300], V = 50, rho = 1.225::
+
+        processor u(CL_corr) = [0.00164167 0.00166855 0.0017128 ]
+        one-expression u(CL_corr) = [0.00164342 0.00167564 0.00172907]
+        ratio = [0.99893605 0.99577124 0.99058533]
+
+    UNDERSTATED, by 0.1 to 0.9 percent and growing with CL. Understating
+    is the direction that matters in a report, which is why this refuses
+    rather than warns. Whether the processor should instead expand its
+    equations against the root variables, which would be correct AND
+    silent, is OQ-50: it changes the operations History records and
+    interacts with the OQ-43 re-declaration rule, so it is not this
+    lane's call.
+    """
+    path = tmp_path / "balance_unc.itceq"
+    path.write_text(BALANCE_UNC, encoding="utf-8")
+    processor = itc.processor(path, auto_sort=True)
+    with pytest.raises(UncertaintyLineageError) as caught:
+        processor(db)
+    message = str(caught.value)
+    assert "'CL' and 'blockage'" in message
+    assert "CL_corr" in message
 
 
 def test_constants_are_substituted_into_the_recorded_operation(

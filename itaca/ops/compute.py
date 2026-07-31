@@ -13,10 +13,15 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from itaca.core.errors import DataError, UncertaintyError
+from itaca.core.errors import DataError, UncertaintyError, UncertaintyLineageError
 from itaca.core.varframe import _UNSET, VarFrame
 from itaca.core.variable import Variable
 from itaca.ops._content import content_of, rebuild
+from itaca.uncertainty._lineage import (
+    describe_roots,
+    shared_ancestry,
+    single_expression,
+)
 from itaca.uncertainty.expression import (
     Node,
     condition_mask,
@@ -104,6 +109,38 @@ def compute(
         if db.uncertainty is not None
         else []
     )
+    # FND-058, SEAT-UNC. Two carriers derived from a common root are not
+    # independent, and this engine keeps no lineage between compute
+    # calls, so their covariance term would be silently omitted. Refuse
+    # BEFORE evaluating: a number that will not be returned should not be
+    # computed, and the check must run ahead of the debug report so that
+    # report never describes a derivation that is about to be refused.
+    origin = shared_ancestry(db.history, carriers, db.correlation)
+    if origin is not None:
+        name_a, name_b, roots = origin
+        suggestion = single_expression(db.history, name, text)
+        fix = (
+            f"write it as one expression, which is already correct: "
+            f'db.compute("{suggestion}")'
+            if suggestion is not None
+            else (
+                "write the whole derivation as a single compute expression "
+                "in terms of the original variables, which is already "
+                "correct because the chain rule sees the whole tree at once"
+            )
+        )
+        raise UncertaintyLineageError(
+            f"variables '{name_a}' and '{name_b}' in equation '{equation}'",
+            f"both were derived from {describe_roots(roots)}, so they are "
+            f"correlated, and compute carries no lineage between calls: the "
+            f"covariance term would be omitted and u({name}) would be wrong "
+            f"in an unpredictable direction",
+            f"{fix}; or declare the pair with "
+            f"db.set_correlation({{('{name_a}', '{name_b}'): r}}) if you know "
+            f"r. Propagating this composition instead of refusing it needs "
+            f"lineage with sensitivities and is v0.3.0 work (SEAT-UNC, "
+            f"REQ-41)",
+        )
     if debug:
         # REQ-34's report reads the FRAME's data, so it is produced
         # before the mask substitution below and not after. Reported

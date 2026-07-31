@@ -17,10 +17,15 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from itaca.core.errors import DataError, VectorGroupError
+from itaca.core.errors import (
+    DataError,
+    UncertaintyLineageError,
+    VectorGroupError,
+)
 from itaca.core.uncframe import standard_uncertainty
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import content_of, rebuild
+from itaca.uncertainty._lineage import earlier_transfer
 
 _Array = NDArray[Any]
 
@@ -126,6 +131,16 @@ def translate_moments(
     offset = from_pt - to_pt
     skew = _skew(offset)
 
+    channels = (*force_comps, *moment_comps)
+    # FND-074, SEAT-UNC. Refused BEFORE anything is computed, so a frame
+    # is never half-transferred. The FIRST transfer is exact: it builds
+    # the full 6x6 covariance from the declared correlations and applies
+    # the Jacobian. What it cannot do is RECORD that its output moments
+    # are now correlated with the forces, because a correlation induced
+    # by an operation has nowhere to live in this frame. A second
+    # transfer therefore reads them as independent and understates.
+    _refuse_second_transfer(db, channels, to_pt)
+
     content = content_of(db)
     shape = db.shape
     f = np.stack([content.values[c] for c in force_comps], axis=-1)
@@ -135,7 +150,6 @@ def translate_moments(
     for i, comp in enumerate(moment_comps):
         content.values[comp] = transferred[..., i]
 
-    channels = (*force_comps, *moment_comps)
     jac = np.hstack([skew, np.eye(3)])  # 3x6: M' = [S | I] @ [F; M]
     for label in ("systematic", "random"):
         component = getattr(content, label)
@@ -196,6 +210,51 @@ def translate_moments(
             "force": force,
             "moment": moment,
         },
+    )
+
+
+def _refuse_second_transfer(
+    db: VarFrame, channels: tuple[str, ...], to_pt: _Array
+) -> None:
+    """Refuse a transfer stacked on an earlier one (FND-074, SEAT-UNC).
+
+    Only when a channel actually carries uncertainty: with none declared
+    there is no covariance to lose and repeated transfers are ordinary
+    arithmetic on the values, which compose exactly.
+
+    Deliberately coarse. Any earlier ``translate_moments`` in this
+    frame's History arms the refusal, without checking that it moved the
+    SAME group, so translating a second, unrelated moment group is
+    refused too. That is the conservative direction and it is cheap to
+    work around; missing a real one is neither.
+    """
+    if db.uncertainty is None:
+        return
+    carried = [
+        name
+        for name in channels
+        if name in db.uncertainty.systematic or name in db.uncertainty.random
+    ]
+    if not carried:
+        return
+    origin = earlier_transfer(db.history)
+    if origin is None:
+        return
+    raise UncertaintyLineageError(
+        f"moment channels {list(channels)} of VarFrame with uncertainty on "
+        f"{sorted(carried)}",
+        "translate_moments was already applied to this frame, so its "
+        "moments are correlated with its forces through M' = M + r x F, "
+        "and that induced correlation is not recorded anywhere: a second "
+        "transfer would treat them as independent and UNDERSTATE the "
+        "result (measured 1.414 where 2.0 is correct, 29 percent low)",
+        f"do it in one call from the original reference point: "
+        f"db.translate_moments(to_point={[float(v) for v in to_pt]}, "
+        f"from_point={[float(v) for v in origin]}), which gives the same "
+        f"moments and the correct uncertainty because one Jacobian spans "
+        f"the whole transfer. Carrying the induced correlation forward "
+        f"instead needs lineage with sensitivities and is v0.3.0 work "
+        f"(SEAT-UNC, REQ-100)",
     )
 
 
