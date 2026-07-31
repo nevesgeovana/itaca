@@ -15,9 +15,10 @@ Ordering (DD-17)
 Equations evaluate in file order by default. ``auto_sort=True`` resolves
 the dependency order instead and reports the order it chose, so a file
 whose behavior depends on the sort says so out loud. That report goes to
-stdout because DD-17 charters it as feedback to the user and a log record
-at INFO is silent under the default configuration; OQ-48 asks whether a
-library should be reporting on stdout at all. The resolved order
+stdout because REQ-48 charters it as feedback to the user, DD-17 records
+why, and a log record at INFO is silent under the default configuration;
+OQ-48 asks whether a library should be reporting on stdout at all. The
+resolved order
 is the stable topological order: at each step the equation earliest in
 FILE order whose dependencies are already met. That rule is stated
 rather than incidental, which is what answers the portability risk
@@ -576,9 +577,10 @@ def _resolve(
         return equations
     by_target = {equation.target: equation for equation in equations}
     resolved = tuple(by_target[target] for target in order)
-    # Printed, not logged: DD-17 charters this feedback as a report to the
-    # user, and a logger.info is silent under the default configuration.
-    # Whether that is still the right call is OQ-48.
+    # Printed, not logged: REQ-48 charters this feedback normatively and
+    # DD-17 records the decision, and a logger.info is silent under the
+    # default configuration. Whether that is still the right call is OQ-48,
+    # whose answer would need an SRS revision and not only a new DD.
     print(f"auto_sort resolved [{stage}] of {source.name} to: " + " -> ".join(order))
     return resolved
 

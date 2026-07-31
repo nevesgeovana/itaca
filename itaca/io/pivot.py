@@ -261,7 +261,10 @@ def pivot(
     auto_detect : bool, optional
         Detect additional numeric dimension candidates by unique-value
         count (at most ``threshold`` unique values). The resolved dim
-        list is reported as feedback.
+        list is reported at INFO on the ``itaca.io.pivot`` logger, so
+        nothing appears until the caller configures logging; it is not
+        written to stdout, because this is a transformation and no
+        requirement charters it to print.
     threshold : int, optional
         Unique-value bound for auto-detection, 20 by default (REQ-13).
     history : bool, optional

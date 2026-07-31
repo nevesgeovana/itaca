@@ -5,10 +5,13 @@ Usage example (the contract under test)::
     structured = db.pivot(dims=["mach"], auto_detect=True)  # prints nothing
     report = db.diagnostics()                               # prints, by REQ
 
-P-08 grants terminal output to "inspection, summary, and diagnostic
-methods". It does not grant it to a transformation. A transformation that
-prints corrupts the stdout of any program using itaca as a component, and
-there is no argument the caller can pass to stop it.
+The operative test is whether a REQUIREMENT asks the surface to print.
+P-08 is a positive statement, "inspection, summary, and diagnostic methods
+print rich output to the terminal", not a prohibition on everything else,
+so it corroborates rather than forbids: what condemns an unchartered print
+is the absence of any charter for it, plus the plain cost that a
+transformation writing to stdout corrupts the output of any program using
+itaca as a component, with no argument the caller can pass to stop it.
 
 The AST walk found two violations (``ITC-20260723-2042``, review D9), and
 they are NOT the same case:
@@ -19,12 +22,15 @@ they are NOT the same case:
   list and says only that the case must be TESTED. Fixed here: it logs at
   INFO on the module logger, the convention ``core/provenance.py`` and
   ``io/loader.py`` already use.
-- ``parse_itceq(..., auto_sort=True)`` prints because **DD-17 charters the
-  report**: "the parser reports the resolved order to the user as
-  feedback", and "the feedback makes the resolved order auditable". A
-  ``logger.info`` is silent under the default configuration, so moving it
-  would quietly retire a decided behavior. It stays, chartered below, and
-  OQ-48 asks the author whether a library should report on stdout at all.
+- ``parse_itceq(..., auto_sort=True)`` prints because **REQ-48 charters the
+  report normatively** and DD-17 records the decision behind it: "the
+  parser reports the resolved order to the user as feedback", and "the
+  feedback makes the resolved order auditable". Neither names a
+  destination, but a ``logger.info`` is silent under the default
+  configuration, so moving it would quietly retire a decided behavior. It
+  stays, chartered below, and OQ-48 asks the author whether a library
+  should report on stdout at all. Retiring it is an SRS change, not only a
+  superseding DD, because REQ-48 is stable.
 
 That asymmetry is the point of keying the allowlist to a citation rather
 than to a judgment about which prints look reasonable.
@@ -33,6 +39,13 @@ The behavioral tests below are the falsifying pair for the pivot half. The
 AST guard after them is the structural half required by the incident rule:
 it fails on the NEXT unchartered print rather than on this one, which is
 the only form of this check that cannot be defeated by adding a third.
+
+**What this guard does NOT cover**, stated so the next widening starts
+from the limit rather than from the claim: it matches ``print(...)`` as a
+bare name. ``sys.stdout.write``, an aliased or shadowed ``print``, and
+``pprint`` all evade it. Measured 2026-07-30: no such site exists under
+``itaca/``, so the walk is complete over the tree it guards today, and
+that is a fact about today rather than a property of the check.
 """
 
 from __future__ import annotations
@@ -49,19 +62,44 @@ from itaca.pproc.equations.parser import parse_itceq
 _ROOT = Path(__file__).resolve().parents[1]
 _PACKAGE = _ROOT / "itaca"
 
-# Every print in the library, keyed to the SRS surface that charters it.
-# A print anywhere else is a defect. Keyed by enclosing callable rather
-# than by module, so a future print added to db.compute is not covered by
-# the charter that belongs to its private debug helper.
-_CHARTERED_PRINTERS: dict[tuple[str, str], str] = {
-    ("itaca/io/inspector.py", "inspect"): "REQ-13, output is printed to the terminal",
-    ("itaca/io/summary.py", "summary"): "SRS 6, db.summary() prints to the terminal",
-    ("itaca/io/diagnostics.py", "diagnostics"): "SRS 6, db.diagnostics(log=None)",
-    ("itaca/ops/compute.py", "_debug_report"): "SRS 6, db.compute(..., debug=True)",
-    ("itaca/pproc/base.py", "EquationProcessor.info"): "SRS 9, polar.info()",
+# Every print in the library, keyed to its owner and to the requirement
+# that charters it, with the number of print calls that owner is allowed.
+#
+# THE COUNT IS THE POINT. Keying by owner alone exempts the CALLABLE, not
+# the call, so a new print dropped into an already-chartered function
+# inherits a permission nobody granted it. Measured by a reviewer on the
+# first version of this guard: `print("leaked secret")` added inside
+# ``summary`` left all six tests green. The count closes that, and it is
+# deliberately brittle: a sixth print in ``inspect`` should require someone
+# to look at it.
+_CHARTERED_PRINTERS: dict[tuple[str, str], tuple[int, str]] = {
+    ("itaca/io/inspector.py", "inspect"): (
+        4,
+        "REQ-13, db.inspect(), output is printed to the terminal",
+    ),
+    ("itaca/io/summary.py", "summary"): (
+        1,
+        "REQ-16, db.summary() prints a one-screen summary to the terminal",
+    ),
+    ("itaca/io/diagnostics.py", "diagnostics"): (
+        1,
+        "REQ-17, 'Diagnostics: print and return'",
+    ),
+    ("itaca/ops/compute.py", "_debug_report"): (
+        1,
+        "REQ-34, db.compute(..., debug=True) prints a structured debug report",
+    ),
+    ("itaca/pproc/base.py", "EquationProcessor.info"): (
+        1,
+        "NO REQBOX. SRS Chapter 9 shows polar.info() printing, in a "
+        "contributing-guide code listing, which is not a requirement. "
+        "Exempted as shipped behavior and registered as "
+        "ITC-20260730-2135 rather than silently blessed",
+    ),
     ("itaca/pproc/equations/parser.py", "_resolve"): (
-        "DD-17, auto_sort reports the resolved order as feedback; OQ-48 asks "
-        "whether that should remain stdout"
+        1,
+        "REQ-48 and DD-17, auto_sort 'reports the resolved order to the user "
+        "as feedback'; OQ-48 asks whether that should remain stdout",
     ),
 }
 
@@ -180,38 +218,53 @@ class TestTheStructuralGuard:
             if (module, owner) not in _CHARTERED_PRINTERS
         ]
         assert not offenders, (
-            "itaca library code writes to stdout from a surface the SRS does "
-            f"not charter for it: {offenders}. P-08 grants terminal output to "
-            "inspection, summary and diagnostic methods only; a transformation "
-            "corrupts the stdout of any program using itaca as a component. "
-            "Log at INFO on the module logger instead, as core/provenance.py "
-            "does, or add the surface to _CHARTERED_PRINTERS with the "
-            "requirement that charters it."
+            "itaca library code writes to stdout from a surface no "
+            f"requirement charters for it: {offenders}. Nothing in the SRS "
+            "asks this surface to print, and a library that writes to stdout "
+            "from a data path corrupts the output of any program using it as "
+            "a component; P-08 grants terminal output to inspection, summary "
+            "and diagnostic methods, which is where the charters are. Log at "
+            "INFO on the module logger instead, as core/provenance.py does, "
+            "or add the surface to _CHARTERED_PRINTERS with the requirement "
+            "that charters it."
         )
 
-    def test_the_guard_has_prints_to_find(self) -> None:
+    def test_no_chartered_surface_prints_more_than_it_was_granted(self) -> None:
+        """The exemption belongs to the calls, not to the callable.
+
+        Without this, a print added inside an already-chartered function
+        is covered by a permission granted to a different line. Measured:
+        it was, until a reviewer put ``print("leaked secret")`` inside
+        ``summary`` and watched every test stay green.
+        """
+        counted: dict[tuple[str, str], int] = {}
+        for module, owner, _ in _print_sites():
+            counted[(module, owner)] = counted.get((module, owner), 0) + 1
+        excess = {
+            key: (found, _CHARTERED_PRINTERS[key][0])
+            for key, found in counted.items()
+            if key in _CHARTERED_PRINTERS and found != _CHARTERED_PRINTERS[key][0]
+        }
+        assert not excess, (
+            f"a chartered surface changed its number of print calls: {excess} "
+            "(found, granted). A new print inside a function that already "
+            "prints is a new stdout write and needs its own look; update the "
+            "count here once you have taken it."
+        )
+
+    def test_the_walk_reaches_every_print_the_charter_knows_about(self) -> None:
         """A guard that scans nothing passes for the wrong reason.
 
-        If the walk stopped resolving the package, ``offenders`` above
-        would be empty and the check would read as green forever.
+        Set equality rather than a count comparison: the package holds 9
+        print sites against 6 chartered keys, so ``len(sites) >= len(charter)``
+        would still pass with a third of the walk silently missing, which is
+        roughly the whole ``pproc`` subtree.
         """
-        sites = _print_sites()
-        assert len(sites) >= len(_CHARTERED_PRINTERS), (
-            f"the AST walk found {len(sites)} print sites under {_PACKAGE}, "
-            f"fewer than the {len(_CHARTERED_PRINTERS)} chartered ones; the "
-            "walk is not reaching the package"
-        )
-
-    def test_no_charter_outlives_the_print_it_charters(self) -> None:
-        """An allowlist nobody prunes becomes a list of permissions to reuse.
-
-        Each entry is an exemption granted to one specific call site. Once
-        that site stops printing, the entry is a standing permission for a
-        future print nobody reviewed.
-        """
+        assert _PACKAGE.is_dir(), f"the package is not at {_PACKAGE}"
         found = {(module, owner) for module, owner, _ in _print_sites()}
-        stale = sorted(key for key in _CHARTERED_PRINTERS if key not in found)
-        assert not stale, (
-            f"_CHARTERED_PRINTERS exempts call sites that no longer print: "
-            f"{stale}. Remove the entry rather than leaving the exemption."
+        missing = sorted(set(_CHARTERED_PRINTERS) - found)
+        assert not missing, (
+            f"the AST walk did not reach chartered print sites: {missing}. "
+            "Either the walk is not covering the package or those surfaces "
+            "stopped printing; both need a person, and neither may pass."
         )

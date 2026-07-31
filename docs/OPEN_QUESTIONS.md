@@ -1266,10 +1266,14 @@ path, and that one is different, which is why it is a question rather than
 a second fix.
 
 **The question.** `parse_itceq(..., auto_sort=True)` prints the resolved
-equation order. **DD-17 charters it**: "the parser reports the resolved
-order to the user as feedback", and the rationale is that "the feedback
+equation order, and it is chartered twice. **REQ-48 is the normative
+carrier and it is stable**: "passing `auto_sort=True` to the parser
+enables topological sorting by dependency, in which case the parser
+reports the resolved order to the user as feedback." **DD-17 records the
+decision** in the same words and adds the rationale, that "the feedback
 makes the resolved order auditable". So the report is decided behavior,
-not an oversight.
+not an oversight, and it is decided at the level of the specification
+rather than only in the decision log. Neither names a destination.
 
 But P-08 grants terminal output to "inspection, summary, and diagnostic
 methods", and a parser is none of those. A library that writes to stdout
@@ -1295,10 +1299,18 @@ lane did not do it.
 The third is the only one that keeps both authorities: `spec.equations`
 carries the resolved order and `spec.sorted` says the sort ran, so the
 feedback is auditable programmatically rather than by reading a terminal.
-That is an argument, not a decision, and DD-17 is frozen, so retiring its
-stdout half needs a new DD that supersedes it.
+That is an argument, not a decision.
+
+**What any answer other than the first costs.** REQ-48 is stable, so
+retiring the report is an SRS change: the requirement text, the revision
+history and Chapter 11 move together, and a superseding DD alone is not
+enough. That is the correction that matters most here, because the first
+draft of this entry said a new DD would suffice, having found only DD-17.
+DD-17 is frozen and append-only either way, so it is superseded rather
+than edited.
 
 **Who decides:** the product owner, on whether a library surface may write
-to stdout at all and on what replaces DD-17's auditability if it does not.
+to stdout at all and on what replaces the auditability REQ-48 and DD-17
+promise if it may not.
 
 **SRS:** P-08, REQ-14, REQ-48, REQ-76. **DD:** DD-17.
