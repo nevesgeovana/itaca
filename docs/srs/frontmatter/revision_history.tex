@@ -12,10 +12,10 @@
 \midrule
 0.2.8 & 2026-07-31 & Geovana Neves &
 The propagation engine states its scope, and refuses outside it. A MINOR
-revision adding no requirement and withdrawing none, but narrowing FIVE
+revision adding no requirement and withdrawing none, but narrowing SIX
 stable ones to what the code can actually deliver: REQ-41 and REQ-36 on
-the engine itself, and REQ-98, REQ-99 and REQ-100 on the operations whose
-behavior changed with it. REQ-41 promised GUM
+the engine itself, and REQ-24, REQ-98, REQ-99 and REQ-100 on the
+operations whose behavior changed with it. REQ-41 promised GUM
 clause-5 propagation and said nothing about where that promise stops:
 the chain rule sees ONE expression, and a derived variable is stored
 with no record of the inputs that produced it, so a later operation
@@ -33,7 +33,10 @@ REQ-99), and steps aside for a pair the user declared with
 describes what each operation does WITHIN itself and never licenses a
 composition; REQ-99 states the random reduction's independence assumption,
 its refusal, and why the systematic rule is untouched; REQ-100 states one
-transfer per frame while uncertainty is present. "Exact within one
+transfer per frame while uncertainty is present; REQ-24 states that
+\code{concat} refuses to join a derivation record it cannot keep, since
+the result carries the FIRST input's History and would assert it over
+every input's rows. "Exact within one
 expression" is qualified to the first order REQ-41 already works to,
 everywhere it is claimed. REQ-36's non-differentiability guard extends
 from a non-differentiable FUNCTION to a differentiable one evaluated at

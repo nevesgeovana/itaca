@@ -176,6 +176,21 @@ class TestComputeSharedAncestry:
             chain.compute("r = p - q")
         assert _suggested_equation(str(caught.value)) is None
 
+    def test_a_root_redeclared_after_a_derivation_suppresses_it(self) -> None:
+        # QA round four, and this one was reported FIXED in round three
+        # and was not. The round-three mark ran forward only, so a
+        # variable derived BEFORE the re-declaration kept faithful=True.
+        # Measured: with u(x) re-declared to 5.0 after p = 3*x, the
+        # suggestion r = (3*x) - x was still offered as "already
+        # correct" and returns 10.0, against a stored u(p) = 0.3 and
+        # u(x) = 5.0, which no correlation admits.
+        arr = np.column_stack([np.array([1.0, 2.0])])
+        db = itc.load(arr, names=["x"]).set_uncertainty({"x": 0.1})
+        chain = db.compute("p = 3*x").set_uncertainty({"x": 5.0})
+        with pytest.raises(UncertaintyLineageError) as caught:
+            chain.compute("r = p - x")
+        assert _suggested_equation(str(caught.value)) is None
+
     def test_a_redeclared_ancestor_suppresses_it_transitively(self) -> None:
         # VV-8. The first fix checked only names spliced DIRECTLY into
         # the refused equation, so one more level of indirection walked
@@ -543,8 +558,56 @@ class TestConcatDiscardedLineage:
         with pytest.raises(UncertaintyLineageError) as caught:
             itc.concat([frame(8.0, False), frame(9.0, True)], along="t")
         message = str(caught.value)
-        assert "input 2 of 2" in message
-        assert "'p'" in message and "'q'" in message
+        assert "derived differently across the inputs" in message
+        assert "'p'" in message or "'q'" in message
+
+    def test_the_first_inputs_derivation_is_not_asserted_over_the_others(
+        self,
+    ) -> None:
+        # VV-16. The mirror of the case above, and the one a tail-only
+        # scan missed: the derivation is in the FIRST input, so it is not
+        # discarded, it is OVER-asserted. Measured before this fix, the
+        # refusal offered z = (2*x) - 2*x as "already correct"; it
+        # returns [0, 0] where the truth is [0, 97].
+        def frame(t: float, derive: bool) -> VarFrame:
+            arr = np.column_stack([np.array([1.0]), np.array([99.0]), np.array([t])])
+            built = itc.load(arr, names=["x", "y", "t"]).pivot(dims=["t"])
+            built = built.set_uncertainty({"x": 0.1})
+            if not derive:
+                return built.set_uncertainty({"y": 0.5})
+            return built.compute("y = 2*x")
+
+        with pytest.raises(UncertaintyLineageError):
+            itc.concat([frame(8.0, True), frame(9.0, False)], along="t")
+
+    def test_identically_derived_inputs_are_allowed(self) -> None:
+        # ARCH-14. Processing several runs the same way and
+        # concatenating them is the ordinary REQ-24 workflow. Every
+        # input derives p identically, so the first input's record is
+        # true of every row and there is nothing to refuse.
+        def frame(t: float) -> VarFrame:
+            arr = np.column_stack([np.array([1.0]), np.array([0.0]), np.array([t])])
+            built = itc.load(arr, names=["x", "p", "t"]).pivot(dims=["t"])
+            return built.set_uncertainty({"x": 0.1}).compute("p = 3*x")
+
+        joined = itc.concat([frame(8.0), frame(9.0)], along="t")
+        assert joined.uncertainty.systematic["p"] == pytest.approx(0.3)
+
+    def test_an_unreadable_input_is_refused_at_the_concat(self) -> None:
+        # ARCH-13 and QA4-2. A frame that refuses compute on its own was
+        # laundered by being passed through concat as a second input:
+        # measured u = 0.2236 on the joined frame where the same compute
+        # refuses on the input alone. concat consulted only the derived
+        # map and never the unreadable set.
+        def roots(t: float) -> VarFrame:
+            arr = np.column_stack([np.array([1.0]), np.array([2.0]), np.array([t])])
+            built = itc.load(arr, names=["x", "y", "t"]).pivot(dims=["t"])
+            return built.set_uncertainty({"x": 0.1, "y": 0.2})
+
+        opaque = roots(2.0).combine(roots(2.0), op="mean")
+        with pytest.raises(UncertaintyLineageError) as caught:
+            itc.concat([roots(1.0), opaque], along="t")
+        assert "cannot be read" in str(caught.value)
 
     def test_a_discarded_derivation_without_uncertainty_is_allowed(self) -> None:
         # Nothing to lose: with no uncertainty on the derived variables

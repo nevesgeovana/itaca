@@ -27,7 +27,7 @@ from itaca.core.errors import (
 )
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import content_of, rebuild, recoord
-from itaca.uncertainty._lineage import derivations
+from itaca.uncertainty._lineage import derivations, describe_unreadable
 
 
 def _validate_inputs(frames: Sequence[VarFrame], along: str) -> None:
@@ -177,57 +177,96 @@ def _validate_inputs(frames: Sequence[VarFrame], along: str) -> None:
 
 
 def _refuse_discarded_lineage(frames: Sequence[VarFrame]) -> None:
-    """Refuse a concat that would DISCARD a derivation the result needs.
+    """Refuse a concat whose result would misdescribe its own inputs.
 
-    ARCH-5 and ARCH-8, which are the two halves of one problem and were
-    found one review round apart.
+    ARCH-5, ARCH-8, ARCH-13, ARCH-14 and VV-16, which are one problem
+    found five ways across three review rounds. The joined frame carries
+    the History of ``frames[0]`` ALONE, and that record is then asserted
+    over every input's rows. Two ways it can be false, and both were
+    measured:
 
-    The result carries the History of ``frames[0]`` alone, so every other
-    input's derivation record is dropped. When one of those inputs
-    derived a variable that carries uncertainty, the joined frame holds
-    values whose shared origin nothing records any more: measured, with
-    ``p`` and ``q`` as roots in the first input and derived from a common
-    ``x`` in the second, ``compute("r = p - q")`` on the joined frame
-    returned ``u = 0.3606`` where ``0.1`` is correct on the second
-    input's rows.
+    * A derivation exists in another input and not in the first, so it is
+      DISCARDED. With ``p`` and ``q`` roots in the first input and
+      derived from a common ``x`` in the second,
+      ``compute("r = p - q")`` on the joined frame returned
+      ``u = 0.3606`` where ``0.1`` is correct on the second's rows.
+    * A derivation exists in the FIRST input and not in another, so it is
+      OVER-asserted. With ``y = 2*x`` in the first and ``y`` a loaded
+      root in the second, the refusal offered ``z = (2*x) - 2*x`` as
+      "already correct"; it returns ``[0, 0]`` where the truth is
+      ``[0, 97]``.
 
-    The first attempt at this treated ``concat`` as an unreadable
-    operation, which poisoned the whole frame and refused EVERY
-    multi-carrier ``compute`` on any concatenated frame, including two
-    inputs of plain roots with no derivation anywhere. That is REQ-24
-    mainline usage and it was far too wide (ARCH-8).
+    So the test is AGREEMENT across every input, not a scan of the tail.
+    A variable derived identically everywhere is described correctly by
+    any one input's record, which keeps the ordinary workflow of
+    processing several runs the same way and concatenating them working
+    (ARCH-14). Disagreement, or absence in some inputs, is refused.
 
-    So the refusal moves to the operation that loses the information,
-    which is the only place that can still see it. It fires only when a
-    non-first input actually carries a derived variable with
-    uncertainty, and an ordinary concat of loaded frames is untouched.
-    Failing at the point of loss also gives a message that can say what
-    to do, where a refusal three operations later cannot.
+    An input whose record cannot be read at all is refused too, whatever
+    the others say: without that, one concat laundered the absent-
+    evidence refusal REQ-41 states, and a frame that refused
+    ``compute("z = x + y")`` on its own returned ``u = 0.2236`` after
+    being passed through concat as a second input (ARCH-13, QA round
+    four).
+
+    Only variables carrying uncertainty are considered, since a
+    derivation with no uncertainty has no covariance to lose.
     """
-    for position, frame in enumerate(frames[1:], start=2):
+    readings = [
+        derivations(frame.history, frame.axes.vector_groups) for frame in frames
+    ]
+    carriers: list[set[str]] = []
+    for frame in frames:
         if frame.uncertainty is None:
-            continue
-        carriers = set(frame.uncertainty.systematic) | set(frame.uncertainty.random)
-        derived = set(derivations(frame.history, frame.axes.vector_groups).derived)
-        lost = sorted(carriers & derived)
-        if not lost:
-            continue
-        raise UncertaintyLineageError(
-            f"input {position} of {len(frames)}, whose {lost} carry both a "
-            f"derivation and an uncertainty",
-            "concat keeps the History of the FIRST input only, so these "
-            "variables' derivations would be discarded and the joined frame "
-            "would hold quantities whose shared origin nothing records; a "
-            "later compute would then treat them as independent",
-            "concatenate the INPUTS of that derivation and derive once on "
-            "the joined frame, which is also cheaper; or put the frame "
-            "carrying the derivations first, if its History covers every "
-            "derivation in the result; or drop the uncertainty from those "
-            "variables if it is not wanted downstream. Carrying several "
-            "inputs' derivation records into one joined History needs "
-            "lineage that survives a merge and is v0.3.0 work (SEAT-UNC, "
-            "REQ-24, REQ-41)",
-        )
+            carriers.append(set())
+        else:
+            carriers.append(
+                set(frame.uncertainty.systematic) | set(frame.uncertainty.random)
+            )
+    for position, (reading, carried) in enumerate(
+        zip(readings, carriers, strict=True), start=1
+    ):
+        if reading.unreadable and carried:
+            raise UncertaintyLineageError(
+                f"input {position} of {len(frames)}, whose History records "
+                f"{describe_unreadable(frames[position - 1].history)}",
+                "concat keeps the History of the FIRST input only, so an "
+                "input whose record cannot be read would be joined into a "
+                "frame that looks fully described; a later compute would "
+                "then read the result as having a known, clean origin",
+                "derive on the joined frame instead of joining derived "
+                "frames, or declare the pairs you need with "
+                "db.set_correlation before combining (SEAT-UNC, REQ-24, "
+                "REQ-41)",
+            )
+    interesting: set[str] = set()
+    for reading, carried in zip(readings, carriers, strict=True):
+        interesting |= set(reading.derived) & carried
+    for name in sorted(interesting):
+        seen = {
+            (
+                readings[index].derived[name].roots,
+                readings[index].derived[name].expanded,
+            )
+            if name in readings[index].derived
+            else None
+            for index in range(len(frames))
+        }
+        if len(seen) > 1:
+            raise UncertaintyLineageError(
+                f"variable '{name}', derived differently across the inputs",
+                "concat keeps the History of the FIRST input only, so one "
+                "input's derivation of this variable would be recorded for "
+                "every row, including rows where it was derived another way "
+                "or not derived at all",
+                "concatenate the INPUTS of the derivation and derive once on "
+                "the joined frame, which is also cheaper and gives one "
+                "record that is true of every row; or drop the uncertainty "
+                "from this variable if it is not wanted downstream. Carrying "
+                "several inputs' derivation records into one joined History "
+                "needs lineage that survives a merge and is v0.3.0 work "
+                "(SEAT-UNC, REQ-24, REQ-41)",
+            )
 
 
 def concat(

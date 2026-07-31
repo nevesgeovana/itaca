@@ -15,7 +15,7 @@ it adds or modifies.
 \section*{Document 0.2.8, 2026-07-31, The Engine States Its Scope: One Expression}
 
 A MINOR revision adding no requirement and withdrawing none, and
-narrowing FIVE stable ones to what the implementation can deliver. Every
+narrowing SIX stable ones to what the implementation can deliver. Every
 change closes a silence that a user could only discover by getting a
 wrong number, which is the drift this document is monitored for.
 
@@ -139,6 +139,30 @@ never stores the induced pair, \code{rotate} stores it when it is
 representable. Whether \code{translate\_moments} should do likewise,
 and what either should do where the coefficient is not representable,
 is OQ-51.
+
+\paragraph{Changed (REQ-24, the record concat cannot keep).}
+\code{itc.concat} builds the result from its FIRST input, so that
+input's History is asserted over every input's rows. Measured both
+directions: a derivation present only in a later input is DISCARDED, and
+\code{compute("r = p - q")} on the joined frame returned
+\code{u = 0.3606} where \code{0.1} is correct on those rows; a
+derivation present only in the FIRST input is OVER-asserted, and the
+refusal then offered \code{z = (2*x) - 2*x} as already correct, which
+returns \code{[0, 0]} where the truth is \code{[0, 97]}.
+
+The test is AGREEMENT across the inputs rather than a scan of the later
+ones, because both directions are wrong in the same way. A variable
+derived identically everywhere is described correctly by any input's
+record, so processing several runs the same way and concatenating them
+is unaffected; a disagreement, an absence in some inputs, or an input
+whose record cannot be read at all is refused, naming the variable or
+the operation. Variables carrying no uncertainty are not considered,
+having no covariance to lose.
+
+This was found five ways across three review rounds, each fix reopening
+the problem from a different side, which is recorded here because the
+shape of the mistake is more instructive than the fix: a rule about a
+merge cannot be enforced by inspecting one side of it.
 
 \section*{Document 0.2.7, 2026-07-30, Two Requirements Catch Up With Two Fixes}
 

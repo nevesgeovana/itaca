@@ -79,14 +79,18 @@ names `release.yml` with environment `pypi`. A publisher naming
   documented `q = 0.5*rho*V**2` then `CL = FZ/(q*S)` workflow still
   propagates.
 
-* **`itc.concat` refuses to discard a derivation that carries
-  uncertainty.** It keeps the History of its FIRST input only, so a
-  variable derived in any other input loses the record of where it came
-  from: measured, `p` and `q` derived from a shared `x` in the second
-  input gave `u = 0.3606` on the joined frame where `0.1` is correct on
-  those rows. It now refuses at the concat, naming the input and the
-  variables, and only when a discarded derivation actually carries an
-  uncertainty. An ordinary concat of loaded frames is untouched.
+* **`itc.concat` refuses to join a derivation record it cannot keep.**
+  It builds the result from its FIRST input, so that input's History is
+  asserted over every input's rows. Measured both directions: a
+  derivation only in a later input is discarded, and `r = p - q` on the
+  joined frame gave `u = 0.3606` where `0.1` is correct on those rows;
+  a derivation only in the FIRST input is over-asserted, and the
+  suggestion `z = (2*x) - 2*x` returned `[0, 0]` where the truth is
+  `[0, 97]`. It now requires the inputs to AGREE, and refuses a
+  disagreement, an absence in some inputs, or an input whose record it
+  cannot read at all. Inputs that derive a variable identically are
+  unaffected, which is the ordinary case of processing several runs the
+  same way; so is any concat whose variables carry no uncertainty.
 
   Lineage with sensitivities, which would propagate these compositions
   rather than refuse them, is v0.3.0 work.

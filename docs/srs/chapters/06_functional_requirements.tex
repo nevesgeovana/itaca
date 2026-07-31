@@ -383,6 +383,20 @@ comparison is driven by the UNION of the declared group names, and an
 input that never declared a group counts as the canonical body axis for
 it, so the commonest shape of all, where nobody called
 \code{db.declare\_vector}, is covered rather than passed over.
+
+\textbf{Refusing to join a record it cannot keep.} The result carries
+the History of the FIRST input alone, and that record is then asserted
+over every input's rows. When a variable carrying uncertainty is derived
+DIFFERENTLY across the inputs, or derived in some and a plain root in
+others, the joined record would be false for part of the frame, and
+\code{UncertaintyLineageError} is raised naming the variable. The same
+applies to an input whose record cannot be read at all, such as one
+produced by \code{combine}: joining it would present an unreadable
+origin as a clean one. Inputs that derive a variable identically are
+unaffected, which is the ordinary case of processing several runs the
+same way and concatenating them, and so is any concat whose variables
+carry no uncertainty, where there is no covariance to lose (REQ-41,
+SEAT-UNC).
 \end{reqbox}
 
 \begin{reqbox}{REQ-25}{\stable}
@@ -944,9 +958,11 @@ A FOURTH case is not about a known common origin but about the absence
 of evidence either way. Ancestry is read out of History, so an entry
 this engine cannot interpret leaves every variable's origin unknown and
 a multi-carrier \code{compute} is refused even for quantities that were
-never derived. It arises from a non-replayable record: a
-\code{combine}, or a schema-1 archive whose entries were restored
-without their replay steps. The message says which operation could not
+never derived. It arises from a record this engine cannot
+interpret: a non-replayable entry such as a \code{combine} or a schema-1
+archive restored without its replay steps, an equation the expression
+parser cannot read, or a \code{rotate} or \code{translate\_moments}
+naming a vector group the frame no longer resolves. The message says which operation could not
 be read and states that the evidence is what is missing rather than the
 independence, and \code{set\_correlation} settles it either way,
 including a declared zero. Refusing on absent evidence is the

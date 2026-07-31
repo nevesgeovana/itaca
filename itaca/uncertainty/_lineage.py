@@ -328,25 +328,24 @@ def derivations(
             if isinstance(spec, Mapping):
                 for raw in spec:
                     name = str(raw)
-                    known = found.get(name)
-                    if known is not None:
-                        found[name] = _Derivation(
-                            roots=known.roots, expanded=known.expanded, faithful=False
-                        )
-                    elif name in consumed_roots:
-                        # A ROOT can be re-declared too, and marking only
-                        # derived names missed it by one level: with
-                        # u(x) re-declared to 5.0 AFTER p = 3*x, the
-                        # suggestion r = (3*x) - x was offered as
-                        # "already correct" while returning 10.0, outside
-                        # every value the frame's own stored
-                        # uncertainties admit (QA round three).
-                        #
-                        # Only a root some derivation has already CONSUMED
-                        # counts. Declaring a root before deriving from it
-                        # is the ordinary opening move of every workflow
-                        # in this library, and marking that made the whole
-                        # suggestion machinery go silent.
+                    # Mark the name itself when it is a derivation, and
+                    # EVERY derivation already standing on it. The
+                    # round-three fix marked forward only, so a variable
+                    # derived BEFORE the re-declaration kept faithful =
+                    # True: measured, u(x) re-declared to 5.0 after
+                    # p = 3*x still offered `r = (3*x) - x` as "already
+                    # correct" while returning 10.0 against a stored
+                    # u(p) = 0.3 and u(x) = 5.0 (QA round four). It was
+                    # reported fixed and was not, which is why the guard
+                    # below is a test and not a comment.
+                    for held, known in list(found.items()):
+                        if held == name or name in known.roots:
+                            found[held] = _Derivation(
+                                roots=known.roots,
+                                expanded=known.expanded,
+                                faithful=False,
+                            )
+                    if name not in found and name in consumed_roots:
                         redeclared_roots.add(name)
             continue
         if step.call != "compute":
