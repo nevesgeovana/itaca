@@ -182,3 +182,20 @@ class Provenance:
 
     def __post_init__(self) -> None:
         validate_mode(self.mode)
+        # A frozen dataclass that keeps the CALLER's list is not frozen:
+        # an external append changed this record, and every digest
+        # derived from it, with no History entry (FND-048). The
+        # containers are copied into tuples at the boundary, which is
+        # what PipelineStep.kwargs already did.
+        object.__setattr__(
+            self, "source_files", tuple(Path(p) for p in self.source_files)
+        )
+        if self.source_coords is not None:
+            object.__setattr__(
+                self,
+                "source_coords",
+                tuple(
+                    (str(file_path), tuple((dim, value) for dim, value in coords))
+                    for file_path, coords in self.source_coords
+                ),
+            )

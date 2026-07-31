@@ -1882,3 +1882,91 @@ non-differentiable point looks like from outside, so the point is refused
 rather than adjudicated. The rule stays narrow and covers a partial that
 is silently WRONG, not merely infinite: `sqrt` and `log` at zero return an
 infinite partial, and an infinity is not mistaken for a measurement.
+
+---
+
+## DD-47: The .itc becomes an authenticated canonical payload, and archives written before it are refused
+
+**Date:** 2026-07-31
+**Status:** accepted
+**Requirements:** REQ-70, REQ-103, REQ-08, REQ-11, REQ-54, REQ-102
+**Supersedes:** nothing; DD-30 and DD-40 stand and are narrowed by it
+
+### The problem
+
+Ten findings in BRF-059 were one defect wearing ten faces: state that
+decided how a `.itc` behaves on reopen was sitting OUTSIDE the digest
+that authenticates it.
+
+The critical face, FND-089. `Provenance.mode` was outside the state
+hash, so editing one JSON string inside the ZIP turned a draft file into
+production. Measured: the same file, the same `itc.open`, `members
+differing = [provenance.json]`, `hash equals original = True`, and a
+`to_json` that had been refused with `DraftModeExportError` was then
+allowed with no `allow_draft` anywhere.
+
+The others are the same shape. `CoordSystem` was in neither the hash nor
+the archive, so Cartesian and Polar shared a digest and a Polar frame
+reopened Cartesian (FND-037). An individual `HistoryEntry.state_hash`
+could be forged to 64 zeros and the archive still opened, because only
+the FINAL state hash and the replay-steps digest were authenticated
+(FND-038). Coordinates were written by `tolist()` with no dtype and
+rebuilt as float64, so an INTACT float32 archive failed its own hash
+(FND-091). And the framing itself collided a missing comment with an
+empty one and let content cross field boundaries (FND-036).
+
+### The decision
+
+**One canonical authenticated payload, at schema `itaca-itc/3`.**
+
+Framing becomes length-prefixed: every field is its byte length, a
+colon, then its bytes, and an absent field is `-`. A length declared
+before its content cannot be forged by content, and `-` is not `0:`.
+
+`mode` and `coords` enter `compute_state_hash` as REQUIRED keyword
+arguments, not defaulted ones. That is deliberate and it is the
+structural half of the fix: a field a caller can forget to pass is a
+field that will be forgotten, which is exactly how both came to be
+outside the digest. A new call site now fails to type-check.
+
+`metadata.json` carries a member manifest: the SHA-256 of every member
+as written. Any edit to any member is refused, not only an edit that
+happens to move the recomputed state.
+
+### What this does NOT claim
+
+Tamper EVIDENCE, not tamper proofing. A `.itc` carries no secret, so an
+editor who rewrites a member AND recomputes `metadata.json` produces an
+archive that opens. What ended is the case where a one-field edit needed
+nothing else at all. REQ-103 promises drift detection and that is what
+this delivers; claiming authentication against an adversary who can
+rewrite the whole archive would be an overclaim, and this workspace has
+already paid for overclaims made in exactly this position.
+
+### Why old archives are refused rather than read
+
+Schema 1 and 2 archives no longer open. This is the part a reader will
+push back on, so the reason is stated plainly: neither records its
+`CoordSystem`. A frame saved in polar coordinates therefore CANNOT be
+reconstructed from one, and reopening it as Cartesian would silently
+change the area element `integrate` selects. That is FND-037 itself.
+
+A defect must not be the remedy for a defect. The refusal names the
+schema, says what the archive lacks, and says to re-export from the
+source data. The acceptance criterion for this lane permits exactly
+that and forbids the alternative.
+
+### Consequences
+
+Every state hash in existence changes, once. The framing change, the
+`mode` field and the `coords` field all land in the same migration
+rather than three. `tests/core/test_history_and_hash.py` pinned one
+digest literal to prove a value had NOT moved at DD-40; it is re-pinned
+here with its purpose rewritten, because the value moves deliberately
+now and the test is still worth having as a canary against moving it by
+accident.
+
+The absent-field rule that DD-40 introduced is gone. It existed so that
+an unset metadata field emitted no token and old digests survived;
+canonical framing distinguishes absent from empty on its own, so the
+special case has nothing left to do.

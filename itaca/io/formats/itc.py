@@ -16,6 +16,7 @@ import io
 import json
 import os
 import zipfile
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -24,6 +25,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.axes import Axis, AxisRegistry
+from itaca.core.coords import coord_system
 from itaca.core.correlation import CorrelationMatrix
 from itaca.core.dimension import Dimension
 from itaca.core.errors import DataError, HashMismatchError
@@ -37,12 +39,50 @@ from itaca.core.variable import Variable
 from itaca.core.version import __version__
 from itaca.io.export import DRAFT_WARNING, guard_draft
 
-FORMAT_SCHEMA = "itaca-itc/2"
-# Schema 2 adds the per-entry replay "step" to history.json (REQ-54),
-# with a steps_hash in metadata.json covering it. Schema 1 archives stay
-# readable: their entries carry no step, so to_pipeline refuses rather
-# than replaying a silent no-op, and no steps_hash is required.
-_READABLE_SCHEMAS = frozenset({"itaca-itc/1", "itaca-itc/2"})
+FORMAT_SCHEMA = "itaca-itc/3"
+# Schema 3 is the authenticated canonical payload. It adds the member
+# manifest (every member's digest, so an edit to ANY member is refused,
+# not only one that moves the recomputed state), the coordinate-system
+# tag in frame.json, and the coordinate dtype in dims.json; and it moves
+# every state hash, because the framing became length-prefixed and the
+# operating mode entered the digest.
+#
+# Schema 1 and 2 archives are REFUSED rather than read. That is a
+# deliberate break and not an oversight: neither records its
+# CoordSystem, so a Polar frame cannot be reconstructed from one, and
+# reopening it as Cartesian is FND-037 itself. A defect must not be the
+# remedy for a defect, so the only truthful option is to refuse and name
+# the migration (DD-47).
+_READABLE_SCHEMAS = frozenset({FORMAT_SCHEMA})
+_SUPERSEDED_SCHEMAS = frozenset({"itaca-itc/1", "itaca-itc/2"})
+
+_METADATA_MEMBER = "metadata.json"
+
+
+def _member_digest(payload: bytes) -> str:
+    """SHA-256 of one archive member, as written."""
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _member_manifest(members: Mapping[str, bytes]) -> dict[str, str]:
+    """Digest every member the archive carries except the manifest itself.
+
+    Before this, only the final state hash and the replay-steps digest
+    were authenticated, so an individual ``HistoryEntry.state_hash``
+    could be forged to 64 zeros and the archive still opened (FND-038),
+    and ``provenance.json`` could be edited in ways the recomputed state
+    did not cover (FND-089).
+
+    The manifest is tamper EVIDENCE, not tamper proofing. A ``.itc``
+    carries no secret, so an editor who rewrites a member and also
+    rewrites ``metadata.json`` produces an archive that opens. What it
+    ends is the case where an edit needs nothing else at all.
+    """
+    return {
+        name: _member_digest(payload)
+        for name, payload in members.items()
+        if name != _METADATA_MEMBER
+    }
 
 
 def _locate_unserializable(entries: list[dict[str, Any]]) -> str:
@@ -143,9 +183,53 @@ def _npz_bytes(arrays: dict[str, NDArray[Any]]) -> bytes:
     return buffer.getvalue()
 
 
-def _read_npz(archive: zipfile.ZipFile, name: str) -> dict[str, NDArray[Any]]:
-    with np.load(io.BytesIO(archive.read(name))) as loaded:
+def _read_npz_bytes(payload: bytes) -> dict[str, NDArray[Any]]:
+    with np.load(io.BytesIO(payload)) as loaded:
         return {key: loaded[key] for key in loaded.files}
+
+
+def _verify_members(
+    raw: Mapping[str, bytes], metadata: Mapping[str, Any], target: Path
+) -> None:
+    """Refuse an archive whose members are not the ones it declares.
+
+    Checks the NAME SET in both directions before the digests, because
+    "a member you did not write is present" and "a member you wrote is
+    gone" are different accidents from "a member changed", and a message
+    that names the wrong one sends the reader to the wrong place.
+    """
+    recorded = metadata.get("members")
+    if not isinstance(recorded, dict):
+        raise DataError(
+            f"archive '{target}'",
+            "itc.open read an archive with no member manifest in "
+            "metadata.json, so its members cannot be verified",
+            "the archive is truncated or was not written by ITACA; re-export "
+            "it from the source data (REQ-70)",
+        )
+    present = {name for name in raw if name != _METADATA_MEMBER}
+    declared = set(recorded)
+    if present != declared:
+        added = sorted(present - declared)
+        missing = sorted(declared - present)
+        raise DataError(
+            f"archive '{target}'",
+            f"its members do not match the manifest: {added} present but "
+            f"undeclared, {missing} declared but absent",
+            "the archive was edited after it was written; re-export it from "
+            "the source data (REQ-70)",
+        )
+    drifted = sorted(
+        name for name in declared if _member_digest(raw[name]) != recorded[name]
+    )
+    if drifted:
+        raise HashMismatchError(
+            f"archive '{target}'",
+            f"itc.open found drift between the recorded and the recomputed "
+            f"digest of {drifted}, so those members were modified",
+            "the archive was edited after it was written; re-export it from "
+            "the source data (REQ-70, REQ-103)",
+        )
 
 
 def _axes_from_payload(payload: dict[str, Any] | None) -> AxisRegistry:
@@ -207,6 +291,12 @@ def save(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Path:
                 {
                     "name": dim.name,
                     "coords": dim.coords.tolist(),
+                    # tolist() erases the dtype, and the reader rebuilt
+                    # float64, so an INTACT archive holding float32 or
+                    # int32 coordinates failed its own state hash on
+                    # reopen (FND-091). The dtype is data, not
+                    # decoration: it is inside the digest.
+                    "dtype": str(dim.coords.dtype),
                     "unit": dim.unit,
                     "description": dim.description,
                     "is_numeric": dim.is_numeric,
@@ -214,6 +304,11 @@ def save(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Path:
                 for dim in db.dims.values()
             ]
         ).encode(),
+        # The frame-level state that is neither a dimension nor a
+        # variable. Today that is the coordinate-system tag, which was
+        # persisted nowhere, so a Polar frame reopened Cartesian and
+        # silently changed the integration element (FND-037).
+        "frame.json": json.dumps({"coords": db.coords.name}).encode(),
         "vars_meta.json": json.dumps(
             {
                 name: {
@@ -240,19 +335,6 @@ def save(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Path:
                 }
                 for entry in db.history
             ]
-        ).encode(),
-        "metadata.json": json.dumps(
-            {
-                "schema": FORMAT_SCHEMA,
-                "itaca_version": __version__,
-                "state_hash": db.state_hash,
-                "steps_hash": _steps_digest(
-                    [
-                        {"step": (None if e.step is None else e.step._payload())}
-                        for e in db.history
-                    ]
-                ),
-            }
         ).encode(),
     }
     if db.uncertainty is not None:
@@ -301,6 +383,23 @@ def save(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Path:
         ).encode()
     if db.tags is not None:
         members["historyframe.npz"] = _npz_bytes(dict(db.tags.tags))
+    # LAST, and the order is load-bearing: the manifest has to see every
+    # member, so metadata.json is built once the optional members are
+    # settled and is the only member the manifest cannot cover.
+    members[_METADATA_MEMBER] = json.dumps(
+        {
+            "schema": FORMAT_SCHEMA,
+            "itaca_version": __version__,
+            "state_hash": db.state_hash,
+            "steps_hash": _steps_digest(
+                [
+                    {"step": (None if e.step is None else e.step._payload())}
+                    for e in db.history
+                ]
+            ),
+            "members": _member_manifest(members),
+        }
+    ).encode()
     temporary = target.with_suffix(target.suffix + ".tmp")
     with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
         for name, data in members.items():
@@ -336,32 +435,18 @@ def open_itc(path: str | Path) -> VarFrame:
     >>> db = itc.open("campaign.itc")  # doctest: +SKIP
     """
     target = Path(path)
+    # Every member is read as BYTES first and parsed afterwards. The
+    # manifest is a statement about bytes, so it has to be checked
+    # against the bytes, before any member has been interpreted.
     try:
         with zipfile.ZipFile(target) as archive:
-            metadata = json.loads(archive.read("metadata.json"))
-            dims_payload = json.loads(archive.read("dims.json"))
-            vars_meta = json.loads(archive.read("vars_meta.json"))
-            provenance_payload = json.loads(archive.read("provenance.json"))
-            history_payload = json.loads(archive.read("history.json"))
-            values = _read_npz(archive, "varframe.npz")
-            names = archive.namelist()
-            uncertainty_arrays = (
-                _read_npz(archive, "uncframe.npz") if "uncframe.npz" in names else None
-            )
-            correlation_payload = (
-                json.loads(archive.read("correlation.json"))
-                if "correlation.json" in names
-                else None
-            )
-            axes_payload = (
-                json.loads(archive.read("axes.json")) if "axes.json" in names else None
-            )
-            tag_arrays = (
-                _read_npz(archive, "historyframe.npz")
-                if "historyframe.npz" in names
-                else None
-            )
-    except (OSError, KeyError, zipfile.BadZipFile) as error:
+            raw = {name: archive.read(name) for name in archive.namelist()}
+            metadata = json.loads(raw[_METADATA_MEMBER])
+    except (OSError, KeyError, ValueError, zipfile.BadZipFile) as error:
+        # ValueError covers json.JSONDecodeError, which is a subclass of
+        # it: a malformed member used to leave the ITACAError hierarchy
+        # entirely and reach the caller as a stdlib parse error
+        # (FND-031).
         raise DataError(
             f"archive '{target}'",
             f"itc.open could not read it ({error.__class__.__name__})",
@@ -372,6 +457,19 @@ def open_itc(path: str | Path) -> VarFrame:
     # about a bad replay step, sending the reader to re-export a file
     # whose only problem was being newer than their ITACA.
     schema = metadata.get("schema")
+    if schema in _SUPERSEDED_SCHEMAS:
+        raise DataError(
+            f"archive '{target}' with schema {schema!r}",
+            f"itc.open reads {FORMAT_SCHEMA} only, and this archive predates "
+            "it: it records no coordinate system, no coordinate dtype and no "
+            "member manifest, and its state hash was computed under the "
+            "superseded framing",
+            "re-export it from the source data with this version. It is NOT "
+            "silently reinterpreted, because a frame saved in polar "
+            "coordinates would come back cartesian and integrate against the "
+            "wrong area element, which is the defect this schema exists to "
+            "close (REQ-70, REQ-103, DD-47)",
+        )
     if schema not in _READABLE_SCHEMAS:
         raise DataError(
             f"archive '{target}' with schema {schema!r}",
@@ -379,10 +477,53 @@ def open_itc(path: str | Path) -> VarFrame:
             f"this build reads {sorted(_READABLE_SCHEMAS)}; upgrade ITACA to "
             "open a newer archive (REQ-70)",
         )
+    # The manifest runs FIRST, before any member is interpreted: it is a
+    # statement about bytes, it is the cheapest check, and it is the most
+    # sensitive one, because it catches an edit that changes no
+    # reconstructed state at all (a forged per-entry history hash).
+    #
+    # The consequence is deliberate and worth naming: the steps and state
+    # digests below no longer fire for a plain member edit, because this
+    # refuses it first with a message that NAMES the drifted member,
+    # which is more specific than either of them. What they still catch
+    # is an editor who rewrote a member and updated 'members' but not
+    # 'steps_hash' or 'state_hash', which is a partial rewrite rather
+    # than dead code. tests/io/test_itc_roundtrip.py exercises both
+    # layers separately so neither can quietly become unreachable.
+    _verify_members(raw, metadata, target)
+    try:
+        dims_payload = json.loads(raw["dims.json"])
+        vars_meta = json.loads(raw["vars_meta.json"])
+        provenance_payload = json.loads(raw["provenance.json"])
+        history_payload = json.loads(raw["history.json"])
+        frame_payload = json.loads(raw["frame.json"])
+        values = _read_npz_bytes(raw["varframe.npz"])
+        uncertainty_arrays = (
+            _read_npz_bytes(raw["uncframe.npz"]) if "uncframe.npz" in raw else None
+        )
+        correlation_payload = (
+            json.loads(raw["correlation.json"]) if "correlation.json" in raw else None
+        )
+        axes_payload = json.loads(raw["axes.json"]) if "axes.json" in raw else None
+        tag_arrays = (
+            _read_npz_bytes(raw["historyframe.npz"])
+            if "historyframe.npz" in raw
+            else None
+        )
+    except (KeyError, ValueError) as error:
+        raise DataError(
+            f"archive '{target}'",
+            f"itc.open could not interpret its members "
+            f"({error.__class__.__name__}: {error})",
+            "re-export it from the source data (REQ-70)",
+        ) from error
     dims = {
         entry["name"]: Dimension(
             name=entry["name"],
-            coords=np.asarray(entry["coords"]),
+            # The recorded dtype, not whatever json.loads inferred. A
+            # float32 coordinate came back float64 and broke the state
+            # hash of a file nobody had touched (FND-091).
+            coords=np.asarray(entry["coords"], dtype=np.dtype(entry["dtype"])),
             unit=entry["unit"],
             description=entry["description"],
             is_numeric=entry["is_numeric"],
@@ -462,42 +603,26 @@ def open_itc(path: str | Path) -> VarFrame:
         tags=tags,
         correlation=correlation,
         axes=axes,
+        coords=coord_system(frame_payload["coords"]),
     )
-    # The digest requirement follows what the archive CARRIES, never what
-    # it claims to be. The schema string is ordinary metadata that no
-    # digest covers, so gating the check on it meant an editor could
-    # rewrite the schema to 1, keep the poisoned steps, and skip the
-    # check entirely while the state hash still matched, because steps
-    # are deliberately outside REQ-103. Three review passes found that
-    # independently, which is how load-bearing a version field looks
-    # when it is asked to carry integrity.
-    carries_steps = any(
-        isinstance(entry, dict) and entry.get("step") is not None
-        for entry in history_payload
-    )
+    # The steps digest is now unconditional. It used to be gated on what
+    # the archive CARRIED rather than what it claimed, because a schema
+    # string is ordinary metadata that no digest covered and an editor
+    # could rewrite it to 1, keep poisoned steps and skip the check.
+    # Schema 1 is no longer readable, so the gate has nothing left to
+    # decide, and the schema string is now itself inside the member
+    # manifest. The check is kept beside the manifest rather than folded
+    # into it: it names the RECIPE, and DD-30 rests on that message.
     recorded_steps = metadata.get("steps_hash")
-    if (carries_steps or schema != "itaca-itc/1") and not isinstance(
-        recorded_steps, str
-    ):
-        # Two conditions reach here and the message must not assert the
-        # wrong one: a schema 2 archive with no steps is refused for
-        # what it declares, not for what it carries.
-        because = (
-            "it carries replay steps"
-            if carries_steps
-            else f"it declares schema {schema!r}"
-        )
+    if not isinstance(recorded_steps, str):
         raise DataError(
             f"archive '{target}'",
-            f"itc.open read an archive that requires a replay-step digest "
-            f"({because}) but has no 'steps_hash' in metadata.json, so its "
-            "stored recipe cannot be verified",
-            "only a genuine schema 1 archive with no replay steps may omit "
-            "it; re-export this one from the source data (REQ-54)",
+            "itc.open read an archive with no 'steps_hash' in metadata.json, "
+            "so its stored recipe cannot be verified",
+            "the archive is truncated or was not written by ITACA; re-export "
+            "it from the source data (REQ-54)",
         )
-    if isinstance(recorded_steps, str) and recorded_steps != _steps_digest(
-        history_payload, target=target
-    ):
+    if recorded_steps != _steps_digest(history_payload, target=target):
         raise HashMismatchError(
             f"archive '{target}'",
             "itc.open found drift between the recorded and the recomputed "
@@ -515,26 +640,20 @@ def open_itc(path: str | Path) -> VarFrame:
             "it from the source data (REQ-103)",
         )
     if db.state_hash != recorded_state:
-        # The second sentence of the fix exists because this check has a
-        # known false positive with one cause and one remedy. In 0.2.0
-        # the REQ-103 scope widened to cover unit, description and
-        # long_name (DD-40, closing ITACA-003, where a deg frame and a
-        # rad frame hashed identically while rotate read the unit and
-        # produced different physics). An archive written before that,
-        # whose dims or variables carry any of those fields, recomputes
-        # to a different digest while being perfectly intact. Saying
-        # only "modified or corrupted" would be false and unactionable
-        # for exactly the users who did nothing wrong. An archive with
-        # no metadata at all is unaffected, because an absent field
-        # emits no token.
+        # This check used to carry a second sentence about a known false
+        # positive: an archive written before the DD-40 scope change
+        # recomputed to a different digest while being perfectly intact,
+        # and "modified or corrupted" was false for exactly the users
+        # who had done nothing wrong. Every such archive is schema 1 or
+        # 2 and is now refused by name, above, with the migration
+        # spelled out. So this message is once again true as written,
+        # and the version advice is where it belongs rather than
+        # attached to a mismatch it can no longer cause.
         raise HashMismatchError(
             f"archive '{target}'",
             "itc.open found state-hash drift between the recorded and the "
             "recomputed state",
             "the file was modified or corrupted; re-export it from the "
-            "source data. If it was written by ITACA before 0.2.0 and "
-            "carries units, descriptions or long names, it is intact and "
-            "predates the REQ-103 scope change: open it with 0.1.x and "
-            "re-export, or re-export from the source data (REQ-103, DD-40)",
+            "source data (REQ-103)",
         )
     return db

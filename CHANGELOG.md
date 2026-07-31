@@ -43,6 +43,48 @@ names `release.yml` with environment `pypi`. A publisher naming
 
 ### Changed
 
+* **BREAKING: the `.itc` format moves to schema `itaca-itc/3`, and
+  archives written by an earlier version no longer open.** They are
+  refused by name, with a message saying what the archive lacks and to
+  re-export it from the source data. They are NOT read and
+  reinterpreted, and the reason is the point of the change: schema 1 and
+  2 record no coordinate system, so a frame saved in polar coordinates
+  would come back cartesian and integrate against the wrong area
+  element. That is one of the defects this schema closes, and a defect
+  must not be the remedy for a defect (DD-47, REQ-70).
+
+* **BREAKING: every state hash changes, once.** Three things enter the
+  REQ-103 digest in one migration rather than three: canonical
+  length-prefixed framing, the spatial coordinate system, and the
+  operating mode. A recorded hash from an earlier version will not
+  reproduce, which is what the schema refusal above exists to explain
+  rather than leave a user to discover as an unexplained mismatch.
+
+* **A `.itc` now carries a member manifest**, the SHA-256 of every
+  member as written, so an edit to ANY member is refused rather than
+  only an edit that happens to move the recomputed state.
+
+  Stated plainly, because the opposite would be easy to imply: this is
+  tamper EVIDENCE, not tamper proofing. A `.itc` carries no secret, so
+  an editor who rewrites a member and also recomputes `metadata.json`
+  still produces an archive that opens. What ends is the case where a
+  one-field edit needed nothing else at all.
+
+* `compute_state_hash` takes `coords` and `mode` as required keyword
+  arguments. Both were state that decided behavior from outside the
+  digest, and an optional argument is one a call site can omit, which is
+  how they came to be outside it.
+
+* `drop_correlation` on a frame carrying no correlation now returns a
+  new frame with a History entry, instead of returning the same object
+  and recording nothing. The same call naming variables that removed
+  nothing was already recorded, so History told two no-ops apart by
+  which branch reached the recorder.
+
+* `translate_moments` records the axis it RESOLVED, always, including
+  when the caller passed `axis=None`. Two frames whose groups resolve to
+  different axis systems previously recorded byte-identical text.
+
 * **The uncertainty engine now refuses compositions it cannot propagate
   correctly, instead of returning a wrong number.** It is exact WITHIN
   one expression, where the chain rule sees the whole tree, to the same
@@ -122,6 +164,58 @@ names `release.yml` with environment `pypi`. A publisher naming
   records that as the open half.
 
 ### Fixed
+
+* **Editing `provenance.json` inside a `.itc` turned a draft file into
+  production, and it reopened with a valid state hash.** `Provenance.mode`
+  was outside the authenticated state, so one edited JSON string was
+  enough: measured, the same file whose `to_json` had raised
+  `DraftModeExportError` exported without `allow_draft` after the edit,
+  with the state hash unchanged. `mode` is now inside the digest
+  (REQ-08, REQ-11, REQ-103).
+
+* A frame's spatial coordinate system was in neither the state hash nor
+  the archive, so a Cartesian and a Polar frame shared a digest and a
+  Polar frame reopened Cartesian, silently changing the area element
+  `integrate` selects. It is now hashed and persisted, and an unknown
+  tag is refused rather than defaulted.
+
+* An individual `HistoryEntry.state_hash` inside a saved archive could
+  be forged to 64 zeros and the archive still opened, because only the
+  final state hash and the replay-steps digest were authenticated. The
+  member manifest covers it.
+
+* Coordinates were serialized without their dtype and rebuilt as
+  float64, so an INTACT archive holding float32 or int32 coordinates
+  raised `HashMismatchError` on reopen. The dtype is now recorded and
+  restored exactly.
+
+* The state-hash framing collided a missing comment with an empty one,
+  and let content carrying the separator byte cross field boundaries:
+  `("op1\x1fx", "y")` and `("op1", "x\x1fy")` produced one digest. The
+  framing is length-prefixed, and absent is a different token from
+  empty.
+
+* `set_metadata` sorted the outer mapping but embedded the inner one in
+  insertion order, so writing `unit` before `description` and the other
+  way round gave one semantic state two hashes.
+
+* `source_hash` for in-memory loads joined variable names with a comma
+  and no framing, so `names=['a,b','c']` and `['a','b,c']` collided; and
+  it read the caller's raw array bytes, so an integer source and a float
+  source that load to the IDENTICAL frame produced different digests. It
+  now frames the names and hashes the columns actually loaded.
+
+* `Pipeline(steps=<list>)` and `Provenance(source_files=<list>)` stayed
+  bound to the caller's list, so an external `append` changed a frozen
+  object, and its content hash, with nothing recorded. Both take
+  ownership at the boundary, as `PipelineStep.kwargs` already did.
+
+* A public array could be made writeable again with
+  `setflags(write=True)` and then written, mutating recorded state with
+  a changed state hash and no History entry. Arrays are now handed out
+  as read-only VIEWS of read-only bases, which NumPy refuses to
+  re-enable. Applies to variable values, dimension coordinates,
+  uncertainty components, origin tags and rotation matrices (REQ-102).
 
 * `abs` at zero returned `u = 0` with an uncertainty-carrying input,
   asserting exact certainty at a point where the derivative does not

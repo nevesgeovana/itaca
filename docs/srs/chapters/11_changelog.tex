@@ -12,6 +12,76 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.9, 2026-07-31, The Archive Authenticates What It Carries}
+
+A MINOR revision adding no requirement and withdrawing none, widening
+TWO stable ones: REQ-103 and REQ-70. Ten findings in \code{BRF-059}
+turned out to be one defect wearing ten faces, and naming it is the
+whole of this entry: \emph{state that decided how an archive behaves on
+reopen was sitting outside the digest that authenticates it}.
+
+\paragraph{Changed (REQ-103, the operating mode enters the scope).} The
+critical one. \code{Provenance.mode} decides whether every export is
+refused, and it was not hashed. Measured: the same file, the same
+\code{itc.open}, one edited JSON string inside the ZIP, and the members
+differing were \code{[provenance.json]} alone; the state hash was
+byte-identical to the original, the archive reopened as production, and
+a \code{to\_json} that had raised \code{DraftModeExportError} was then
+allowed with no \code{allow\_draft} anywhere. A draft file became an
+official result by an edit that left the guarantee intact, which means
+the guarantee was not covering the thing that mattered.
+
+\paragraph{Changed (REQ-103, the spatial coordinate system enters the
+scope).} A cartesian and a polar frame carrying identical arrays shared
+a digest, and the tag was persisted nowhere, so a polar frame reopened
+cartesian. The tag selects the integration element (REQ-28), so this is
+two different numbers from one certified identity.
+
+\paragraph{Changed (REQ-103, the encoding becomes canonical).} Fields
+were separated by a bare \code{0x1f} and the comment was written as
+\code{(comment or "")}, so a MISSING comment and an EMPTY one produced
+one digest, and content carrying the separator crossed field
+boundaries: \code{("op1\textbackslash x1fx", "y")} and
+\code{("op1", "x\textbackslash x1fy")} collided. Framing is now
+length-prefixed and absent is a distinct token from empty. The rule
+that an unset metadata field contributed nothing is withdrawn with it:
+that rule existed only to bound the DD-40 compatibility break, and
+framing now does its work.
+
+\paragraph{Changed (REQ-70, the member manifest).} Only the final state
+hash and the replay-steps digest were authenticated, so an individual
+\code{HistoryEntry.state\_hash} inside a saved archive could be forged
+to 64 zeros and the archive still opened. \code{metadata.json} now
+names every other member with its SHA-256 as written, verified in both
+directions before any member is interpreted.
+
+What this is NOT is stated in the requirement rather than left for a
+reader to over-infer: tamper EVIDENCE, not tamper proofing. The archive
+carries no secret, so an editor who rewrites a member and recomputes the
+manifest still produces a file that opens. What ended is the case where
+an edit needed nothing else at all.
+
+\paragraph{Changed (REQ-70, coordinate dtype, and the schema break).}
+Coordinates were serialized by \code{tolist()} with no dtype and rebuilt
+as float64, so an INTACT archive holding float32 coordinates raised
+\code{HashMismatchError} on reopen: the guard was failing files nobody
+had touched, which is how a guard loses its authority. The dtype is now
+recorded and restored.
+
+The schema is \code{itaca-itc/3} and its two predecessors are REFUSED
+by name. This is the part that costs a user something, so the reason is
+in the requirement: neither predecessor records a coordinate system, so
+a polar frame CANNOT be reconstructed from one, and reading it as
+cartesian would be the very defect this revision closes. A defect must
+not be the remedy for a defect, so the archive is refused with a
+message naming the migration instead of being silently reinterpreted.
+
+\paragraph{The consequence, stated once.} Every state hash in existence
+changes. The framing, the mode and the coordinate system land in ONE
+migration rather than three, and the schema refusal is what explains
+the change to a user rather than leaving them to meet it as an
+unexplained mismatch (DD-47).
+
 \section*{Document 0.2.8, 2026-07-31, The Engine States Its Scope: One Expression}
 
 A MINOR revision adding no requirement and withdrawing none, and

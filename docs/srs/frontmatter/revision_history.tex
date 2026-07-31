@@ -10,6 +10,26 @@
 \textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Summary}\\
 \midrule
 \midrule
+0.2.9 & 2026-07-31 & Geovana Neves &
+The \code{.itc} becomes an authenticated canonical payload. A MINOR
+revision adding no requirement and withdrawing none, widening REQ-103
+and REQ-70. REQ-103's scope gains the spatial coordinate system and the
+operating mode, and its encoding becomes canonical and length-prefixed;
+the earlier rule that an unset metadata field emitted nothing is
+withdrawn, because framing now separates absent from empty without it.
+The mode was the critical one: it sat outside the digest, so editing
+that one field inside a saved archive turned a draft file into
+production and it reopened with a valid hash, after which
+\code{to\_json} exported without \code{allow\_draft}. REQ-70 gains the
+member manifest, which authenticates every member's bytes and is stated
+as tamper EVIDENCE rather than tamper proofing, since the archive
+carries no secret; it also gains the persisted coordinate system and
+coordinate dtype, the second of which made an INTACT float32 archive
+fail its own hash on reopen. The schema moves to \code{itaca-itc/3} and
+its two predecessors are REFUSED by name rather than reinterpreted,
+because neither records a coordinate system and reading one would
+return a polar frame as cartesian, which is the defect being closed
+(DD-47). Every state hash in existence changes, once.\\
 0.2.8 & 2026-07-31 & Geovana Neves &
 The propagation engine states its scope, and refuses outside it. A MINOR
 revision adding no requirement and withdrawing none, but narrowing SIX

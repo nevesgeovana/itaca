@@ -9,6 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from hypothesis.extra import numpy as hnp
 
+from itaca.core.coords import Cartesian, Polar
 from itaca.core.dimension import Dimension
 from itaca.core.history import compute_state_hash
 from itaca.core.variable import Variable
@@ -16,6 +17,19 @@ from itaca.core.variable import Variable
 _finite = st.floats(
     min_value=-1e6, max_value=1e6, allow_nan=False, allow_infinity=False
 )
+
+
+def _hash(**kwargs: object) -> str:
+    """Hash with the frame-level fields at their ordinary values.
+
+    ``coords`` and ``mode`` are required arguments of
+    ``compute_state_hash`` (DD-47), deliberately, so that a call site
+    cannot narrow what is authenticated by omitting one. The properties
+    below are about the CONTENT fields, so they hold the frame-level two
+    fixed; the two properties at the end of this module are the ones
+    that vary them.
+    """
+    return compute_state_hash(coords=Cartesian(), mode="production", **kwargs)  # type: ignore[arg-type]
 
 
 @st.composite
@@ -32,7 +46,7 @@ def test_hash_is_deterministic(
     content: tuple[np.ndarray, np.ndarray, np.ndarray],
 ) -> None:
     coords, a, _ = content
-    build = lambda: compute_state_hash(  # noqa: E731
+    build = lambda: _hash(  # noqa: E731
         dims={"x": Dimension(name="x", coords=coords)},
         variables={"A": Variable(name="A", values=a)},
         operations=(("load()", None),),
@@ -48,12 +62,8 @@ def test_hash_independent_of_variable_insertion_order(
     dims = {"x": Dimension(name="x", coords=coords)}
     var_a = Variable(name="A", values=a)
     var_b = Variable(name="B", values=b)
-    h_ab = compute_state_hash(
-        dims=dims, variables={"A": var_a, "B": var_b}, operations=()
-    )
-    h_ba = compute_state_hash(
-        dims=dims, variables={"B": var_b, "A": var_a}, operations=()
-    )
+    h_ab = _hash(dims=dims, variables={"A": var_a, "B": var_b}, operations=())
+    h_ba = _hash(dims=dims, variables={"B": var_b, "A": var_a}, operations=())
     assert h_ab == h_ba
 
 
@@ -66,14 +76,55 @@ def test_hash_sensitive_to_any_value_change(
     changed = a.copy()
     changed[index] = changed[index] + 1.0
     dims = {"x": Dimension(name="x", coords=coords)}
-    h_original = compute_state_hash(
+    h_original = _hash(
         dims=dims,
         variables={"A": Variable(name="A", values=a)},
         operations=(),
     )
-    h_changed = compute_state_hash(
+    h_changed = _hash(
         dims=dims,
         variables={"A": Variable(name="A", values=changed)},
         operations=(),
     )
     assert h_original != h_changed
+
+
+@given(_content())
+def test_hash_sensitive_to_the_coordinate_system(
+    content: tuple[np.ndarray, np.ndarray, np.ndarray],
+) -> None:
+    """FND-037, as a property rather than one fixture.
+
+    Whatever the content, a Cartesian frame and the same frame tagged
+    Polar are different states: the tag selects the integration element.
+    """
+    coords, a, _ = content
+    fields = {
+        "dims": {"x": Dimension(name="x", coords=coords)},
+        "variables": {"A": Variable(name="A", values=a)},
+        "operations": (),
+    }
+    cartesian = compute_state_hash(coords=Cartesian(), mode="production", **fields)  # type: ignore[arg-type]
+    polar = compute_state_hash(coords=Polar(), mode="production", **fields)  # type: ignore[arg-type]
+    assert cartesian != polar
+
+
+@given(_content())
+def test_hash_sensitive_to_the_operating_mode(
+    content: tuple[np.ndarray, np.ndarray, np.ndarray],
+) -> None:
+    """FND-089, the critical finding, as a property.
+
+    Whatever the content, draft and production are different states.
+    While they were not, editing one string inside a saved archive
+    promoted a draft file and it reopened with a valid hash.
+    """
+    coords, a, _ = content
+    fields = {
+        "dims": {"x": Dimension(name="x", coords=coords)},
+        "variables": {"A": Variable(name="A", values=a)},
+        "operations": (),
+    }
+    production = compute_state_hash(coords=Cartesian(), mode="production", **fields)  # type: ignore[arg-type]
+    draft = compute_state_hash(coords=Cartesian(), mode="draft", **fields)  # type: ignore[arg-type]
+    assert production != draft

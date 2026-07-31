@@ -14,6 +14,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.errors import DataError
+from itaca.core.immutable import readonly
 
 
 @dataclass(frozen=True, eq=False)
@@ -25,7 +26,9 @@ class Variable:
     name : str
         Variable name, e.g. ``"CT"``.
     values : numpy.ndarray
-        Numeric N-D array. Stored as a read-only copy (REQ-102).
+        Numeric N-D array. Stored as a read-only view of a read-only
+        copy, so the caller can neither write through it nor set the
+        flag back (REQ-102).
         Missing combinations are ``np.nan`` (SRS 4.1.2).
     unit : str or None, optional
         Unit label, e.g. ``"N"``. Metadata only.
@@ -61,6 +64,4 @@ class Variable:
                 f"construction with non-numeric values (dtype {values.dtype})",
                 "variables hold numeric arrays; use np.nan for missing entries",
             )
-        values = values.copy()
-        values.setflags(write=False)
-        object.__setattr__(self, "values", values)
+        object.__setattr__(self, "values", readonly(values))

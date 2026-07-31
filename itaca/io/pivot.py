@@ -24,7 +24,6 @@ from itaca.core.errors import (
     PivotDuplicateError,
     PivotError,
 )
-from itaca.core.history import compute_state_hash
 from itaca.core.historyframe import HistoryFrame
 from itaca.core.uncframe import UncFrame
 from itaca.core.varframe import VarFrame
@@ -366,7 +365,7 @@ def pivot(
             *((e.operation, e.comment) for e in db.history),
             (operation, comment),
         )
-        state_hash = compute_state_hash(
+        state_hash = db._state_hash_of(
             dims=new_dims,
             variables=variables,
             operations=operations,

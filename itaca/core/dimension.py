@@ -14,6 +14,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.errors import DataError
+from itaca.core.immutable import readonly
 
 
 @dataclass(frozen=True, eq=False)
@@ -78,9 +79,7 @@ class Dimension:
                     "drop is_numeric=False or provide string coordinates",
                 )
             coords = coords.astype(np.str_)
-        coords = coords.copy()
-        coords.setflags(write=False)
-        object.__setattr__(self, "coords", coords)
+        object.__setattr__(self, "coords", readonly(coords))
 
     @property
     def cardinality(self) -> int:

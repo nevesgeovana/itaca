@@ -15,21 +15,18 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
-from numpy.typing import NDArray
-
+from itaca.core.canonical import feed, feed_array, text
 from itaca.core.dimension import Dimension
 from itaca.core.errors import ProvenanceError
 from itaca.core.variable import Variable
 
 if TYPE_CHECKING:
     from itaca.core.axes import AxisRegistry
+    from itaca.core.coords import CoordSystem
     from itaca.core.correlation import CorrelationMatrix
     from itaca.core.historyframe import HistoryFrame
     from itaca.core.pipeline import Pipeline, PipelineStep
     from itaca.core.uncframe import UncFrame
-
-_SEP = b"\x1f"
 
 _PREPARATION_OPS = frozenset({"load", "pivot"})
 """Operations that build the input frame rather than transform it.
@@ -274,47 +271,21 @@ class History:
         return "\n".join(lines)
 
 
-def _update_with_array(digest: Any, array: NDArray[Any]) -> None:
-    contiguous = np.ascontiguousarray(array)
-    # Byte order is normalized to NATIVE, memory layout to C order.
-    # Neither is observable through the read-only public surface
-    # (REQ-102), so a big-endian and a little-endian array holding the
-    # same values are the same semantic state and must not hash
-    # differently. Normalizing to native rather than to a fixed
-    # canonical order is what leaves every existing hash unchanged, and
-    # it keeps the digest platform-dependent, which REQ-103 already
-    # concedes by promising equality only on the same platform.
-    if contiguous.dtype.byteorder not in ("=", "|"):
-        contiguous = contiguous.astype(contiguous.dtype.newbyteorder("="))
-    digest.update(str(contiguous.dtype).encode())
-    digest.update(_SEP)
-    digest.update(str(contiguous.shape).encode())
-    digest.update(_SEP)
-    digest.update(contiguous.tobytes())
-    digest.update(_SEP)
-
-
 def _update_with_metadata(
     digest: Any, kind: bytes, name: str, fields: Sequence[tuple[str, str | None]]
 ) -> None:
-    """Emit tokens for the metadata fields that are actually set.
+    """Emit every metadata field, set or not.
 
-    A field left as ``None`` emits NOTHING, which is what keeps a frame
-    that declares no metadata hashing exactly as it did before metadata
-    entered the scope (REQ-103). It is the same absent-field rule the
-    axis registry already used: an empty registry contributes no tokens.
+    Under the separator framing an unset field had to emit NOTHING, so
+    that a frame declaring no metadata kept the digest it had before
+    metadata entered the scope (DD-40). Canonical framing distinguishes
+    absent from empty on its own (``-`` against ``0:``), so the field is
+    always emitted and the special case is gone. The digest values that
+    the omission preserved are not preserved by this change; they move
+    once, with every other digest, at the schema 3 migration.
     """
     for field, value in fields:
-        if value is None:
-            continue
-        digest.update(kind)
-        digest.update(_SEP)
-        digest.update(name.encode())
-        digest.update(_SEP)
-        digest.update(field.encode())
-        digest.update(_SEP)
-        digest.update(value.encode())
-        digest.update(_SEP)
+        feed(digest, kind, text(name), text(field), text(value))
 
 
 def compute_state_hash(
@@ -322,6 +293,8 @@ def compute_state_hash(
     dims: Mapping[str, Dimension],
     variables: Mapping[str, Variable],
     operations: Sequence[tuple[str, str | None]],
+    coords: CoordSystem,
+    mode: str,
     uncertainty: UncFrame | None = None,
     correlation: CorrelationMatrix | None = None,
     tags: HistoryFrame | None = None,
@@ -332,10 +305,26 @@ def compute_state_hash(
     The hash covers dimension names and coordinates (in order, since
     dimension order dictates array shape), variable names and values
     (sorted by name, since insertion order is incidental), the ordered
-    operation sequence with comments, and the uncertainty, correlation,
-    origin-tag, and axis-registry content when present. It excludes
-    every volatile field: timestamps, user identity, source paths, and
-    the ITACA version.
+    operation sequence with comments, the spatial coordinate system, the
+    operating mode, and the uncertainty, correlation, origin-tag and
+    axis-registry content when present. It excludes every volatile
+    field: timestamps, user identity, source paths, and the ITACA
+    version.
+
+    ``coords`` and ``mode`` are REQUIRED rather than defaulted, and that
+    is the whole structural point of FND-089 and FND-037. Both were
+    state that decided behavior from outside the digest: ``mode`` gates
+    every export, ``coords`` selects the integration element. A field
+    that a caller can forget to pass is a field that will be forgotten,
+    which is the shape the defect had. A new call site now fails to
+    type-check rather than silently narrowing what is authenticated.
+
+    What this DOES NOT give is authentication against an adversary. A
+    ``.itc`` carries no secret, so an editor who rewrites a member AND
+    recomputes ``metadata.json`` produces an archive that opens. The
+    guarantee is drift detection, which is what REQ-103 states: after
+    this change a one-field edit no longer passes, where before
+    ``mode`` could be flipped with no digest consequence at all.
 
     Parameters
     ----------
@@ -345,6 +334,10 @@ def compute_state_hash(
         Variables of the frame.
     operations : sequence of (str, str or None)
         Normalized operation strings with their comments, in order.
+    coords : CoordSystem
+        The spatial coordinate-system tag (REQ-28).
+    mode : str
+        The operating mode, ``"production"`` or ``"draft"`` (REQ-08).
     uncertainty : UncFrame or None, optional
         Uncertainty mirror, when present.
     correlation : CorrelationMatrix or None, optional
@@ -364,21 +357,21 @@ def compute_state_hash(
     Examples
     --------
     >>> import numpy as np
+    >>> from itaca.core.coords import Cartesian
     >>> h = compute_state_hash(
     ...     dims={"x": Dimension(name="x", coords=np.array([0.0]))},
     ...     variables={},
     ...     operations=(),
+    ...     coords=Cartesian(),
+    ...     mode="production",
     ... )
     >>> len(h)
     64
     """
     digest = hashlib.sha256()
     for name, dim in dims.items():
-        digest.update(b"dim")
-        digest.update(_SEP)
-        digest.update(name.encode())
-        digest.update(_SEP)
-        _update_with_array(digest, dim.coords)
+        feed(digest, b"dim", text(name))
+        feed_array(digest, dim.coords)
         _update_with_metadata(
             digest,
             b"dimmeta",
@@ -387,11 +380,8 @@ def compute_state_hash(
         )
     for name in sorted(variables):
         variable = variables[name]
-        digest.update(b"var")
-        digest.update(_SEP)
-        digest.update(name.encode())
-        digest.update(_SEP)
-        _update_with_array(digest, variable.values)
+        feed(digest, b"var", text(name))
+        feed_array(digest, variable.values)
         _update_with_metadata(
             digest,
             b"varmeta",
@@ -403,46 +393,31 @@ def compute_state_hash(
             ),
         )
     for operation, comment in operations:
-        digest.update(b"op")
-        digest.update(_SEP)
-        digest.update(operation.encode())
-        digest.update(_SEP)
-        digest.update((comment or "").encode())
-        digest.update(_SEP)
+        feed(digest, b"op", text(operation), text(comment))
+    feed(digest, b"coords", text(coords.name))
+    feed(digest, b"mode", text(mode))
     if uncertainty is not None:
         for label, component in (
             ("sys", uncertainty.systematic),
             ("rand", uncertainty.random),
         ):
             for name in sorted(component):
-                digest.update(b"unc")
-                digest.update(_SEP)
-                digest.update(label.encode())
-                digest.update(_SEP)
-                digest.update(name.encode())
-                digest.update(_SEP)
-                _update_with_array(digest, component[name])
+                feed(digest, b"unc", text(label), text(name))
+                feed_array(digest, component[name])
     if correlation is not None:
         for pair in sorted(correlation.pairs):
-            digest.update(b"corr")
-            digest.update(_SEP)
-            digest.update(pair[0].encode())
-            digest.update(_SEP)
-            digest.update(pair[1].encode())
-            digest.update(_SEP)
-            digest.update(repr(correlation.pairs[pair]).encode())
-            digest.update(_SEP)
+            feed(
+                digest,
+                b"corr",
+                text(pair[0]),
+                text(pair[1]),
+                text(repr(correlation.pairs[pair])),
+            )
     if tags is not None:
         for name in sorted(tags.tags):
-            digest.update(b"tag")
-            digest.update(_SEP)
-            digest.update(name.encode())
-            digest.update(_SEP)
-            _update_with_array(digest, tags.tags[name])
+            feed(digest, b"tag", text(name))
+            feed_array(digest, tags.tags[name])
     if axes is not None:
         for token in axes.canonical_tokens():
-            digest.update(b"axes")
-            digest.update(_SEP)
-            digest.update(token.encode())
-            digest.update(_SEP)
+            feed(digest, b"axes", text(token))
     return digest.hexdigest()

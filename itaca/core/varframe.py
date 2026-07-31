@@ -247,15 +247,51 @@ class VarFrame:
             state share it; a differing digest proves nothing about
             semantic difference (DD-40).
         """
-        operations = tuple((e.operation, e.comment) for e in self.history)
-        return compute_state_hash(
-            dims=self.dims,
-            variables=self.vars,
-            operations=operations,
+        return self._state_hash_of(
+            operations=tuple((e.operation, e.comment) for e in self.history),
             uncertainty=self.uncertainty,
             correlation=self.correlation,
             tags=self.tags,
             axes=self.axes,
+        )
+
+    def _state_hash_of(
+        self,
+        *,
+        operations: Sequence[tuple[str, str | None]],
+        dims: Mapping[str, Dimension] | None = None,
+        variables: Mapping[str, Variable] | None = None,
+        uncertainty: UncFrame | None = None,
+        correlation: CorrelationMatrix | None = None,
+        tags: HistoryFrame | None = None,
+        axes: AxisRegistry | None = None,
+        mode: str | None = None,
+    ) -> str:
+        """Compute this frame's state hash, from the one place that does.
+
+        Three call sites each listed the hashed fields themselves, which
+        is three chances to omit one, and all three omitted ``mode`` and
+        ``coords`` because nothing asked for them (FND-089, FND-037).
+        Those two are supplied HERE and nowhere else, so an operation
+        added later cannot narrow what is authenticated by forgetting a
+        keyword.
+
+        Every mirror is passed explicitly and resolved by the caller;
+        ``None`` means the frame genuinely has none, which is why there
+        is no inherit-from-self sentinel. ``mode`` is the exception, and
+        only ``_with_mode`` passes it, because that operation hashes a
+        frame whose mode is not yet the one on ``self``.
+        """
+        return compute_state_hash(
+            dims=self.dims if dims is None else dims,
+            variables=self.vars if variables is None else variables,
+            operations=operations,
+            coords=self.coords,
+            mode=self.mode if mode is None else mode,
+            uncertainty=uncertainty,
+            correlation=correlation,
+            tags=tags,
+            axes=axes,
         )
 
     def promote(
@@ -321,14 +357,15 @@ class VarFrame:
             *((e.operation, e.comment) for e in self.history),
             (operation, comment),
         )
-        new_hash = compute_state_hash(
-            dims=self.dims,
-            variables=self.vars,
+        new_hash = self._state_hash_of(
             operations=operations,
             uncertainty=self.uncertainty,
             correlation=self.correlation,
             tags=self.tags,
             axes=self.axes,
+            # The frame being hashed is the one this call RETURNS, whose
+            # mode is the target, not the mode still on self.
+            mode=mode,
         )
         return dataclasses.replace(
             self,
@@ -427,7 +464,7 @@ class VarFrame:
                 *((e.operation, e.comment) for e in self.history),
                 (operation, comment),
             )
-            state_hash = compute_state_hash(
+            state_hash = self._state_hash_of(
                 dims=new_dims,
                 variables=new_vars,
                 operations=operations,

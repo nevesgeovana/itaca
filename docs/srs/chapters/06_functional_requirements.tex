@@ -279,12 +279,10 @@ Given that definition, the hash covers dimension names, coordinate
 arrays and dimension metadata (unit, description); variable names,
 value arrays and variable metadata (unit, description, long name); the
 ordered operation sequence with normalized arguments and comments; the
-uncertainty, correlation and origin-tag arrays when present; and the
-axis registry, comprising each registered frame's definition and
-description and each vector group's components and source axis
-(REQ-107). A metadata field left unset contributes nothing to the
-digest, so a frame that declares none hashes exactly as it did before
-metadata entered the scope.
+spatial coordinate system; the operating mode; the uncertainty,
+correlation and origin-tag arrays when present; and the axis registry,
+comprising each registered frame's definition and description and each
+vector group's components and source axis (REQ-107).
 
 Metadata is in scope because operations read it and act on it:
 \code{rotate} reads a unit to convert an angle to radians, so a frame
@@ -293,6 +291,26 @@ physics from identical arrays, and the archive persists and
 reconstructs every one of these fields. A guarantee that certified an
 archive while leaving what its variables claim to be outside the digest
 would certify the wrong thing (DD-40).
+
+The coordinate system and the operating mode are in scope for exactly
+the same reason, and they were outside it until document 0.2.9
+(DD-47). The coordinate system selects the integration element, so a
+cartesian and a polar frame carrying identical arrays integrate to
+different numbers. The operating mode decides whether every export is
+refused, so a draft frame and a production frame are not the same
+state; while \code{mode} sat outside the digest, editing one field of
+one member inside a saved archive promoted a draft file to production
+and it reopened with a valid hash.
+
+The encoding is canonical and unambiguous: every field is emitted
+length-prefixed, and a field that is ABSENT emits a token distinct from
+the one an EMPTY field emits. Under the earlier separator encoding a
+missing comment and an empty comment produced one digest, and content
+carrying the separator byte crossed field boundaries, so two different
+operation sequences could collide. The earlier rule that an unset
+metadata field contributed nothing to the digest existed to bound the
+DD-40 compatibility break and is withdrawn: canonical framing
+distinguishes absent from empty without it.
 
 It excludes timestamps, user identity, source paths, and the \itc{}
 version (Section~\ref{sec:state-hash}). Loading the same bytes and
@@ -1532,7 +1550,31 @@ A VarFrame supports export to:
     chapter~6 half of \code{ITACA-012}.
 \end{itemize}
 The \code{.itc} format preserves all metadata, Provenance, History,
-uncertainty, correlation, and origin tags.
+uncertainty, correlation, origin tags, the spatial coordinate system,
+and the dtype of every coordinate array.
+
+\textbf{The archive is an authenticated canonical payload.} Its
+\code{metadata.json} carries a manifest naming every other member with
+that member's SHA-256 as written, and \code{itc.open} verifies the
+member set in both directions and every digest BEFORE any member is
+interpreted. What this delivers is tamper EVIDENCE and it must not be
+read as more: a \code{.itc} carries no secret, so an editor who
+rewrites a member and also recomputes the manifest produces an archive
+that opens. What it ends is the case where an edit needs nothing else
+at all, which is how a single edited JSON string once promoted a draft
+archive to production (DD-47).
+
+\textbf{Schema compatibility.} The schema string is
+\code{itaca-itc/3}. Archives at \code{itaca-itc/1} and
+\code{itaca-itc/2} are REFUSED, by name, with a message stating what
+the archive lacks and instructing the reader to re-export from the
+source data. They are deliberately not read and reinterpreted: neither
+records a spatial coordinate system, so a frame saved in polar
+coordinates would come back cartesian and integrate against the wrong
+area element. That is one of the defects this schema exists to close,
+and a defect must not be the remedy for a defect. Silent
+reinterpretation of an archive whose recorded state cannot be recovered
+is forbidden.
 \end{reqbox}
 
 \begin{reqbox}{REQ-71}{\stable}

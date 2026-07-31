@@ -207,9 +207,15 @@ def drop_correlation(
     """Remove declared correlation pairs (REQ-40).
 
     See ``VarFrame.drop_correlation`` for the parameter description.
+
+    A frame with no correlation used to take an early return: the same
+    object came back, nothing was recorded, and the caller's decision to
+    drop left no trace. The same call naming variables that removed
+    nothing WAS recorded, so History told two no-ops apart by an
+    accident of which branch reached the recorder (FND-063). Both are
+    recorded now. Deciding that a frame carries no correlation is a
+    decision, and REQ-18 records decisions, not only changes.
     """
-    if db.correlation is None:
-        return db
     if names is None:
         remaining = None
         detail = "all"
@@ -221,7 +227,9 @@ def drop_correlation(
                 "drop_correlation references variables that are absent",
                 f"available variables: {list(db.vars)}",
             )
-        remaining = db.correlation.without(set(names))
+        remaining = (
+            db.correlation.without(set(names)) if db.correlation is not None else None
+        )
         detail = f"names={sorted(names)}"
     return db._derive(
         operation=f"drop_correlation({detail})",
@@ -275,7 +283,14 @@ def set_metadata(
             new_dims[name] = replace(new_dims[name], **dict(fields))  # type: ignore[arg-type]
         else:
             new_vars[name] = replace(new_vars[name], **dict(fields))  # type: ignore[arg-type]
-    detail = {name: dict(fields) for name, fields in sorted(spec.items())}
+    # Both levels sorted. Sorting only the OUTER mapping left the inner
+    # one in insertion order, so {'unit': ..., 'description': ...} and
+    # the same two fields written the other way round produced two
+    # recorded strings and therefore two state hashes for one semantic
+    # state (FND-049).
+    detail = {
+        name: dict(sorted(fields.items())) for name, fields in sorted(spec.items())
+    }
     return db._derive(
         operation=f"set_metadata({detail})",
         comment=comment,

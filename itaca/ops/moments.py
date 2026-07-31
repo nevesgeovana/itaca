@@ -185,10 +185,15 @@ def translate_moments(
         if db.correlation is not None
         else None
     )
-    axis_note = f", axis='{axis}'" if axis is not None else ""
+    # The RESOLVED axis, always, not the one the caller happened to
+    # spell. With axis=None the entry omitted it entirely, so two frames
+    # whose groups resolve to different axis systems recorded
+    # byte-identical text while the physics differed (FND-063). What was
+    # decided is what History has to carry; the replay kwargs keep the
+    # caller's None so a replay re-resolves against its own frame.
     operation = (
         f"translate_moments(to_point={list(to_pt)}, "
-        f"from_point={list(from_pt)}{axis_note})"
+        f"from_point={list(from_pt)}, axis='{force_axis}')"
     )
     if db.correlation is not None and (
         new_correlation is None

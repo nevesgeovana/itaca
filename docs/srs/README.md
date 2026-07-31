@@ -1,6 +1,6 @@
 # ITACA SRS: LaTeX sources
 
-Authoritative specification of ITACA, document version 0.2.8
+Authoritative specification of ITACA, document version 0.2.9
 (2026-07-31, the propagation engine states its scope: one expression;
 baseline 0.1.0 was
 the first workspace-tracked version,

@@ -25,6 +25,8 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from itaca.core.canonical import feed, feed_array, text
+from itaca.core.coords import Cartesian
 from itaca.core.dimension import Dimension
 from itaca.core.errors import DataError, DuplicateNameError, LoadCoordinateError
 from itaca.core.history import History, compute_state_hash
@@ -152,8 +154,16 @@ def load(
         f"load(dims={None if dims is None else list(dims)}, "
         f"n_sources={len(files) if files else 0})"
     )
+    # The one call site that cannot go through VarFrame._state_hash_of,
+    # because the frame it hashes does not exist yet: the digest is what
+    # the History entry inside that frame carries. It states the two
+    # fields the constructor will default to, rather than omitting them.
     state_hash = compute_state_hash(
-        dims=frame_dims, variables=variables, operations=((operation, comment),)
+        dims=frame_dims,
+        variables=variables,
+        operations=((operation, comment),),
+        coords=Cartesian(),
+        mode=resolved_mode,
     )
     provenance = Provenance(
         itaca_version=__version__,
@@ -271,9 +281,15 @@ def _from_array(
         str(name): np.asarray(array[:, index], dtype=float)
         for index, name in enumerate(names)
     }
+    # Canonical framing, not a comma join over raw input bytes
+    # (FND-047): names=['a,b','c'] and ['a','b,c'] produced one digest,
+    # and an integer source and a float source that load to the SAME
+    # frame produced two, because the digest read the caller's array
+    # instead of the columns actually loaded.
     digest = hashlib.sha256()
-    digest.update(",".join(str(n) for n in names).encode())
-    digest.update(np.ascontiguousarray(array).tobytes())
+    for name, values in columns.items():
+        feed(digest, b"col", text(name))
+        feed_array(digest, values)
     return columns, (), digest.hexdigest(), None
 
 
@@ -310,8 +326,8 @@ def _from_dataframe(source: Any, dims: Sequence[str] | None) -> _LoadContent:
     }
     digest = hashlib.sha256()
     for name, values in columns.items():
-        digest.update(name.encode())
-        digest.update(np.ascontiguousarray(values).tobytes())
+        feed(digest, b"col", text(name))
+        feed_array(digest, values)
     return columns, (), digest.hexdigest(), None
 
 

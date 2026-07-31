@@ -14,17 +14,35 @@ Usage example (the contract under test)::
 
 import dataclasses
 from datetime import UTC, datetime
+from typing import Any
 
 import numpy as np
 import pytest
 
 import itaca as itc
 from itaca.core.axes import Axis, AxisRegistry
+from itaca.core.coords import Cartesian
 from itaca.core.dimension import Dimension
 from itaca.core.errors import ProvenanceError
 from itaca.core.history import History, HistoryEntry, compute_state_hash
 from itaca.core.varframe import VarFrame
 from itaca.core.variable import Variable
+
+
+def hash_of(**fields: Any) -> str:
+    """Hash CONTENT fields, holding the frame-level two at their default.
+
+    ``compute_state_hash`` requires ``coords`` and ``mode`` (DD-47), so
+    that no production call site can narrow what is authenticated by
+    omitting one. Every test below is about a content field, so naming
+    the same two constants twenty-eight times would say nothing; the
+    tests that vary them are in
+    ``tests/io/test_ita2e_canonical_payload.py`` and, as properties, in
+    ``tests/core/test_hash_properties.py``.
+    """
+    fields.setdefault("coords", Cartesian())
+    fields.setdefault("mode", "production")
+    return compute_state_hash(**fields)
 
 
 def _entry(index: int, operation: str = "op") -> HistoryEntry:
@@ -108,35 +126,31 @@ class TestStateHash:
         dims_a, vars_a = self._content()
         dims_b, vars_b = self._content()
         ops = (("load(source='a.csv')", None),)
-        h1 = compute_state_hash(dims=dims_a, variables=vars_a, operations=ops)
-        h2 = compute_state_hash(dims=dims_b, variables=vars_b, operations=ops)
+        h1 = hash_of(dims=dims_a, variables=vars_a, operations=ops)
+        h2 = hash_of(dims=dims_b, variables=vars_b, operations=ops)
         assert h1 == h2
         assert len(h1) == 64
 
     def test_sensitive_to_values(self) -> None:
         dims, vars_a = self._content()
         _, vars_b = self._content(values=np.array([0.0, 1.0, 99.0]))
-        h1 = compute_state_hash(dims=dims, variables=vars_a, operations=())
-        h2 = compute_state_hash(dims=dims, variables=vars_b, operations=())
+        h1 = hash_of(dims=dims, variables=vars_a, operations=())
+        h2 = hash_of(dims=dims, variables=vars_b, operations=())
         assert h1 != h2
 
     def test_sensitive_to_operations_and_comments(self) -> None:
         dims, variables = self._content()
-        h0 = compute_state_hash(dims=dims, variables=variables, operations=())
-        h1 = compute_state_hash(
-            dims=dims, variables=variables, operations=(("squeeze()", None),)
-        )
-        h2 = compute_state_hash(
-            dims=dims, variables=variables, operations=(("squeeze()", "why"),)
-        )
+        h0 = hash_of(dims=dims, variables=variables, operations=())
+        h1 = hash_of(dims=dims, variables=variables, operations=(("squeeze()", None),))
+        h2 = hash_of(dims=dims, variables=variables, operations=(("squeeze()", "why"),))
         assert len({h0, h1, h2}) == 3
 
     def test_variable_insertion_order_is_canonical(self) -> None:
         dims, _ = self._content()
         a = Variable(name="A", values=np.arange(3.0))
         b = Variable(name="B", values=np.arange(3.0) + 1)
-        h_ab = compute_state_hash(dims=dims, variables={"A": a, "B": b}, operations=())
-        h_ba = compute_state_hash(dims=dims, variables={"B": b, "A": a}, operations=())
+        h_ab = hash_of(dims=dims, variables={"A": a, "B": b}, operations=())
+        h_ba = hash_of(dims=dims, variables={"B": b, "A": a}, operations=())
         assert h_ab == h_ba
 
     def test_sensitive_to_correlation_and_tags(self) -> None:
@@ -145,20 +159,20 @@ class TestStateHash:
         from itaca.core.uncframe import UncFrame
 
         dims, variables = self._content()
-        base = compute_state_hash(dims=dims, variables=variables, operations=())
-        with_corr = compute_state_hash(
+        base = hash_of(dims=dims, variables=variables, operations=())
+        with_corr = hash_of(
             dims=dims,
             variables=variables,
             operations=(),
             correlation=CorrelationMatrix(pairs={("CT", "CP"): 0.5}),
         )
-        with_tags = compute_state_hash(
+        with_tags = hash_of(
             dims=dims,
             variables=variables,
             operations=(),
             tags=HistoryFrame(tags={"CT": np.array([0, 1, 0])}),
         )
-        with_unc = compute_state_hash(
+        with_unc = hash_of(
             dims=dims,
             variables=variables,
             operations=(),
@@ -170,12 +184,8 @@ class TestStateHash:
         # Dimension order dictates array shape (SRS 4.1.1), so it hashes.
         alpha = Dimension(name="alpha", coords=np.array([0.0, 2.0]))
         mach = Dimension(name="mach", coords=np.array([0.1, 0.2]))
-        h1 = compute_state_hash(
-            dims={"alpha": alpha, "mach": mach}, variables={}, operations=()
-        )
-        h2 = compute_state_hash(
-            dims={"mach": mach, "alpha": alpha}, variables={}, operations=()
-        )
+        h1 = hash_of(dims={"alpha": alpha, "mach": mach}, variables={}, operations=())
+        h2 = hash_of(dims={"mach": mach, "alpha": alpha}, variables={}, operations=())
         assert h1 != h2
 
 
@@ -208,8 +218,8 @@ class TestSemanticStateHash:
 
     def test_itaca_003_unit_changes_the_hash(self) -> None:
         """The reported case, at the level the finding is about."""
-        deg = compute_state_hash(**self._base(unit="deg"))  # type: ignore[arg-type]
-        rad = compute_state_hash(**self._base(unit="rad"))  # type: ignore[arg-type]
+        deg = hash_of(**self._base(unit="deg"))  # type: ignore[arg-type]
+        rad = hash_of(**self._base(unit="rad"))  # type: ignore[arg-type]
         assert deg != rad
 
     def test_itaca_003_the_deg_and_rad_frames_differ_end_to_end(self) -> None:
@@ -243,16 +253,26 @@ class TestSemanticStateHash:
 
         assert rotated(deg) != pytest.approx(rotated(rad))
 
-    def test_itaca_003_a_frame_with_no_metadata_keeps_its_hash(self) -> None:
-        """The absent-field rule, which is what bounds the compatibility break.
+    def test_itaca_003_the_digest_of_a_bare_frame_is_pinned(self) -> None:
+        """The canary. It was a proof; it is now a tripwire.
 
-        A metadata field left unset emits NO token, so a frame that
-        declares none hashes exactly as it did before metadata entered
-        the scope. The literal is defensible here precisely because this
-        test exists to prove the value did NOT move.
+        This test was written at DD-40 to prove the digest had NOT
+        moved: an unset metadata field emitted no token, and the literal
+        was the evidence that the compatibility break was bounded.
+
+        DD-47 moves it deliberately. Canonical framing tells an absent
+        field from an empty one without the emit-nothing rule, so that
+        rule is gone, and ``coords`` and ``mode`` now enter the digest.
+        The value below is the post-migration one, measured on the fix.
+
+        The literal stays, with its purpose rewritten rather than the
+        test deleted, because what it guards is still worth guarding:
+        after a deliberate migration the next move of this value will be
+        an accidental one, and nothing else in the suite would notice a
+        reordered field or a stray token.
         """
-        assert compute_state_hash(**self._base()) == (  # type: ignore[arg-type]
-            "5d43ab2e79dc6e34a4efc661e457ad0552305ea46e2a6a19ccdb83fc7f0ac785"
+        assert hash_of(**self._base()) == (  # type: ignore[arg-type]
+            "48679696326381c0c4f49bf08fa161d0f1ab31487e36c111db8ea9adcadab07d"
         )
 
     def test_itaca_003_pivot_promotes_a_variable_unit_into_the_hash(self) -> None:
@@ -293,8 +313,8 @@ class TestSemanticStateHash:
         self, field: str, value: str
     ) -> None:
         """BRF-043's mutation sweep, dimension half."""
-        assert compute_state_hash(**self._base(**{field: value})) != (  # type: ignore[arg-type]
-            compute_state_hash(**self._base())  # type: ignore[arg-type]
+        assert hash_of(**self._base(**{field: value})) != (  # type: ignore[arg-type]
+            hash_of(**self._base())  # type: ignore[arg-type]
         )
 
     @pytest.mark.parametrize(
@@ -321,11 +341,11 @@ class TestSemanticStateHash:
             "dims": {"alpha": Dimension(name="alpha", coords=np.array([0.0, 2.0]))},
             "operations": (),
         }
-        plain = compute_state_hash(
+        plain = hash_of(
             **base,  # type: ignore[arg-type]
             variables={"CT": Variable(name="CT", values=np.arange(2.0))},
         )
-        mutated = compute_state_hash(
+        mutated = hash_of(
             **base,  # type: ignore[arg-type]
             variables={
                 "CT": Variable(name="CT", values=np.arange(2.0), **{field: value})
@@ -350,8 +370,8 @@ class TestSemanticStateHash:
         described = AxisRegistry().with_axis(
             Axis(name="rig", rotation_matrix=np.eye(3), description="balance rig")
         )
-        assert compute_state_hash(**base, axes=plain) != (  # type: ignore[arg-type]
-            compute_state_hash(**base, axes=described)  # type: ignore[arg-type]
+        assert hash_of(**base, axes=plain) != (  # type: ignore[arg-type]
+            hash_of(**base, axes=described)  # type: ignore[arg-type]
         )
 
     def test_itaca_003_byte_order_is_normalized(self) -> None:
@@ -370,10 +390,10 @@ class TestSemanticStateHash:
             "variables": {"CT": Variable(name="CT", values=np.arange(3.0))},
             "operations": (("load()", None),),
         }
-        assert compute_state_hash(
+        assert hash_of(
             **base,  # type: ignore[arg-type]
             dims={"alpha": Dimension(name="alpha", coords=native)},
-        ) == compute_state_hash(
+        ) == hash_of(
             **base,  # type: ignore[arg-type]
             dims={"alpha": Dimension(name="alpha", coords=swapped)},
         )
@@ -390,11 +410,11 @@ class TestSemanticStateHash:
             "dims": {"alpha": Dimension(name="alpha", coords=np.array([0.0]))},
             "operations": (),
         }
-        positive = compute_state_hash(
+        positive = hash_of(
             **base,  # type: ignore[arg-type]
             variables={"x": Variable(name="x", values=np.array([0.0]))},
         )
-        negative = compute_state_hash(
+        negative = hash_of(
             **base,  # type: ignore[arg-type]
             variables={"x": Variable(name="x", values=np.array([-0.0]))},
         )

@@ -522,7 +522,6 @@ def test_r3_ita_014_average_does_not_treat_infinity_as_missing() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-004: open at 730649f")
 def test_r3_ita_004_coord_system_is_part_of_the_state() -> None:
     """Two frames that integrate differently must not share a hash.
 
@@ -539,7 +538,6 @@ def test_r3_ita_004_coord_system_is_part_of_the_state() -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-004: open at 730649f")
 def test_r3_ita_004_coord_system_survives_an_itc_round_trip(tmp_path: Path) -> None:
     """A Polar frame must not come back Cartesian."""
     db = _frame(["r", "v"], [[0.0, 1.0], [1.0, 1.0]], ["r"])
@@ -548,7 +546,6 @@ def test_r3_ita_004_coord_system_survives_an_itc_round_trip(tmp_path: Path) -> N
     assert isinstance(itc.open(path).coords, Polar)
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-005: open at 730649f")
 def test_r3_ita_005_itc_rejects_a_tampered_last_history_hash(tmp_path: Path) -> None:
     """A forged state hash in History must be detected.
 
@@ -577,7 +574,6 @@ def test_r3_ita_005_itc_rejects_a_tampered_last_history_hash(tmp_path: Path) -> 
         itc.open(forged)
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-003: open at 730649f")
 def test_r3_ita_003_state_hash_separates_a_missing_comment_from_an_empty_one() -> None:
     """``comment=None`` and ``comment=""`` are different states.
 
@@ -591,7 +587,6 @@ def test_r3_ita_003_state_hash_separates_a_missing_comment_from_an_empty_one() -
     assert absent.state_hash != empty.state_hash
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-019: open at 730649f")
 def test_r3_ita_019_metadata_field_order_does_not_change_the_hash() -> None:
     """The same final metadata must hash the same however it was given.
 
@@ -606,7 +601,6 @@ def test_r3_ita_019_metadata_field_order_does_not_change_the_hash() -> None:
     assert a.state_hash == b.state_hash
 
 
-@pytest.mark.xfail(strict=True, reason="R3-ITA-015: open at 730649f")
 def test_r3_ita_015_a_malformed_itc_raises_an_itaca_error(tmp_path: Path) -> None:
     """A corrupt member must not leak ``json.JSONDecodeError``."""
     db = _frame(["i", "a"], [[0.0, 1.0], [1.0, 2.0]], ["i"])

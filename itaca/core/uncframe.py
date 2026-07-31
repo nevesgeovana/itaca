@@ -18,6 +18,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.errors import UncertaintyError, UncertaintyKeyError
+from itaca.core.immutable import readonly
 
 
 def _normalize(
@@ -45,9 +46,7 @@ def _normalize(
                 "assignment of a negative standard uncertainty",
                 "standard uncertainties are non-negative (GUM clause 2.3.1)",
             )
-        array = array.copy()
-        array.setflags(write=False)
-        normalized[name] = array
+        normalized[name] = readonly(array)
     return MappingProxyType(normalized)
 
 

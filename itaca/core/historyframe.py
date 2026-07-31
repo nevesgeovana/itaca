@@ -16,6 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.errors import DataError
+from itaca.core.immutable import readonly
 
 VALID_TAGS = (-1, 0, 1)
 
@@ -56,7 +57,5 @@ class HistoryFrame:
                     "use 0 (original), +1 (interpolated/computed), "
                     "-1 (extrapolated); see SRS 4.3",
                 )
-            array = array.astype(np.int8)
-            array.setflags(write=False)
-            normalized[name] = array
+            normalized[name] = readonly(array, dtype=np.int8)
         object.__setattr__(self, "tags", MappingProxyType(normalized))

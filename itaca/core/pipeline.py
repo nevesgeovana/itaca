@@ -377,7 +377,13 @@ class Pipeline:
     itaca_version: str | None = None
 
     def __post_init__(self) -> None:
-        """Refuse the empty pipeline, which would apply as a silent no-op."""
+        """Refuse the empty pipeline, and take ownership of the steps.
+
+        A frozen Pipeline built from the caller's LIST stayed bound to
+        it, so an external append changed the pipeline and its
+        content_hash with nothing recorded (FND-048).
+        """
+        object.__setattr__(self, "steps", tuple(self.steps))
         if not self.steps:
             raise DataError(
                 "pipeline",

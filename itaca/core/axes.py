@@ -34,6 +34,7 @@ from itaca.core.errors import (
     RotationMatrixError,
     VectorGroupError,
 )
+from itaca.core.immutable import readonly
 
 _Matrix = NDArray[np.float64]
 
@@ -197,9 +198,7 @@ class Axis:
                     "rotation",
                     "provide a proper rotation matrix (det = +1) (REQ-101)",
                 )
-            matrix = matrix.copy()
-            matrix.setflags(write=False)
-            object.__setattr__(self, "rotation_matrix", matrix)
+            object.__setattr__(self, "rotation_matrix", readonly(matrix))
         else:
             if self.convention not in CONVENTIONS:
                 raise RotationMatrixError(
