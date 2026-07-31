@@ -222,6 +222,42 @@ class TestCanonicalFraming:
         right = compute_state_hash(operations=(("op1", "x\x1fy"),), **self._base())
         assert left != right
 
+    def test_a_misspelled_mode_is_refused(self) -> None:
+        """Required-ness closes omission; this closes the typo.
+
+        ``mode`` is a plain str and decides the digest, so
+        ``mode="Production"`` would otherwise produce a perfectly well
+        formed 64-hex value that no frame ever reproduces. Registered by
+        QA in round two as a behaviour change with no test, which is the
+        same category as the finding the commit that added it closed.
+        """
+        from itaca.core.errors import ProvenanceError
+
+        with pytest.raises(ProvenanceError) as caught:
+            compute_state_hash(
+                dims={},
+                variables={},
+                operations=(),
+                coords=Cartesian(),
+                mode="Production",
+            )
+        assert "Production" in caught.value.obj
+
+    def test_a_valid_mode_still_hashes(self) -> None:
+        """Inert control: the guard refuses a typo, not the argument."""
+        assert (
+            len(
+                compute_state_hash(
+                    dims={},
+                    variables={},
+                    operations=(),
+                    coords=Cartesian(),
+                    mode="draft",
+                )
+            )
+            == 64
+        )
+
     def test_a_comment_still_enters_the_hash(self) -> None:
         """Inert control: framing must not stop the field mattering."""
         one = compute_state_hash(operations=(("op", "a"),), **self._base())
@@ -392,6 +428,31 @@ class TestReadOnlyArraysCannotBeReopened:
             owner = getattr(owner, "base", None)
         with pytest.raises(ValueError):
             values[0] = 99.0
+
+    def test_an_object_array_is_refused_not_copied_through_bytes(self) -> None:
+        """The refusal that protects the mechanism from itself.
+
+        An object array's buffer holds POINTERS, so copying it through
+        ``tobytes`` would produce an array of addresses rather than of
+        values. No caller passes one today, which is exactly why the
+        branch needs a test: QA registered it in round two as a new
+        untested refusal, in the commit whose round-one finding was
+        untested refusal branches.
+        """
+        from itaca.core.immutable import readonly
+
+        with pytest.raises(DataError) as caught:
+            readonly(np.array([{}, {}], dtype=object))
+        assert "object" in caught.value.obj
+        assert "pointers" in caught.value.operation
+
+    def test_a_string_array_is_still_protected(self) -> None:
+        """Inert control: refusing object dtype must not refuse text."""
+        from itaca.core.immutable import readonly
+
+        protected = readonly(np.array(["a", "bb"]))
+        assert not protected.flags.writeable
+        assert list(protected) == ["a", "bb"]
 
     def test_a_copy_is_still_writeable(self, simple_db: VarFrame) -> None:
         """Inert control: the guard protects the frame, not the caller."""

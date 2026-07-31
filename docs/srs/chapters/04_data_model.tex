@@ -579,15 +579,16 @@ no state hash, no steps hash or no member manifest is refused.
 \textbf{File inside archive} & \textbf{Content}\\
 \midrule
 \code{varframe.npz}      & All variable arrays in NumPy compressed format.\\
-\code{dims.json}         & Dimension names, coordinate arrays, units, descriptions, numeric flags.\\
+\code{dims.json}         & Dimension names, coordinate arrays and their dtype, units, descriptions, numeric flags.\\
 \code{vars\_meta.json}   & Variable units, descriptions, long names.\\
+\code{frame.json}        & Frame-level state that is neither a dimension nor a variable: today the spatial coordinate-system tag (REQ-28).\\
 \code{uncframe.npz}      & Uncertainty arrays (absent when no UncFrame).\\
 \code{correlation.json}  & Declared correlation matrix (absent when independent).\\
 \code{historyframe.npz}  & Origin tags per variable (absent when all values are original).\\
 \code{axes.json}         & Registered axes with rotation matrices (absent when only the canonical body axis is present).\\
 \code{provenance.json}   & Origin record (Section~\ref{sec:provenance-history}).\\
-\code{history.json}      & Ordered list of operation entries with indices, each carrying its replay step when the operation records one (schema \code{itaca-itc/2}).\\
-\code{metadata.json}     & \itc{} version, format version, state hash, and the replay-steps hash (schema \code{itaca-itc/2}).\\
+\code{history.json}      & Ordered list of operation entries with indices, each carrying its replay step when the operation records one.\\
+\code{metadata.json}     & \itc{} version, schema string, state hash, replay-steps hash, and the member manifest. The one member the manifest does not cover, since it is where the manifest lives.\\
 \bottomrule
 \end{tabularx}
 \end{table}
