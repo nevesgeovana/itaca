@@ -1030,6 +1030,7 @@ def test_the_walk_degrades_when_git_cannot_answer(
     assert _repository_files() is None, "no git executable on PATH"
 
 
+@pytest.mark.slow
 def test_the_degraded_walk_still_reaches_the_tree_and_honors_the_exclusions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1038,6 +1039,24 @@ def test_the_degraded_walk_still_reaches_the_tree_and_honors_the_exclusions(
     Without this it could be deleted or inverted and stay green, and
     EXCLUDED_PARTS would be configuration nothing can falsify, since the
     git path never consults it.
+
+    Marked ``slow``, so it runs at pre-push and in CI, where it still
+    BLOCKS, and not on every commit. It is the degraded path by
+    definition: `_repository_files` is stubbed to None, so the walk gets
+    no `git ls-files` answer and stats the whole tree itself, reading
+    every file it does not exclude. Measured on this repository at
+    1.67 s alone and 13.37 s inside the full commit tier, against a
+    3.0 s per-test budget, and it grows with the tree.
+
+    The marker is on the TEST and not the module: everything else in
+    this file reads the git listing and runs in milliseconds, and moving
+    the module would take eighteen fast guards out of the commit tier to
+    fix one.
+
+    It was `a9606f0` that installed the budget, and it left this test
+    breaking it, which is `ITC-20260730-2355` in one line: a tier guard
+    weaker than its own prose. The budget is not raised to make this
+    pass, because the budget is the thing that found it.
     """
     monkeypatch.setattr(sys.modules[__name__], "_repository_files", lambda: None)
     scanned = [name for name, _ in _walk()]
