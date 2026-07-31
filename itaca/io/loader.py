@@ -332,15 +332,28 @@ def _from_dataframe(source: Any, dims: Sequence[str] | None) -> _LoadContent:
 
 
 def _read_csv(path: Path) -> dict[str, list[object]]:
+    # newline="" and the FILE OBJECT, never splitlines(). Splitting the
+    # text on lines first put the newline inside a quoted field beyond
+    # the parser's reach, so a coordinate exported as "front\nrear" came
+    # back as 'frontrear', silently (FND-060). The stdlib reader handles
+    # it correctly when it is allowed to see the stream.
     try:
-        text = path.read_text(encoding="utf-8")
+        with open(path, newline="", encoding="utf-8") as handle:
+            rows = [row for row in csv.reader(handle) if row]
     except OSError as error:
         raise DataError(
             f"source file '{path.name}'",
             f"itc.load could not read it ({error.__class__.__name__})",
             "check that the path exists and is readable",
         ) from error
-    rows = [row for row in csv.reader(text.splitlines()) if row]
+    # Leading comment lines are skipped so that what to_csv WRITES is
+    # something itc.load can READ. Before this the provenance preamble
+    # became the header, and the file ITACA had just exported was
+    # refused by ITACA with a message about field counts (FND-060,
+    # FND-019). The skip stops at the first non-comment line, so a file
+    # with no preamble is untouched.
+    while rows and rows[0] and rows[0][0].lstrip().startswith("#"):
+        rows.pop(0)
     if not rows:
         raise DataError(
             f"source file '{path.name}'",
@@ -379,13 +392,20 @@ def _read_csv(path: Path) -> dict[str, list[object]]:
                 "dropped on ingestion (REQ-01)",
             )
         for index, name in enumerate(header):
-            cell = row[index].strip() if index < len(row) else ""
-            if cell == "":
+            cell = row[index] if index < len(row) else ""
+            if not cell.strip():
                 columns[name].append(np.nan)
                 continue
             try:
+                # float() tolerates surrounding whitespace on its own, so
+                # an unquoted ' 1.0 ' still parses as 1.0 and nothing
+                # about numeric loading changes.
                 columns[name].append(float(cell))
             except ValueError:
+                # A STRING cell keeps its bytes. Stripping every cell
+                # meant a deliberately quoted ' padded label ' arrived as
+                # 'padded label', so the file said one thing and the
+                # frame held another (FND-062).
                 columns[name].append(cell)
     return columns
 

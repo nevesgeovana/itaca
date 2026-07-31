@@ -617,7 +617,9 @@ def test_r3_ita_015_a_malformed_itc_raises_an_itaca_error(tmp_path: Path) -> Non
 
 
 # ---------------------------------------------------------------------------
-# The error hierarchy, still open at three sites (ITACA-031).
+# The error hierarchy. The three ITACA-031 sites are closed: itc.open no
+# longer leaks JSONDecodeError or ValueError, and the plugin boundary
+# below no longer leaks AttributeError (FND-031, ITA-2E).
 # ---------------------------------------------------------------------------
 
 
@@ -628,7 +630,6 @@ def test_itaca_031_set_uncertainty_wraps_a_bad_value_type() -> None:
         db.set_uncertainty({"x": object()})
 
 
-@pytest.mark.xfail(strict=True, reason="ITACA-031: open at 730649f")
 def test_itaca_031_a_broken_processor_constructor_raises_an_itaca_error() -> None:
     """The one place third-party code plugs in must not leak."""
     from itaca.pproc.registry import register_processor

@@ -204,6 +204,12 @@ source file to its dimension coordinate values. When a dimension is swept
 appear in one file), the manifest records the symbol \code{*} in that
 column for that file, indicating ``swept here, see file''. The manifest is
 the audit checkpoint between data loading and any further manipulation.
+
+The CSV form is written to RFC 4180, quoting and escaping as needed. It
+was concatenated with a plain comma join, so a source path containing a
+comma added a field to its own row and the manifest parsed as a
+different table than the one written: an audit checkpoint that
+misreports which file carried which coordinates is worse than none.
 \end{reqbox}
 
 \begin{reqbox}{REQ-16}{\stable}
@@ -1268,6 +1274,20 @@ time, before any computation. By default, equations are evaluated in file
 order; passing \code{auto\_sort=True} to the parser enables topological
 sorting by dependency, in which case the parser reports the resolved
 order to the user as feedback.
+
+\textbf{Everything the file can be judged on alone is judged at parse
+time.} Two checks used to run later and are stated here because "at
+parse time, before any computation" is what makes a validated
+\code{.itceq} worth anything. Every \code{[constants]} value must be
+FINITE: a TOML \code{nan} or \code{inf} passed validation and reached
+every equation that read the constant, so the result was non-finite
+everywhere and the file that caused it had validated clean. And every
+expression is checked against the REQ-44 operator and function set by
+the same converter \code{compute} uses, so \code{x // 2} is refused
+when the file is read rather than when it is applied. Name resolution
+is deliberately NOT performed at parse time: an equation may reference
+a variable an earlier equation produces, or one the VarFrame supplies,
+and neither is knowable from the file.
 \end{reqbox}
 
 \begin{reqbox}{REQ-49}{\stable}
@@ -1552,6 +1572,34 @@ A VarFrame supports export to:
 The \code{.itc} format preserves all metadata, Provenance, History,
 uncertainty, correlation, origin tags, the spatial coordinate system,
 and the dtype of every coordinate array.
+
+\textbf{A file ITACA writes, ITACA reads.} A CSV produced by
+\code{to\_csv} is accepted by \code{itc.load}: the provenance preamble
+REQ-71 requires is recognized as leading comment lines and skipped, and
+parsing preserves quoting, so a value containing a newline or
+deliberate whitespace survives the round trip. This is stated because
+it did not hold: \code{itc.load} took the preamble for the header and
+refused the file with a message about field counts, and a quoted
+newline was deleted without a signal.
+
+\code{to\_csv(split\_by=...)} REFUSES a split whose filenames would not
+tell two slices apart, before writing anything, rather than letting one
+slice overwrite the other silently.
+
+\textbf{JSON non-finite policy.} JSON has no non-finite literal (RFC
+8259). NaN is written as \code{null}, which is what absent means; the
+infinities are written as the STRINGS \code{"Infinity"} and
+\code{"-Infinity"}. Writing all three as \code{null} erased a
+distinction the library maintains everywhere else, between a point
+never measured and a computation that diverged, and the two call for
+opposite responses. Writing them as bare tokens would produce a file a
+strict parser refuses.
+
+A JSON export carrying uncertainty carries the COMBINED standard
+uncertainty beside its components, and names the rule that produced it
+(REQ-99). A consumer given only the components reimplements the
+composition, and the plausible wrong guess is the one that ignores
+declared correlation.
 
 \textbf{The archive is an authenticated canonical payload.} Its
 \code{metadata.json} carries a manifest naming every other member with

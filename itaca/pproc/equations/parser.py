@@ -52,6 +52,7 @@ is what ``[corrections]`` is for.
 from __future__ import annotations
 
 import ast
+import math
 import tomllib
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -59,7 +60,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, NoReturn
 
-from itaca.core.errors import ItceqCycleError, ItceqParseError
+from itaca.core.errors import DataError, ItceqCycleError, ItceqParseError
+from itaca.uncertainty.expression import validate_expression_syntax
 
 __all__ = ["Equation", "ItceqSpec", "parse_itceq"]
 
@@ -353,6 +355,18 @@ def _constants(source: Path, section: Any) -> dict[str, float]:
                 "entry is numeric",
                 f"write it as a number, for example {key} = 0.1963 (REQ-48)",
             )
+        # TOML has nan and inf literals, and the isinstance check admitted
+        # both: they reached spec.constants and propagated silently into
+        # every equation that read the constant, so the result was NaN
+        # everywhere and the file that caused it validated clean
+        # (FND-086). A physical constant is finite.
+        if not math.isfinite(value):
+            raise ItceqParseError(
+                f"constant '{key}' in '{source.name}'",
+                f"its value is {value}, and a non-finite constant makes every "
+                "equation that reads it non-finite with no other signal",
+                f"write a finite number, for example {key} = 0.1963 (REQ-48)",
+            )
         constants[key] = float(value)
     return constants
 
@@ -395,6 +409,26 @@ def _equations(source: Path, section: Any, name: str) -> tuple[Equation, ...]:
                 f"[{name}] entry is an expression string",
                 f'quote the expression, for example {key} = "FZ / q_inf" (REQ-48)',
             )
+        # Syntax is answered HERE, by the same converter compute runs.
+        # 'x // 2' used to parse clean and be refused only at
+        # application, so a load, a processor construction and an
+        # explicit validate() all reported a broken file as fine
+        # (FND-087). Names are deliberately left unresolved: an equation
+        # may reference a variable an earlier one produces.
+        try:
+            validate_expression_syntax(value)
+        except DataError as error:
+            # Re-raised as the file's own error type, naming the file and
+            # the target. The converter's message is accurate about the
+            # expression and says nothing about where the expression came
+            # from, and "which .itceq, which equation" is the whole of
+            # what a reader needs to fix it.
+            raise ItceqParseError(
+                f"equation '{key}' in '{source.name}'",
+                f"its expression {value!r} is not one this library can "
+                f"evaluate ({error.operation})",
+                error.fix,
+            ) from error
         equations.append(Equation(target=key, expression=value))
     return tuple(equations)
 

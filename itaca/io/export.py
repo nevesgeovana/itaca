@@ -18,6 +18,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from itaca.core.errors import (
+    DataError,
     DraftModeExportError,
     DraftModeExportWarning,
     MissingDependencyError,
@@ -101,6 +102,31 @@ def _flat_columns(db: VarFrame) -> tuple[list[str], list[NDArray[Any]]]:
     return names, columns
 
 
+def _refuse_colliding_stems(split_by: str, values: list[Any], stems: list[str]) -> None:
+    """Refuse a split whose filenames would not tell the slices apart.
+
+    Refusing rather than encoding the collision away is a deliberate
+    choice, recorded so the next reader does not take it for the only
+    option. An injective encoding of every unsafe character would make
+    collisions impossible by construction, but it renames every output
+    anyone already has (``s_1p5.csv`` becomes ``s_1_2E5.csv``) for a
+    defect that bites only on textual coordinates. Refusing closes
+    "silently overwrite" completely and moves no existing filename.
+    """
+    seen: dict[str, Any] = {}
+    for value, stem in zip(values, stems, strict=True):
+        if stem in seen:
+            raise DataError(
+                f"coordinates {seen[stem]!r} and {value!r} of dimension '{split_by}'",
+                f"to_csv(split_by='{split_by}') would give both the filename "
+                f"'{split_by}_{stem}.csv', so one slice would overwrite the "
+                "other and the surviving file would not say which it holds",
+                "rename one of the coordinates on the way in, or export the "
+                "whole frame in one file and split it downstream (REQ-70)",
+            )
+        seen[stem] = value
+
+
 def to_csv(
     db: VarFrame,
     path: str | Path,
@@ -114,15 +140,24 @@ def to_csv(
     """
     guard_draft(db, allow_draft, "to_csv")
     if split_by is not None:
+        dimension = db.dims[split_by]
+        values = [
+            float(coordinate) if dimension.is_numeric else str(coordinate)
+            for coordinate in dimension.coords
+        ]
+        stems = [str(value).replace(".", "p") for value in values]
+        # Computed for EVERY slice and checked BEFORE the directory is
+        # created, so a refused export leaves no half-written output.
+        # 'a.b' and 'apb' produced one stem, and the second slice
+        # overwrote the first with no signal at all: two runs went in and
+        # one file came out, holding data the filename did not describe
+        # (FND-059).
+        _refuse_colliding_stems(split_by, values, stems)
         directory = Path(path)
         directory.mkdir(parents=True, exist_ok=True)
         written: list[Path] = []
-        for coordinate in db.dims[split_by].coords:
-            value = (
-                float(coordinate) if db.dims[split_by].is_numeric else str(coordinate)
-            )
+        for value, stem in zip(values, stems, strict=True):
             piece = db.select({split_by: value}, history=False)
-            stem = str(value).replace(".", "p")
             target = directory / f"{split_by}_{stem}.csv"
             result = to_csv(piece, target, allow_draft=allow_draft)
             written.append(Path(str(result)))
@@ -196,6 +231,25 @@ def to_json(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Pat
             "random": {
                 name: values.tolist() for name, values in db.uncertainty.random.items()
             },
+            # The combined value the API already computes, exported
+            # beside its components, and NAMING its composition rule
+            # (author's decided call, FND-062). Without it a consumer
+            # reads two arrays and reimplements the rule, and the
+            # plausible wrong guess is to ignore the correlation the
+            # frame declares. The sentence below is what stops the
+            # number being reinterpreted, so it ships with the number
+            # rather than in a document the consumer does not have.
+            "combined": {
+                name: db.uncertainty.combined(name).tolist()
+                for name in db.uncertainty.variables()
+            },
+            "combination": (
+                "RSS of the systematic and random components per variable, "
+                "sqrt(u_sys**2 + u_rand**2), a missing component counting as "
+                "zero (REQ-99, AIAA S-071A-1999). This is the standard "
+                "uncertainty of ONE variable; correlation declared BETWEEN "
+                "variables is carried separately and is not folded in here."
+            ),
         }
     target = Path(path)
     # allow_nan=False: NaN, Infinity and -Infinity are NOT JSON (RFC
@@ -204,26 +258,37 @@ def to_json(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Pat
     # interoperability (ITACA-019). Non-finite values become null, and
     # the policy is explicit rather than inherited from a default.
     target.write_text(
-        json.dumps(_nullify_non_finite(payload), indent=2, allow_nan=False) + "\n",
+        json.dumps(_encode_non_finite(payload), indent=2, allow_nan=False) + "\n",
         encoding="utf-8",
     )
     return target
 
 
-def _nullify_non_finite(node: Any) -> Any:
-    """Replace every non-finite float with None, recursively.
+INFINITY_TOKENS = {float("inf"): "Infinity", float("-inf"): "-Infinity"}
+"""How each infinity is written, since RFC 8259 JSON has no literal.
 
-    JSON has no NaN, Infinity or -Infinity (RFC 8259), so a value that
-    is not finite cannot be written faithfully. Writing null says the
-    value is absent, which is what a NaN in this library means; writing
-    the bare tokens said the file was JSON when it was not.
-    """
+Author's decided call (FND-085). Every non-finite value used to become
+``null``, which erased a distinction the library maintains everywhere
+else: NaN means the point was never measured, and an infinity means a
+computation diverged. Reading them back as the same token, a user
+cannot tell a gap in a sweep from a division by zero, and the two call
+for opposite responses.
+
+NaN stays ``null``, because absent is what null means. The infinities
+become STRINGS, which keeps the file strict JSON; writing the bare
+tokens would produce a file a strict parser refuses, which is the
+interoperability break the null rule was introduced to fix.
+"""
+
+
+def _encode_non_finite(node: Any) -> Any:
+    """Encode every non-finite float per ``INFINITY_TOKENS``, recursively."""
     if isinstance(node, dict):
-        return {key: _nullify_non_finite(value) for key, value in node.items()}
+        return {key: _encode_non_finite(value) for key, value in node.items()}
     if isinstance(node, list):
-        return [_nullify_non_finite(value) for value in node]
+        return [_encode_non_finite(value) for value in node]
     if isinstance(node, float) and not np.isfinite(node):
-        return None
+        return INFINITY_TOKENS.get(node)
     return node
 
 

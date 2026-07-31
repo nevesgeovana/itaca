@@ -29,7 +29,15 @@ fail its own hash on reopen. The schema moves to \code{itaca-itc/3} and
 its two predecessors are REFUSED by name rather than reinterpreted,
 because neither records a coordinate system and reading one would
 return a polar frame as cartesian, which is the defect being closed
-(DD-47). Every state hash in existence changes, once.\\
+(DD-47). Every state hash in existence changes, once. The same revision
+also states what was silently untrue around the archive: REQ-70 now
+requires that a CSV \code{to\_csv} writes is one \code{itc.load} reads,
+which it was not, and states the JSON non-finite policy and the
+exported combined uncertainty (author's calls); REQ-15 requires RFC
+4180 in the manifest, which a comma in a source path corrupted; and
+REQ-48 requires that everything judgeable from an \code{.itceq} alone
+is judged at parse time, since a non-finite constant and a disallowed
+operator both got through to application.\\
 0.2.8 & 2026-07-31 & Geovana Neves &
 The propagation engine states its scope, and refuses outside it. A MINOR
 revision adding no requirement and withdrawing none, but narrowing SIX

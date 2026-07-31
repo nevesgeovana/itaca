@@ -176,22 +176,30 @@ class TestSerializationHardening:
 
         Measured before the fix: the file carried bare `NaN` and
         `Infinity` tokens, which `json.loads` accepts by extension but a
-        strict parser refuses, so the format chosen for interoperability
-        was not interoperable.
+        strict parser refuses, so the format chosen for
+        interoperability was not interoperable.
+
+        This test used to assert that the SUBSTRING "Infinity" was
+        absent, which was a stricter claim than the invariant and it
+        stopped being true at FND-085: the infinities now export as the
+        quoted strings "Infinity" and "-Infinity", so that a point never
+        measured stays distinguishable from a computation that
+        diverged. What matters is that no BARE token reaches the file,
+        and `parse_constant` is what measures that, since it fires for
+        the bare tokens and never for a string.
         """
         db = itc.load(np.array([[1.0], [np.nan], [np.inf], [-np.inf]]), names=["CT"])
         target = tmp_path / "out.json"
         db.to_json(target)
         text = target.read_text(encoding="utf-8")
-        assert "NaN" not in text
-        assert "Infinity" not in text
 
         # Strict parse: parse_constant fires only for the bare tokens.
         def _refuse(token: str) -> None:
             raise AssertionError(f"non-JSON token {token!r} in the output")
 
         payload = json.loads(text, parse_constant=_refuse)
-        assert payload["variables"]["CT"]["values"][1] is None
+        values = payload["variables"]["CT"]["values"]
+        assert values == [1.0, None, "Infinity", "-Infinity"]
 
 
 class TestLossyExportsWarn:

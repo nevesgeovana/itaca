@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
+from itaca.core.errors import ProcessorError
 from itaca.pproc.base import EquationProcessor
 from itaca.pproc.equations.parser import parse_itceq
 from itaca.pproc.protocol import Processor
@@ -74,4 +75,18 @@ def processor(
         spec = parse_itceq(name_or_path, auto_sort=auto_sort)
         return EquationProcessor(spec, config=config)
     constructor = _resolve(str(name_or_path))
-    return constructor(config=config, auto_sort=auto_sort)
+    built = constructor(config=config, auto_sort=auto_sort)
+    # The registry holds callables from outside this library, and what
+    # one returns was taken on trust. A constructor returning None left
+    # the failure to surface as AttributeError on '.name', from inside
+    # the caller's own code, with nothing naming the plugin (FND-031).
+    # The protocol is checked HERE, where the plugin is still named.
+    if not isinstance(built, Processor):
+        raise ProcessorError(
+            f"processor '{name_or_path}'",
+            f"its registered constructor returned {type(built).__name__}, "
+            "which does not satisfy the Processor protocol",
+            "a processor is callable and carries name, version and produces; "
+            "fix the registered constructor (REQ-45, REQ-46)",
+        )
+    return built

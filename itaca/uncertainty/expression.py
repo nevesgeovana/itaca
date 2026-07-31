@@ -10,7 +10,7 @@ but refuse differentiation (the per-variable guard of REQ-36).
 from __future__ import annotations
 
 import ast
-from collections.abc import Callable, Mapping, Set
+from collections.abc import Callable, Iterator, Mapping, Set
 from dataclasses import dataclass
 from typing import Any, Union
 
@@ -348,6 +348,75 @@ def is_elementwise(node: Node) -> bool:
     if isinstance(node, Binary):
         return is_elementwise(node.a) and is_elementwise(node.b)
     return True
+
+
+class _AnyNameButAConstant(Set[str]):
+    """A name set that admits everything except the built-in constants.
+
+    It exists so that syntax can be validated WITHOUT resolving names.
+    Excluding the constants is what keeps ``pi`` and ``e`` folding to
+    their values instead of tripping the shadowing refusal, which is a
+    question about a particular VarFrame and not about the expression.
+
+    Only ``__contains__`` is ever consulted by the converter; the other
+    two members exist because ``Set`` is abstract.
+    """
+
+    def __contains__(self, item: object) -> bool:
+        return item not in _CONSTANTS
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(())
+
+    def __len__(self) -> int:
+        return 0
+
+
+def validate_expression_syntax(text: str) -> None:
+    """Refuse an expression this library cannot evaluate, without a frame.
+
+    Parameters
+    ----------
+    text : str
+        The right-hand side of an equation.
+
+    Returns
+    -------
+    None
+        Raises on refusal; the parsed tree is discarded.
+
+    Raises
+    ------
+    DataError
+        On a syntax error, an unsupported operator, an unknown function,
+        a keyword argument, or a non-numeric literal.
+
+    Notes
+    -----
+    It runs the SAME converter ``compute`` runs, which is the whole
+    point. A disallowed operator such as ``x // 2`` used to pass
+    ``.itceq`` validation and be refused only when the file was applied,
+    so a broken workflow reported itself after a load, a processor
+    construction and a validation had all said it was fine (FND-087).
+    Refusing it here needed an operator list at parse time, and a SECOND
+    copy of that list is a second thing to keep in step; calling the
+    converter is what makes the two answers the same answer by
+    construction.
+
+    Name resolution is deliberately NOT performed. An equation may
+    reference a variable an earlier equation produces, or one the
+    VarFrame supplies, and neither is knowable from the file.
+
+    Examples
+    --------
+    >>> validate_expression_syntax("0.5 * rho * V**2")
+    >>> try:
+    ...     validate_expression_syntax("x // 2")
+    ... except Exception as error:
+    ...     print(type(error).__name__, error.operation)
+    DataError unsupported binary operator
+    """
+    parse_expression(text, _AnyNameButAConstant())
 
 
 def parse_expression(text: str, known: Set[str]) -> Node:

@@ -82,6 +82,52 @@ migration rather than three, and the schema refusal is what explains
 the change to a user rather than leaving them to meet it as an
 unexplained mismatch (DD-47).
 
+\paragraph{Changed (REQ-70, a file ITACA writes is a file ITACA
+reads).} A CSV produced by \code{to\_csv} was NOT accepted by
+\code{itc.load}. The loader took the first non-empty line as the
+header, so the provenance preamble REQ-71 requires became it, and the
+file ITACA had just exported was refused by ITACA with a message about
+field counts. Parsing also split the text on lines before the CSV
+reader could see the quoting, so a coordinate exported as
+\code{"front\textbackslash nrear"} came back as \code{frontrear}. The
+requirement now states the round trip, because a format that cannot be
+read back is not an export format.
+
+\paragraph{Changed (REQ-70, split\_by refuses instead of
+overwriting).} The filename stem collided for distinct textual
+coordinates, and the second slice overwrote the first with no signal:
+two runs went in and one file came out, holding data the filename did
+not describe. The collision is now detected across all slices before
+anything is written.
+
+\paragraph{Changed (REQ-70, the JSON non-finite policy).} Author's
+decided call. NaN and both infinities all exported as \code{null},
+erasing the distinction between a point never measured and a
+computation that diverged. NaN stays \code{null}; the infinities are
+strings, which keeps the file strict JSON.
+
+\paragraph{Changed (REQ-70, the combined uncertainty is exported).}
+Author's decided call. The export carried the components and not the
+combined value the API computes, so a consumer reimplements the rule
+and the plausible wrong guess ignores declared correlation. It ships
+with the sentence naming its composition, because a number a consumer
+cannot interpret is a number they will recompute.
+
+\paragraph{Changed (REQ-15, the manifest is RFC 4180).} It was built
+with a plain comma join, so a source path containing a comma corrupted
+its own row cardinality. An audit checkpoint that misreports which file
+carried which coordinates is worse than no checkpoint.
+
+\paragraph{Changed (REQ-48, the \code{.itceq} is judged when it is
+read).} A TOML constant of \code{nan} or \code{inf} passed validation
+and made every equation reading it non-finite, and a disallowed
+operator such as \code{x // 2} was refused only at application time,
+after a load, a processor construction and an explicit
+\code{validate()} had all reported the file as fine. Both are refused
+at parse time now, the operator check running the SAME converter
+\code{compute} runs so the two answers cannot drift apart. Name
+resolution stays deferred, which the requirement now says explicitly.
+
 \section*{Document 0.2.8, 2026-07-31, The Engine States Its Scope: One Expression}
 
 A MINOR revision adding no requirement and withdrawing none, and

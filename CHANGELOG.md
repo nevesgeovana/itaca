@@ -70,6 +70,26 @@ names `release.yml` with environment `pypi`. A publisher naming
   still produces an archive that opens. What ends is the case where a
   one-field edit needed nothing else at all.
 
+* **A JSON export now distinguishes NaN from the infinities.** All three
+  used to become `null`, so a point that was never measured stopped
+  arriving distinguishable from a computation that diverged, and the two
+  call for opposite responses. NaN stays `null`; `+inf` and `-inf`
+  export as the strings `"Infinity"` and `"-Infinity"`. The file remains
+  strict RFC 8259 JSON: the tokens are quoted, never bare.
+
+* **A JSON export carrying uncertainty now carries the combined value**
+  beside its components, under `uncertainty.combined`, with an
+  `uncertainty.combination` sentence naming the rule that produced it.
+  A consumer given only the components reimplements the composition, and
+  the plausible wrong guess is the one that ignores declared
+  correlation.
+
+* `to_csv(split_by=...)` refuses a split whose filenames would not tell
+  two slices apart, instead of letting one overwrite the other. The
+  check runs over every slice before anything is written, so a refused
+  export leaves no partial directory. Filenames that do not collide are
+  unchanged.
+
 * `compute_state_hash` takes `coords` and `mode` as required keyword
   arguments. Both were state that decided behavior from outside the
   digest, and an optional argument is one a call site can omit, which is
@@ -164,6 +184,42 @@ names `release.yml` with environment `pypi`. A publisher naming
   records that as the open half.
 
 ### Fixed
+
+* **A CSV written by `to_csv` could not be read back by `itc.load`.**
+  The loader took the first non-empty line as the header, so the
+  provenance preamble REQ-71 requires became it and the file ITACA had
+  just exported was refused by ITACA: `DataError: row 3 ... it has 2
+  fields against a header of 1`. Leading comment lines are now skipped.
+
+* The CSV parser split the text on lines before the reader could see the
+  quoting, so a value containing a newline was silently joined:
+  `"front\nrear"` came back as `frontrear`. It now parses the stream.
+  Quoted cells also keep their whitespace, so a deliberate
+  `" padded label "` survives; unquoted numeric cells with surrounding
+  spaces still parse as numbers.
+
+* `db.manifest(path)` built its CSV with a plain comma join, so a source
+  path containing a comma added a field to its own row and the manifest
+  parsed as a different table than the one written. It is written to RFC
+  4180 now, as `to_csv` already was (REQ-15).
+
+* `itc.open` leaked `json.JSONDecodeError` on a malformed JSON member and
+  `ValueError` on a malformed NPZ, and `itc.processor` leaked
+  `AttributeError` when a registered constructor returned something that
+  is not a Processor. All three now raise inside the `ITACAError`
+  hierarchy, and the processor case names the plugin (REQ-81).
+
+* An `.itceq` `[constants]` value of `nan` or `inf` passed validation and
+  made every equation reading it non-finite. Non-finite constants are
+  refused at parse time (REQ-48).
+
+* An `.itceq` expression using a disallowed operator, such as `x // 2`,
+  parsed cleanly and was refused only when the processor was applied,
+  after a load, a construction and an explicit `validate()` had all
+  reported the file as fine. Expressions are checked at parse time, by
+  the same converter `compute` uses, so the two answers cannot drift
+  apart. Names are deliberately still resolved at application time: an
+  equation may reference a variable an earlier one produces.
 
 * **Editing `provenance.json` inside a `.itc` turned a draft file into
   production, and it reopened with a valid state hash.** `Provenance.mode`

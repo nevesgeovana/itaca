@@ -8,6 +8,7 @@ record, never in file names.
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
@@ -51,12 +52,20 @@ def manifest(db: VarFrame, path: str | Path) -> Path:
             if dim not in dim_names:
                 dim_names.append(dim)
     if target.suffix.lower() == ".csv":
-        lines = [",".join(["file", *dim_names])]
-        for file_path, coords in entries:
-            mapping = dict(coords)
-            row = [file_path] + [str(mapping.get(d, "")) for d in dim_names]
-            lines.append(",".join(row))
-        target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        # csv.writer, not ','.join: a source path containing a comma
+        # added a field to its own row, so the manifest parsed as a
+        # different table than the one written and the audit checkpoint
+        # misreported which file carried which coordinates (FND-084).
+        # Quoting and escaping belong to the writer, which does them to
+        # RFC 4180, and to_csv already writes this way.
+        with open(target, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle, lineterminator="\n")
+            writer.writerow(["file", *dim_names])
+            for file_path, coords in entries:
+                mapping = dict(coords)
+                writer.writerow(
+                    [file_path, *(str(mapping.get(d, "")) for d in dim_names)]
+                )
     elif target.suffix.lower() == ".json":
         payload = [
             {"file": file_path, "coords": dict(coords)} for file_path, coords in entries
