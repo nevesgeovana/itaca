@@ -9,6 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from hypothesis.extra import numpy as hnp
 
+from itaca.core.canonical import frame
 from itaca.core.coords import Cartesian, Polar
 from itaca.core.dimension import Dimension
 from itaca.core.history import compute_state_hash
@@ -87,6 +88,34 @@ def test_hash_sensitive_to_any_value_change(
         operations=(),
     )
     assert h_original != h_changed
+
+
+@given(
+    st.lists(st.one_of(st.none(), st.binary(max_size=8)), max_size=5),
+    st.lists(st.one_of(st.none(), st.binary(max_size=8)), max_size=5),
+)
+def test_framing_is_injective(
+    left: list[bytes | None], right: list[bytes | None]
+) -> None:
+    """FND-036 as a contract rather than as three examples.
+
+    The framing kernel's whole job is that distinct field sequences
+    produce distinct byte streams. The defect it replaced was injective
+    on every example anyone had written and collided elsewhere: a
+    missing comment against an empty one, and content carrying the
+    separator byte. An example-based test cannot express "no two
+    sequences collide", so this is the property that can.
+    """
+    encode = lambda fields: b"".join(frame(field) for field in fields)  # noqa: E731
+    if left == right:
+        assert encode(left) == encode(right)
+    else:
+        assert encode(left) != encode(right)
+
+
+def test_absent_is_not_empty() -> None:
+    """The single case the whole encoding exists to separate."""
+    assert frame(None) != frame(b"")
 
 
 @given(_content())

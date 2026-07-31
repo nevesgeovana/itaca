@@ -15,7 +15,7 @@ it adds or modifies.
 \section*{Document 0.2.9, 2026-07-31, The Archive Authenticates What It Carries}
 
 A MINOR revision adding no requirement and withdrawing none, widening
-TWO stable ones: REQ-103 and REQ-70. Ten findings in \code{BRF-059}
+FOUR stable ones: REQ-103, REQ-70, REQ-15 and REQ-48. Ten findings in \code{BRF-059}
 turned out to be one defect wearing ten faces, and naming it is the
 whole of this entry: \emph{state that decided how an archive behaves on
 reopen was sitting outside the digest that authenticates it}.
@@ -75,6 +75,16 @@ a polar frame CANNOT be reconstructed from one, and reading it as
 cartesian would be the very defect this revision closes. A defect must
 not be the remedy for a defect, so the archive is refused with a
 message naming the migration instead of being silently reinterpreted.
+
+\paragraph{Changed (REQ-102, the flag is not the guarantee).} The
+requirement asked for the read-only flag and for tests that in-place
+mutation raises. Both were satisfied while the guarantee was false:
+\code{setflags(write=True)} restored write access directly, and after
+that was closed with a read-only view, the owner behind it was still
+reachable as \code{values.base} and could still grant itself write
+access. Two independent review passes found the second route. REQ-102
+now requires that no owner reachable from the array can restore the
+flag, and requires the tests that measure it.
 
 \paragraph{The consequence, stated once.} Every state hash in existence
 changes. The framing, the mode and the coordinate system land in ONE

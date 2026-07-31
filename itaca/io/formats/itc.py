@@ -65,7 +65,15 @@ def _member_digest(payload: bytes) -> str:
 
 
 def _member_manifest(members: Mapping[str, bytes]) -> dict[str, str]:
-    """Digest every member the archive carries except the manifest itself.
+    """Digest every OTHER member, which is every member but this one.
+
+    ``metadata.json`` is excluded because it is where the manifest
+    lives, and the exclusion is a real hole rather than a technicality:
+    an edit to a field of ``metadata.json`` that no other check reads,
+    such as ``itaca_version``, is NOT refused. Measured. The fields of
+    that member which do matter are covered by their own checks: the
+    schema string against the readable set, ``state_hash`` against the
+    recomputed state, ``steps_hash`` against the recomputed recipe.
 
     Before this, only the final state hash and the replay-steps digest
     were authenticated, so an individual ``HistoryEntry.state_hash``
@@ -109,9 +117,9 @@ def _steps_digest(entries: list[dict[str, Any]], *, target: Path | None = None) 
     """SHA-256 over the replay steps persisted in history.json.
 
     The replay step is deliberately outside the REQ-103 state hash: it
-    is provenance metadata, not frame state. But schema 2 makes the
-    archive recipe-bearing, so an edited step could steer a replay while
-    the state hash still matched. This digest closes that gap without
+    is provenance metadata, not frame state. But the archive is
+    recipe-bearing, so an edited step could steer a replay while the
+    state hash still matched. This digest closes that gap without
     widening REQ-103 scope (DD-30).
 
     ``target`` marks the READ path and names the archive. Both paths
@@ -212,10 +220,17 @@ def _verify_members(
     if present != declared:
         added = sorted(present - declared)
         missing = sorted(declared - present)
+        # Only the side that actually happened is named. Printing
+        # "[...] present but undeclared, [] declared but absent" makes
+        # the reader check an empty list to find out it is empty.
+        clauses = []
+        if added:
+            clauses.append(f"{added} present but undeclared")
+        if missing:
+            clauses.append(f"{missing} declared but absent")
         raise DataError(
             f"archive '{target}'",
-            f"its members do not match the manifest: {added} present but "
-            f"undeclared, {missing} declared but absent",
+            f"its members do not match the manifest: {' and '.join(clauses)}",
             "the archive was edited after it was written; re-export it from "
             "the source data (REQ-70)",
         )
@@ -424,10 +439,25 @@ def open_itc(path: str | Path) -> VarFrame:
     Raises
     ------
     DataError
-        When the file is not a readable .itc archive.
+        When the archive was written at schema ``itaca-itc/1`` or
+        ``itaca-itc/2``, which are REFUSED rather than read: neither
+        records a coordinate system, so a polar frame would come back
+        cartesian. This is the case a v0.1.0 or v0.2.0 user meets
+        first, and the remedy is to re-export from the source data
+        (DD-47). Also when the file is not a readable .itc archive,
+        when its members do not match the manifest, or when a member
+        cannot be interpreted.
     HashMismatchError
-        When the recomputed state hash differs from the recorded one
-        (REQ-103): the archive was modified or corrupted.
+        When a member's recomputed digest differs from the recorded
+        one, or the recomputed replay-step or state hash differs from
+        the recorded one (REQ-103): the archive was modified or
+        corrupted.
+
+    Notes
+    -----
+    Verification is tamper EVIDENCE, not tamper proofing. The archive
+    carries no secret, so an editor who rewrites a member and also
+    recomputes ``metadata.json`` produces a file that opens.
 
     Examples
     --------
@@ -449,7 +479,7 @@ def open_itc(path: str | Path) -> VarFrame:
         # (FND-031).
         raise DataError(
             f"archive '{target}'",
-            f"itc.open could not read it ({error.__class__.__name__})",
+            f"itc.open could not read it ({error.__class__.__name__}: {error})",
             "check the path; .itc files are written by db.save (REQ-70)",
         ) from error
     # Answer the schema question before reconstructing anything. Parsing
@@ -607,12 +637,19 @@ def open_itc(path: str | Path) -> VarFrame:
     )
     # The steps digest is now unconditional. It used to be gated on what
     # the archive CARRIED rather than what it claimed, because a schema
-    # string is ordinary metadata that no digest covered and an editor
+    # string is ordinary metadata that no digest covers and an editor
     # could rewrite it to 1, keep poisoned steps and skip the check.
-    # Schema 1 is no longer readable, so the gate has nothing left to
-    # decide, and the schema string is now itself inside the member
-    # manifest. The check is kept beside the manifest rather than folded
-    # into it: it names the RECIPE, and DD-30 rests on that message.
+    # What closes that hazard is the gate being GONE, not the schema
+    # becoming protected: the schema still lives in metadata.json, the
+    # one member the manifest cannot cover, and it is authenticated only
+    # indirectly, by sitting beside the state and steps digests that a
+    # forger would also have to recompute. An earlier version of this
+    # comment claimed the manifest covered the schema string, which is
+    # false and was offered as the reason this check is safe; a later
+    # reader could have weakened the check on that premise.
+    #
+    # The check is kept beside the manifest rather than folded into it:
+    # it names the RECIPE, and DD-30 rests on that message.
     recorded_steps = metadata.get("steps_hash")
     if not isinstance(recorded_steps, str):
         raise DataError(

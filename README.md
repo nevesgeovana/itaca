@@ -84,11 +84,18 @@ because its propagation rule is not yet frozen. The notes also carry a
 `Known open` section listing the defects known open in this release, several
 of which produce a wrong number silently.
 
-**Upgrading from v0.1.0**, two things will bite first. Python 3.11 is now the
-floor. And an `.itc` archive written by v0.1.0 whose dimensions or variables
-carry a `unit`, `description` or `long_name` no longer verifies, because the
-state hash now covers that metadata; re-export those archives from their
-source data. Both are in the release notes with the reasoning.
+**Upgrading from an earlier version**, two things will bite first. Python 3.11
+is now the floor. And an `.itc` archive written by ANY earlier version no
+longer opens at all: the format is at `itaca-itc/3` and its two predecessors
+are refused by name, with a message saying what the archive lacks. Re-export
+those archives from their source data.
+
+They are refused rather than read, and the reason is the point of the change:
+neither predecessor records a spatial coordinate system, so a frame saved in
+polar coordinates would come back cartesian and integrate against the wrong
+area element. Reading them would reintroduce the defect the new schema exists
+to close, so silent reinterpretation is not offered as the remedy. Both are in
+the release notes with the reasoning.
 
 The SRS is versioned in `docs/srs/`; its document version and revision
 are stated on the SRS title page and in the revision history table.

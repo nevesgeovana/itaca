@@ -1927,6 +1927,23 @@ class VarFrame:
         -------
         pathlib.Path or list of pathlib.Path
             The written file(s).
+
+        Raises
+        ------
+        DraftModeExportError
+            The frame is in draft mode and ``allow_draft`` is False
+            (REQ-11).
+        DataError
+            Two coordinates of ``split_by`` would produce the same
+            filename, so one slice would overwrite the other. The check
+            runs over every slice before anything is written, so
+            nothing is left on disk (REQ-70).
+
+        Notes
+        -----
+        The output is accepted by ``itc.load``: the provenance header
+        REQ-71 requires is written as leading comment lines, which the
+        loader skips, and quoting is preserved in both directions.
         """
         from itaca.io.export import to_csv as _to_csv
 
@@ -1946,6 +1963,29 @@ class VarFrame:
         -------
         pathlib.Path
             The written file.
+
+        Raises
+        ------
+        DraftModeExportError
+            The frame is in draft mode and ``allow_draft`` is False
+            (REQ-11).
+
+        Notes
+        -----
+        The wire contract, since both halves changed what a consumer
+        parses. RFC 8259 JSON has no non-finite literal, so ``NaN`` is
+        written as ``null``, meaning absent, and the infinities as the
+        strings ``"Infinity"`` and ``"-Infinity"``, meaning a
+        computation diverged. A numeric array can therefore hold a
+        string, and a consumer reading it as numbers must say what it
+        does with those two.
+
+        An export carrying uncertainty also carries
+        ``uncertainty.combined``, the RSS of the two components per
+        variable, and ``uncertainty.combination``, a sentence naming
+        that rule. Correlation declared BETWEEN variables is not folded
+        into ``combined`` and is not represented in this file at all;
+        it survives only in the ``.itc`` archive.
         """
         from itaca.io.export import to_json as _to_json
 
@@ -2014,8 +2054,13 @@ class VarFrame:
         """Write the VarFrame to a .itc archive (REQ-70, REQ-11).
 
         The archive preserves all metadata, Provenance, History,
-        uncertainty, correlation, and origin tags; ``itc.open``
-        revalidates the state hash on read (REQ-103).
+        uncertainty, correlation, origin tags, the spatial coordinate
+        system, and the dtype of every coordinate array. ``itc.open``
+        verifies the member manifest and revalidates the state hash on
+        read (REQ-103). The archive is written at schema
+        ``itaca-itc/3``; earlier schemas are refused on read, so an
+        archive written before this version must be re-exported from
+        its source data (DD-47).
 
         Parameters
         ----------

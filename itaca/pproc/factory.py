@@ -82,11 +82,21 @@ def processor(
     # the caller's own code, with nothing naming the plugin (FND-031).
     # The protocol is checked HERE, where the plugin is still named.
     if not isinstance(built, Processor):
+        # isinstance against a runtime_checkable Protocol tests that the
+        # members EXIST, not their types or signatures, so the message
+        # must not promise more than that.
+        missing = sorted(
+            member
+            for member in ("name", "version", "info", "validate", "__call__")
+            if not hasattr(built, member)
+        )
         raise ProcessorError(
             f"processor '{name_or_path}'",
             f"its registered constructor returned {type(built).__name__}, "
-            "which does not satisfy the Processor protocol",
-            "a processor is callable and carries name, version and produces; "
-            "fix the registered constructor (REQ-45, REQ-46)",
+            f"which does not satisfy the Processor protocol: {missing} absent",
+            "give the returned object the members of "
+            "itaca.pproc.protocol.Processor (name, version, info, validate "
+            "and __call__), or fix the registered constructor (REQ-45, "
+            "REQ-46)",
         )
     return built

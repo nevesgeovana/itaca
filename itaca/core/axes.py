@@ -545,9 +545,15 @@ class AxisRegistry:
                 tokens.append(f"axis|{name}|M|{axis.rotation_matrix.tobytes().hex()}")
             else:
                 tokens.append(f"axis|{name}|P|{axis.convention}|{axis.angles_from}")
-            # Absent-field rule, as for every other metadata field: a
-            # description left unset emits nothing, so a registry built
-            # before descriptions entered the scope keeps its tokens.
+            # A description left unset emits no token here. Note that
+            # the GENERAL absent-field rule this used to cite, which
+            # said the same of every metadata field, was withdrawn at
+            # DD-47: canonical framing tells absent from empty on its
+            # own, so the metadata fields are all emitted now. This
+            # omission survives because axis tokens are built as text
+            # rather than as framed fields, and it no longer preserves
+            # any historical digest, since every digest moved once at
+            # the schema-3 migration.
             if axis.description is not None:
                 tokens.append(f"axis|{name}|D|{axis.description}")
         for name in sorted(self.vector_groups):

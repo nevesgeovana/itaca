@@ -26,7 +26,9 @@ class Dimension:
     name : str
         Dimension name, e.g. ``"alpha"``.
     coords : numpy.ndarray
-        1-D coordinate array. Stored as a read-only copy (REQ-102).
+        1-D coordinate array. Stored as a copy backed by an immutable
+        buffer, so the caller can neither write through it nor restore
+        the write flag through it or its base (REQ-102).
     unit : str or None, optional
         Unit label, e.g. ``"deg"``. Metadata only.
     description : str or None, optional

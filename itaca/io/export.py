@@ -121,8 +121,10 @@ def _refuse_colliding_stems(split_by: str, values: list[Any], stems: list[str]) 
                 f"to_csv(split_by='{split_by}') would give both the filename "
                 f"'{split_by}_{stem}.csv', so one slice would overwrite the "
                 "other and the surviving file would not say which it holds",
-                "rename one of the coordinates on the way in, or export the "
-                "whole frame in one file and split it downstream (REQ-70)",
+                "give one of them a different label in the source data "
+                "before loading, or export the whole frame in one file and "
+                "split it downstream; a recorded rename operation does not "
+                "exist yet and is OQ-41 (REQ-70)",
             )
         seen[stem] = value
 
@@ -247,16 +249,19 @@ def to_json(db: VarFrame, path: str | Path, *, allow_draft: bool = False) -> Pat
                 "RSS of the systematic and random components per variable, "
                 "sqrt(u_sys**2 + u_rand**2), a missing component counting as "
                 "zero (REQ-99, AIAA S-071A-1999). This is the standard "
-                "uncertainty of ONE variable; correlation declared BETWEEN "
-                "variables is carried separately and is not folded in here."
+                "uncertainty of ONE variable. Correlation declared BETWEEN "
+                "variables is NOT folded in and is NOT represented anywhere "
+                "in this file; read it from the .itc archive or from "
+                "db.correlation."
             ),
         }
     target = Path(path)
     # allow_nan=False: NaN, Infinity and -Infinity are NOT JSON (RFC
     # 8259). Emitting them produced a file a strict parser refuses,
     # which is a silent interoperability break in the format chosen for
-    # interoperability (ITACA-019). Non-finite values become null, and
-    # the policy is explicit rather than inherited from a default.
+    # interoperability (ITACA-019). NaN becomes null; the infinities
+    # become the quoted strings of INFINITY_TOKENS (FND-085). The policy
+    # is explicit rather than inherited from a default.
     target.write_text(
         json.dumps(_encode_non_finite(payload), indent=2, allow_nan=False) + "\n",
         encoding="utf-8",
@@ -282,13 +287,16 @@ interoperability break the null rule was introduced to fix.
 
 
 def _encode_non_finite(node: Any) -> Any:
-    """Encode every non-finite float per ``INFINITY_TOKENS``, recursively."""
+    """Encode every non-finite float per the two-branch policy, recursively."""
     if isinstance(node, dict):
         return {key: _encode_non_finite(value) for key, value in node.items()}
     if isinstance(node, list):
         return [_encode_non_finite(value) for value in node]
     if isinstance(node, float) and not np.isfinite(node):
-        return INFINITY_TOKENS.get(node)
+        # NaN is written explicitly rather than falling out of a failed
+        # lookup. Both branches are deliberate policy, and a reader must
+        # not have to infer one of them from a dict miss.
+        return None if np.isnan(node) else INFINITY_TOKENS[node]
     return node
 
 

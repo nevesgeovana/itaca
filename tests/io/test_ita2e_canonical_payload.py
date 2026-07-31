@@ -307,6 +307,30 @@ class TestFrozenObjectsOwnTheirContainers:
         files.append(Path("b.csv"))
         assert len(provenance.source_files) == before
 
+    def test_provenance_does_not_observe_a_source_coords_mutation(self) -> None:
+        """The container ``itc.load`` dict mode actually populates.
+
+        ``source_files`` had a test and this did not, so deleting the
+        whole coercion left the suite green. It is the record
+        ``db.manifest`` reads, so an external append changes what the
+        audit checkpoint reports with nothing recorded.
+        """
+        pairs = [["a.csv", [["mach", 0.5]]]]
+        provenance = Provenance(
+            itaca_version="0.0.0",
+            user="tester@host",
+            created_at=itc.load(np.array([[1.0]]), names=["a"]).provenance.created_at,
+            source_files=(),
+            source_hash="0" * 64,
+            mode="production",
+            source_coords=pairs,  # type: ignore[arg-type]
+        )
+        before = len(provenance.source_coords or ())
+        pairs.append(["b.csv", [["mach", 0.8]]])
+        assert len(provenance.source_coords or ()) == before
+        assert isinstance(provenance.source_coords, tuple)
+        assert isinstance((provenance.source_coords or (("", ()),))[0][1], tuple)
+
 
 class TestReadOnlyArraysCannotBeReopened:
     """FND-071. ``setflags(write=True)`` re-enabled writes on a public
@@ -333,6 +357,41 @@ class TestReadOnlyArraysCannotBeReopened:
         assert db.uncertainty is not None
         with pytest.raises(ValueError):
             db.uncertainty.systematic["CT"].setflags(write=True)
+
+    @pytest.mark.parametrize(
+        "reach",
+        [
+            pytest.param(lambda db: db.vars["CT"].values, id="variable"),
+            pytest.param(lambda db: db.dims["alpha"].coords, id="dimension"),
+        ],
+    )
+    def test_the_owner_behind_the_array_cannot_grant_write_either(
+        self, simple_db: VarFrame, reach: Any
+    ) -> None:
+        """The second door, found by two independent architect passes.
+
+        A read-only view of a read-only ndarray refuses
+        ``setflags(write=True)`` on the VIEW, which is what the first
+        fix asserted and all it asserted. But the base is reachable as
+        ``values.base``, and an ndarray that owns its memory may always
+        re-enable its own flag, so two steps through the public surface
+        restored FND-071 exactly: recorded state mutated, state hash
+        moved, no History entry.
+
+        The array is backed by an immutable buffer now, so every owner
+        along the chain refuses, and the chain ends at an object with no
+        ``setflags`` at all.
+        """
+        values = reach(simple_db)
+        owner = values.base
+        while owner is not None:
+            if not hasattr(owner, "setflags"):
+                break  # bytes: nothing to grant
+            with pytest.raises(ValueError):
+                owner.setflags(write=True)
+            owner = getattr(owner, "base", None)
+        with pytest.raises(ValueError):
+            values[0] = 99.0
 
     def test_a_copy_is_still_writeable(self, simple_db: VarFrame) -> None:
         """Inert control: the guard protects the frame, not the caller."""
@@ -395,18 +454,52 @@ class TestTheMigrationIsNamed:
     migration. Silent reinterpretation is FND-037 and must not be its
     remedy."""
 
-    def test_a_schema_two_archive_is_refused_by_name(
-        self, simple_db: VarFrame, tmp_path: Path
+    @pytest.mark.parametrize("superseded", ["itaca-itc/1", "itaca-itc/2"])
+    def test_a_superseded_archive_is_refused_by_name(
+        self, simple_db: VarFrame, tmp_path: Path, superseded: str
     ) -> None:
+        """The proxy is built to look like a REAL old archive.
+
+        Downgrading only the schema string leaves a schema-3 member
+        manifest in place, which no v0.1.0 or v0.2.0 file has. Against
+        that proxy the migration message passes even if the manifest
+        check runs first, so the ordering the acceptance criterion rests
+        on would be pinned by nothing. The manifest and the steps digest
+        are stripped here for the same reason a real old file lacks
+        them.
+        """
         target = tmp_path / "old.itc"
         simple_db.save(target)
         metadata = json.loads(
             zipfile.ZipFile(target).read("metadata.json").decode("utf-8")
         )
-        metadata["schema"] = "itaca-itc/2"
+        metadata["schema"] = superseded
+        metadata.pop("members", None)
+        metadata.pop("steps_hash", None)
         rewrite_member(target, "metadata.json", json.dumps(metadata).encode())
         with pytest.raises(DataError) as caught:
             itc.open(target)
-        message = str(caught.value)
-        assert "itaca-itc/2" in message
-        assert "re-export" in message
+        assert superseded in caught.value.obj
+        assert "coordinate system" in caught.value.operation
+        assert "re-export" in caught.value.fix
+
+    def test_a_schema_three_archive_with_no_manifest_is_refused(
+        self, simple_db: VarFrame, tmp_path: Path
+    ) -> None:
+        """Truncation, told apart from migration.
+
+        Same missing field, different cause: this one still claims the
+        current schema, so it is a damaged file rather than an old one
+        and must not be sent to the migration remedy.
+        """
+        target = tmp_path / "truncated.itc"
+        simple_db.save(target)
+        metadata = json.loads(
+            zipfile.ZipFile(target).read("metadata.json").decode("utf-8")
+        )
+        metadata.pop("members")
+        rewrite_member(target, "metadata.json", json.dumps(metadata).encode())
+        with pytest.raises(DataError) as caught:
+            itc.open(target)
+        assert "member manifest" in caught.value.operation
+        assert "coordinate system" not in caught.value.operation

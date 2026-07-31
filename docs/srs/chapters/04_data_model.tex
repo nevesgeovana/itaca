@@ -520,27 +520,54 @@ Table~\ref{tab:itc-archive}. The format is designed for long-term archival:
 it uses open standards (NumPy \code{.npz} and JSON) and can be inspected
 without \itc{} using any ZIP tool plus \code{numpy.load}.
 
-Two schema versions exist. Schema \code{itaca-itc/1} is the 0.1.0
-layout; schema \code{itaca-itc/2} adds the replay step to each
-\code{history.json} entry, so a pipeline can be lifted from a reopened
-archive (Section~\ref{sec:itc-pipe}). A build reads both, and writes
-the current one. Schema 2 carries a second integrity digest,
-\code{steps\_hash} in \code{metadata.json}, computed over the recorded
-steps. It is separate from the state hash of REQ-103, whose scope is
-unchanged: the state hash covers the recovered state, the data together
-with the ordered operation sequence and its comments, while
-\code{steps\_hash} covers the structured replay arguments, which the
-state hash deliberately excludes. Without the second digest an edited
-argument passes the state check, because the operation text and the
-stored data still match themselves, and the edited recipe then steers
-the next replay.
+The current schema is \code{itaca-itc/3}, and it is the only one this
+build reads. Its two predecessors are named here because a user will
+meet them: \code{itaca-itc/1} is the 0.1.0 layout, and
+\code{itaca-itc/2} added the replay step to each \code{history.json}
+entry so a pipeline could be lifted from a reopened archive
+(Section~\ref{sec:itc-pipe}). Both are REFUSED by name, with a message
+saying what the archive lacks and instructing the reader to re-export
+from the source data. Neither records a spatial coordinate system, so a
+frame saved in polar coordinates cannot be reconstructed from one and
+would come back cartesian, integrating against the wrong area element;
+reading them would therefore reintroduce the defect this schema exists
+to close (DD-47).
 
-The digest requirement follows what an archive carries, never what it
-declares. The schema string is ordinary metadata that no digest covers,
-so it cannot gate an integrity check: an archive carrying any replay
-step is refused unless \code{steps\_hash} is present and matches,
-whichever schema it names, and a schema 2 archive is refused without it
-in every case. An archive with no state hash is refused as well.
+Schema 3 carries three digests in \code{metadata.json}, and they answer
+three different questions.
+
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item \code{state\_hash}, the REQ-103 state hash, covers the recovered
+    state: the data together with the ordered operation sequence and its
+    comments, the coordinate system and the operating mode.
+  \item \code{steps\_hash} covers the structured replay arguments, which
+    the state hash deliberately excludes. Without it an edited argument
+    passes the state check, because the operation text and the stored
+    data still match themselves, and the edited recipe then steers the
+    next replay (DD-30). It is required unconditionally; the schema
+    string no longer gates it, because a schema string is ordinary
+    metadata and cannot gate an integrity check.
+  \item \code{members}, the member manifest, maps every OTHER member to
+    the SHA-256 of its bytes as written. \code{itc.open} verifies the
+    member set in both directions and every digest before any other
+    member is interpreted, so an edit that changes no recovered state at
+    all, such as a forged per-entry history hash, is still refused.
+\end{itemize}
+
+The manifest cannot cover \code{metadata.json}, because that is where it
+lives. This is a real gap and not a technicality: an edit to a field of
+that member which no other check reads, such as \code{itaca\_version},
+is not refused. The fields of it that matter each carry their own check,
+the schema string against the readable set and the two digests against
+what they recompute.
+
+\textbf{What the archive guarantees is tamper EVIDENCE, not tamper
+proofing.} A \code{.itc} carries no secret, so an editor who rewrites a
+member and also recomputes \code{metadata.json} produces an archive that
+opens. What the digests end is the case where an edit needs nothing else
+at all, which is how one edited JSON string once turned a draft archive
+into a production one and it reopened with a valid hash. An archive with
+no state hash, no steps hash or no member manifest is refused.
 
 \begin{table}[H]
 \centering

@@ -249,8 +249,24 @@ NumPy array stored in a VarFrame, UncFrame, or HistoryFrame is set
 read-only (\code{writeable=False}) at construction, and \code{to\_numpy}
 returns read-only views by default (\code{copy=True} for a writable
 copy). A frozen dataclass alone does not prevent
-\code{db.vars["CT"].values[0] = 99}; the read-only flag does. Tests must
-verify that in-place mutation attempts raise.
+\code{db.vars["CT"].values[0] = 99}; the read-only flag does.
+
+\textbf{The flag must not be restorable by the caller, through the array
+or through anything reachable from it.} The flag alone is not the
+guarantee, and stating only the flag is what let the guarantee be
+satisfied while being false. An array that owns its memory may re-enable
+its own flag, so \code{setflags(write=True)} defeated it directly; and a
+read-only VIEW of a read-only owner defeats it in two steps, because the
+owner is reachable as \code{values.base} and may still grant itself
+write access. Either route mutates recorded state with the state hash
+moving and no History entry, which is the whole failure REQ-102 exists
+to prevent. The arrays are therefore backed by an immutable buffer, so
+no owner along the chain can grant write access.
+
+Tests must verify that in-place mutation attempts raise, that
+\code{setflags(write=True)} raises, and that it raises for every owner
+reachable through \code{base}. The first alone is what the defect
+satisfied.
 \end{reqbox}
 
 \begin{reqbox}{REQ-103}{\stable}
@@ -1604,13 +1620,18 @@ declared correlation.
 \textbf{The archive is an authenticated canonical payload.} Its
 \code{metadata.json} carries a manifest naming every other member with
 that member's SHA-256 as written, and \code{itc.open} verifies the
-member set in both directions and every digest BEFORE any member is
-interpreted. What this delivers is tamper EVIDENCE and it must not be
-read as more: a \code{.itc} carries no secret, so an editor who
-rewrites a member and also recomputes the manifest produces an archive
-that opens. What it ends is the case where an edit needs nothing else
-at all, which is how a single edited JSON string once promoted a draft
-archive to production (DD-47).
+member set in both directions and every digest BEFORE any OTHER member
+is interpreted. The manifest cannot cover \code{metadata.json} itself,
+because that is where it lives, so an edit to a field of that member
+which no other check reads is not refused; the fields of it that matter
+each carry their own check.
+
+What this delivers is tamper EVIDENCE and it must not be read as more:
+a \code{.itc} carries no secret, so an editor who rewrites a member and
+also recomputes the manifest produces an archive that opens. What it
+ends is the case where an edit needs nothing else at all, which is how
+a single edited JSON string once promoted a draft archive to production
+(DD-47).
 
 \textbf{Schema compatibility.} The schema string is
 \code{itaca-itc/3}. Archives at \code{itaca-itc/1} and

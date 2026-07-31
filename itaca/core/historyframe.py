@@ -29,7 +29,9 @@ class HistoryFrame:
     ----------
     tags : mapping of str to numpy.ndarray, optional
         Per-variable integer arrays with values in ``{-1, 0, +1}``.
-        Stored as read-only ``int8`` copies (REQ-102).
+        Stored as ``int8`` copies backed by an immutable buffer, so the
+        caller can neither write through them nor restore the write flag
+        through them or their base (REQ-102).
 
     Raises
     ------

@@ -244,6 +244,49 @@ class TestBookkeeping:
         assert out.history.last.operation.startswith("translate_moments(")
         assert out.history.last.comment == "to CG"
 
+    @staticmethod
+    def _in(axis: str) -> VarFrame:
+        return (
+            _balance(1.0, 2.0, 3.0, 0.0, 0.0, 0.0)
+            .declare_vector("force", ["FX", "FY", "FZ"], axis=axis)
+            .declare_vector("moment", ["MX", "MY", "MZ"], axis=axis)
+        )
+
+    def test_history_records_the_axis_it_resolved(self) -> None:
+        """FND-063. The recorded axis must be the one the call USED.
+
+        With ``axis=None`` the entry omitted the axis entirely, so two
+        frames whose groups resolve to different axis systems recorded
+        byte-identical text while the physics differed, and History
+        stopped telling them apart.
+        """
+        body = self._in("body").translate_moments(to_point=[0.1, 0.0, 0.0])
+        wind = self._in("wind").translate_moments(to_point=[0.1, 0.0, 0.0])
+        assert body.history.last is not None
+        assert wind.history.last is not None
+        assert "axis='body'" in body.history.last.operation
+        assert "axis='wind'" in wind.history.last.operation
+        assert body.history.last.operation != wind.history.last.operation
+
+    def test_an_explicit_axis_is_recorded_unchanged(self) -> None:
+        """Inert control: recording the resolved axis must not rewrite it."""
+        out = self._in("wind").translate_moments(to_point=[0.1, 0.0, 0.0], axis="wind")
+        assert out.history.last is not None
+        assert "axis='wind'" in out.history.last.operation
+
+    def test_the_replay_step_still_carries_the_caller_argument(self) -> None:
+        """The RECORD resolves; the RECIPE must not.
+
+        A replay re-resolves against its own frame, so freezing the
+        resolved axis into the step would make the pipeline mean
+        something different from what the caller wrote.
+        """
+        out = self._in("wind").translate_moments(to_point=[0.1, 0.0, 0.0])
+        assert out.history.last is not None
+        step = out.history.last.step
+        assert step is not None
+        assert step.kwargs["axis"] is None
+
     def test_original_untouched(self, db: VarFrame) -> None:
         staged = _declared(db)
         staged.translate_moments(to_point=[0.1, 0.0, 0.0])

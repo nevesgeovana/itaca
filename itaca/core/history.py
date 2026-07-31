@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from itaca.core.canonical import feed, feed_array, text
 from itaca.core.dimension import Dimension
 from itaca.core.errors import ProvenanceError
+from itaca.core.provenance import validate_mode
 from itaca.core.variable import Variable
 
 if TYPE_CHECKING:
@@ -346,13 +347,21 @@ def compute_state_hash(
         Origin-tag mirror, when present.
     axes : AxisRegistry or None, optional
         Registered frames and vector-group declarations; an empty
-        registry contributes no tokens, so a frame that registers no
-        custom axis keeps the hash it had before the registry existed.
+        registry contributes no tokens. That no longer preserves any
+        historical digest, since every digest moved once at DD-47; it
+        remains true of the mechanism.
 
     Returns
     -------
     str
         64-character hexadecimal SHA-256 digest.
+
+    Raises
+    ------
+    ProvenanceError
+        If ``mode`` is not a valid operating mode. A misspelled mode
+        would otherwise yield a well formed digest that nothing ever
+        reproduces (REQ-08).
 
     Examples
     --------
@@ -368,6 +377,12 @@ def compute_state_hash(
     >>> len(h)
     64
     """
+    # Required-ness closes the omission, and validation closes the typo.
+    # mode is a plain str and now decides the digest, so mode="Production"
+    # would produce a perfectly well formed 64-hex value that no other
+    # frame ever reproduces. Validating here rather than trusting the
+    # caller is the same argument that made the argument required.
+    validate_mode(mode)
     digest = hashlib.sha256()
     for name, dim in dims.items():
         feed(digest, b"dim", text(name))

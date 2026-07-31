@@ -1890,7 +1890,12 @@ infinite partial, and an infinity is not mistaken for a measurement.
 **Date:** 2026-07-31
 **Status:** accepted
 **Requirements:** REQ-70, REQ-103, REQ-08, REQ-11, REQ-54, REQ-102
-**Supersedes:** nothing; DD-30 and DD-40 stand and are narrowed by it
+**Supersedes:** DD-40 in part, its absent-field rule, which is withdrawn
+outright rather than narrowed; and DD-30's rejection of the schema
+refusal, which this entry adopts. The rest of both entries stands: DD-40's
+byte-order and C-order normalizations and its four deliberate
+non-normalizations survive verbatim, and DD-30's replay-steps digest
+survives and is now required unconditionally.
 
 ### The problem
 
@@ -1929,9 +1934,17 @@ structural half of the fix: a field a caller can forget to pass is a
 field that will be forgotten, which is exactly how both came to be
 outside the digest. A new call site now fails to type-check.
 
-`metadata.json` carries a member manifest: the SHA-256 of every member
-as written. Any edit to any member is refused, not only an edit that
-happens to move the recomputed state.
+`metadata.json` carries a member manifest: the SHA-256 of every OTHER
+member as written. An edit to any of those is refused, not only an edit
+that happens to move the recomputed state.
+
+The manifest cannot cover `metadata.json`, because that is where it
+lives, and the gap is real rather than a technicality: an edit to a
+field of that member which no other check reads, such as
+`itaca_version`, is NOT refused. Measured. The fields of it that matter
+each carry their own check: the schema string against the readable set,
+`state_hash` against the recomputed state, `steps_hash` against the
+recomputed recipe.
 
 ### What this does NOT claim
 

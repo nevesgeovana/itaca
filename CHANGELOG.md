@@ -6,13 +6,13 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
-One new public exception, `UncertaintyLineageError`, and one new dev-only
-test dependency. The observable behavior changes are the bullets under
-Changed and Fixed below rather than a count restated here, since the
-count has now been wrong twice: seven when the entries had grown past
-seven, and eight when a restructure made it ten. A number that has to be
-maintained by hand beside a list it describes is a second copy of that
-list. Also release infrastructure, recorded because it changes how a
+New public surface is listed under Added below, and the observable
+behavior changes are the bullets under Changed and Fixed, rather than a
+count restated here. The count has now been wrong three times: seven
+when the entries had grown past seven, eight when a restructure made it
+ten, and "one new public exception" when a later lane added two modules
+and several callables. A number that has to be maintained by hand beside
+a list it describes is a second copy of that list. Also release infrastructure, recorded because it changes how a
 release reaches PyPI and the next tag runs on it.
 
 **How v0.2.0 was published, stated plainly.** The v0.2.0 files on PyPI
@@ -40,6 +40,19 @@ names `release.yml` with environment `pypi`. A publisher naming
   the package, so the ruff rule barring it from library code named an
   import nobody could make and the oracle was never written. It is now
   in the `dev` extra. Reinstall with `pip install -e ".[dev]"`.
+* `itaca.core.canonical`, the single owner of the length-prefixed
+  framing every ITACA digest reads. One encoding, because the state hash
+  and the source hash must agree about it (REQ-103, DD-47).
+* `itaca.core.immutable.readonly`, which backs an array with an
+  immutable buffer so neither it nor any owner reachable from its `base`
+  can restore the write flag (REQ-102).
+* `itaca.core.coords.coord_system` and `COORD_SYSTEMS`, name-to-tag
+  resolution for the coordinate system a `.itc` now persists. An unknown
+  name is refused, never defaulted (REQ-70).
+* `itaca.uncertainty.expression.validate_expression_syntax`, which
+  checks an expression against the REQ-44 operator and function set
+  without a VarFrame, so the `.itceq` parser can refuse at parse time
+  using the same converter `compute` uses (REQ-48).
 
 ### Changed
 
@@ -61,14 +74,19 @@ names `release.yml` with environment `pypi`. A publisher naming
   rather than leave a user to discover as an unexplained mismatch.
 
 * **A `.itc` now carries a member manifest**, the SHA-256 of every
-  member as written, so an edit to ANY member is refused rather than
-  only an edit that happens to move the recomputed state.
+  OTHER member as written, so an edit to any of those is refused rather
+  than only an edit that happens to move the recomputed state.
 
   Stated plainly, because the opposite would be easy to imply: this is
   tamper EVIDENCE, not tamper proofing. A `.itc` carries no secret, so
   an editor who rewrites a member and also recomputes `metadata.json`
   still produces an archive that opens. What ends is the case where a
   one-field edit needed nothing else at all.
+
+  The manifest cannot cover `metadata.json`, since that is where it
+  lives, so an edit to a field of that member which no other check reads
+  is not refused. The fields that matter carry their own checks: the
+  schema string, `state_hash` and `steps_hash`.
 
 * **A JSON export now distinguishes NaN from the infinities.** All three
   used to become `null`, so a point that was never measured stopped
@@ -194,9 +212,11 @@ names `release.yml` with environment `pypi`. A publisher naming
 * The CSV parser split the text on lines before the reader could see the
   quoting, so a value containing a newline was silently joined:
   `"front\nrear"` came back as `frontrear`. It now parses the stream.
-  Quoted cells also keep their whitespace, so a deliberate
-  `" padded label "` survives; unquoted numeric cells with surrounding
-  spaces still parse as numbers.
+  String cells also keep their whitespace, so a deliberate
+  `" padded label "` survives. The stdlib reader does not report whether
+  a cell was quoted, so this applies to every string cell and not only
+  quoted ones; numeric cells are unaffected, because `float` tolerates
+  surrounding spaces.
 
 * `db.manifest(path)` built its CSV with a plain comma join, so a source
   path containing a comma added a field to its own row and the manifest
@@ -207,7 +227,8 @@ names `release.yml` with environment `pypi`. A publisher naming
   `ValueError` on a malformed NPZ, and `itc.processor` leaked
   `AttributeError` when a registered constructor returned something that
   is not a Processor. All three now raise inside the `ITACAError`
-  hierarchy, and the processor case names the plugin (REQ-81).
+  hierarchy, and the processor case names the plugin and the protocol
+  members it is missing (REQ-45, REQ-46, REQ-81).
 
 * An `.itceq` `[constants]` value of `nan` or `inf` passed validation and
   made every equation reading it non-finite. Non-finite constants are
@@ -261,17 +282,27 @@ names `release.yml` with environment `pypi`. A publisher naming
   source that load to the IDENTICAL frame produced different digests. It
   now frames the names and hashes the columns actually loaded.
 
-* `Pipeline(steps=<list>)` and `Provenance(source_files=<list>)` stayed
-  bound to the caller's list, so an external `append` changed a frozen
-  object, and its content hash, with nothing recorded. Both take
-  ownership at the boundary, as `PipelineStep.kwargs` already did.
+* `Pipeline(steps=<list>)`, `Provenance(source_files=<list>)` and
+  `Provenance(source_coords=...)` stayed bound to the caller's
+  containers, so an external `append` changed a frozen object, and its
+  content hash, with nothing recorded. All three take ownership at the
+  boundary, as `PipelineStep.kwargs` already did; `source_coords` nested
+  lists become nested tuples.
 
 * A public array could be made writeable again with
   `setflags(write=True)` and then written, mutating recorded state with
-  a changed state hash and no History entry. Arrays are now handed out
-  as read-only VIEWS of read-only bases, which NumPy refuses to
-  re-enable. Applies to variable values, dimension coordinates,
-  uncertainty components, origin tags and rotation matrices (REQ-102).
+  a changed state hash and no History entry. Arrays are now backed by an
+  immutable buffer, so neither the array nor any owner reachable from
+  its `base` can restore the flag. Applies to variable values, dimension
+  coordinates, uncertainty components, origin tags and rotation matrices
+  (REQ-102).
+
+  Two rounds were needed for this one and the CHANGELOG says so, because
+  the first fix looked complete. Handing out a read-only VIEW of a
+  read-only owner stops `values.setflags(write=True)`, and the review
+  measured that `values.base.setflags(write=True)` then restored write
+  access and mutated the frame. An owning array may always re-enable its
+  own flag; only a buffer that cannot be written at all ends the chain.
 
 * `abs` at zero returned `u = 0` with an uncertainty-carrying input,
   asserting exact certainty at a point where the derivative does not

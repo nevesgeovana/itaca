@@ -26,9 +26,9 @@ class Variable:
     name : str
         Variable name, e.g. ``"CT"``.
     values : numpy.ndarray
-        Numeric N-D array. Stored as a read-only view of a read-only
-        copy, so the caller can neither write through it nor set the
-        flag back (REQ-102).
+        Numeric N-D array. Stored as a copy backed by an immutable
+        buffer, so the caller can neither write through it nor restore
+        the write flag through it or its base (REQ-102).
         Missing combinations are ``np.nan`` (SRS 4.1.2).
     unit : str or None, optional
         Unit label, e.g. ``"N"``. Metadata only.

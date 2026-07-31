@@ -191,6 +191,65 @@ class TestPublicBoundariesRaiseItacaErrors:
         with pytest.raises(ITACAError):
             itc.open(target)
 
+    @staticmethod
+    def _reseal(archive: Path, member: str, payload: bytes) -> None:
+        """Corrupt a member AND update the manifest that describes it.
+
+        Without this the member manifest refuses first and the read
+        stage behind it is never executed, so the test named after npz
+        parsing would test the manifest a second time and the
+        `except (KeyError, ValueError)` wrapper that is the deep half of
+        FND-031 would be unreachable dead code.
+        """
+        import hashlib
+
+        with zipfile.ZipFile(archive) as source:
+            names = source.namelist()
+            payloads = {name: source.read(name) for name in names}
+        payloads[member] = payload
+        metadata = json.loads(payloads["metadata.json"])
+        metadata["members"] = {
+            name: "sha256:" + hashlib.sha256(blob).hexdigest()
+            for name, blob in payloads.items()
+            if name != "metadata.json"
+        }
+        payloads["metadata.json"] = json.dumps(metadata).encode()
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as out:
+            for name in names:
+                out.writestr(name, payloads[name])
+
+    def test_a_resealed_malformed_npz_raises_an_itaca_error(
+        self, db: VarFrame, tmp_path: Path
+    ) -> None:
+        """The deep read stage, reached past the manifest."""
+        target = tmp_path / "resealed_npz.itc"
+        db.save(target)
+        self._reseal(target, "varframe.npz", b"not an npz at all")
+        with pytest.raises(ITACAError) as caught:
+            itc.open(target)
+        assert "could not interpret its members" in caught.value.operation
+
+    def test_a_resealed_invalid_json_member_raises_an_itaca_error(
+        self, db: VarFrame, tmp_path: Path
+    ) -> None:
+        target = tmp_path / "resealed_json.itc"
+        db.save(target)
+        self._reseal(target, "dims.json", b"{not json")
+        with pytest.raises(ITACAError) as caught:
+            itc.open(target)
+        assert "could not interpret its members" in caught.value.operation
+
+    def test_an_unknown_coordinate_system_is_refused(
+        self, db: VarFrame, tmp_path: Path
+    ) -> None:
+        """The tag is refused, never defaulted: defaulting is FND-037."""
+        target = tmp_path / "spherical.itc"
+        db.save(target)
+        self._reseal(target, "frame.json", json.dumps({"coords": "spherical"}).encode())
+        with pytest.raises(ITACAError) as caught:
+            itc.open(target)
+        assert "spherical" in str(caught.value)
+
     def test_a_plugin_returning_a_bad_object_raises_an_itaca_error(self) -> None:
         from itaca.pproc.registry import _REGISTRY
 
