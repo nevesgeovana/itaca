@@ -111,9 +111,14 @@ def compute(
         # zero fell outside the mask, which is the ordinary case for a
         # filter, and a debug surface that hides the data at the moment
         # a user asks to see it is worse than the warning it avoids.
-        # The consequence is stated rather than hidden: under
-        # `debug=True` the sample evaluation runs over the full grid, so
-        # a masked-out domain violation can still warn there.
+        # Two consequences of the ORDER, both stated rather than hidden.
+        # Under `debug=True` the sample evaluation runs over the full
+        # grid, so a masked-out domain violation can still warn there;
+        # REQ-35 carries that as the second of its two exemptions. And a
+        # malformed `where` string now raises AFTER the report has
+        # printed, because `condition_mask` runs below: the report
+        # describes the equation, which was already parsed, so it is not
+        # describing work that never happened.
         _debug_report(name, text, tree, env, db, carriers)
     mask: NDArray[Any] | None = None
     if where is not None:

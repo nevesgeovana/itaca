@@ -597,13 +597,25 @@ fill mode.
 The evaluation, and not only the result, is confined to the filtered-in
 points, so a domain violation at a filtered-out point (a negative under
 \code{sqrt}, a zero denominator) neither raises a \code{RuntimeWarning}
-nor enters the propagation. ONE class of expression is exempt and the
-exemption is stated rather than implied: REQ-36 admits any
-\code{np.*} function into an expression carrying no uncertainty, and a
-reduction such as \code{np.max} reads cells other than its own, so an
-expression containing one is evaluated over the whole grid as before.
-Confining it would change the value of the reduction itself, which is a
-different question from this requirement's.
+nor enters the propagation. TWO exemptions remain, and both are stated
+rather than left to be discovered.
+
+An expression containing an \code{np.*} call is evaluated over the whole
+grid as before. REQ-36 admits those functions, a reduction such as
+\code{np.max} reads cells other than its own, and confining such a tree
+would change the value of the reduction itself, which is a different
+question from this requirement's. The exemption is applied to any tree
+containing such a call, whether or not the expression carries
+uncertainty and whether or not the particular function is elementwise:
+the test is conservative on purpose, because it protects a result and a
+finer one would have to be maintained per function.
+
+Under \code{debug=True} the REQ-34 sample evaluation also runs over the
+whole grid, so that report shows the frame's own data. Reported through
+the mask it printed NaN for every variable whenever the sampled grid
+point fell outside the condition, which is the ordinary case for a
+filter, and a diagnostic surface that hides the data at the moment a
+user asks to see it is worse than the warning it avoids.
 \end{reqbox}
 
 \begin{reqbox}{REQ-36}{\stable}

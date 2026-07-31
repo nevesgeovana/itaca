@@ -58,10 +58,22 @@ the result. On a domain violation that was visible: measured, \code{y =
 sqrt(v)} over \code{v = [-1, 1]} with \code{where="v >= 0"} emitted two
 \code{RuntimeWarning}s with an uncertainty carrier and one without, for
 a cell that never reached the output. The code now matches the sentence,
-and the requirement states the ONE exemption rather than leaving it to
-be discovered: REQ-36 admits any \code{np.*} function into an expression
-carrying no uncertainty, a reduction reads cells other than its own, and
-confining such a tree would change the value of the reduction itself.
+and the requirement states BOTH exemptions rather than leaving either to
+be discovered. An expression containing an \code{np.*} call is still
+evaluated over the whole grid, because a reduction reads cells other
+than its own and confining such a tree would change the value of the
+reduction itself; the test is conservative and refuses any tree carrying
+such a call, elementwise or not. And under \code{debug=True} the REQ-34
+sample evaluation stays on the whole grid, so that report shows the
+frame's own data rather than the mask.
+
+The second exemption is one this revision's own lane created and then
+had to write down: reporting through the mask printed NaN for every
+variable whenever the sampled grid point fell outside the condition. It
+was found by a review pass over the commit that closed the review, run
+because an unreviewed change to this document is worse than an
+unreviewed change to code, and the first draft of this section counted
+the exemptions as one.
 
 \paragraph{Not changed, deliberately (REQ-39).} A third fix in the same
 lane refused a relative uncertainty specification that resolves against

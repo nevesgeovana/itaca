@@ -23,8 +23,9 @@ states that \code{fill=None} retains the filtered-out point's
 UNCERTAINTY together with its value, where retaining the value alone
 left a surviving number paired with \code{u = NaN}, and that the
 EVALUATION is confined to the filtered-in points and not only the
-result, with the one \code{np.*} reduction exemption stated rather than
-implied. Both requirements were silent rather than wrong, which is why
+result, with both exemptions stated rather than implied: an expression
+containing an \code{np.*} call, and the REQ-34 sample evaluation under
+\code{debug=True}. Both requirements were silent rather than wrong, which is why
 this is a clarification: the code was fixed and the text did not say
 what the fix decided, and an unwritten rule is the drift this document
 is monitored for. A third fix in the same lane was REVERTED for the

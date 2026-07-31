@@ -1,7 +1,8 @@
 # ITACA SRS: LaTeX sources
 
 Authoritative specification of ITACA, document version 0.2.7
-(2026-07-30, the release-review corrections; baseline 0.1.0 was
+(2026-07-30, REQ-25 and REQ-35 catching up with two fixed defects;
+baseline 0.1.0 was
 the first workspace-tracked version,
 research-workspace snapshot id DLV-008). Companions: `../DECISIONS.md`
 (design decisions) and `../OPEN_QUESTIONS.md` (open questions), both

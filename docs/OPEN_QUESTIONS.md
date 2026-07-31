@@ -871,8 +871,32 @@ representable without NaN; keep NaN as missing and validate only at the
 declaration boundary, stating the rule in REQ-39; or forbid NaN in the
 array and give the untouched-cell case a zero with a tag.
 
+**Narrowed, 2026-07-30 (FND-040, lane ITA-2G). WITHDRAWN THE SAME DAY;
+read the block after it.** The relative-spec half
+is closed and this question is NOT what closed it. `_resolve_value` now
+refuses when a relative magnitude resolves to a non-finite array, which
+is a rule on a DECLARATION boundary: what it sees is what a declaration
+just produced, and NaN has one meaning there. That is the second option
+above applied to the declaration boundary only, and it was taken because
+it needs no answer to the question below; REQ-39 is not amended, because
+what changed is a refusal the requirement's own "standard uncertainty"
+already implies rather than a new rule about the values.
+
+What remains open is exactly the assembled-array half, unchanged: the
+UncFrame carries NaN both for "this cell has no propagated uncertainty"
+and for "this uncertainty is not a number", and the reverted rule stays
+reverted until they are distinguishable. The `.itc` reopen path and
+propagation results still bypass every declaration check, which is the
+same hole this entry named at the start.
+
 **A second attempt, and a second revert, 2026-07-30 (FND-040, lane
-ITA-2G).** The lane put a finiteness rule in `_resolve_value`, on the
+ITA-2G).** The paragraph above is left standing and superseded rather
+than deleted, because this file is append-only and the rule does not
+carve out a paragraph written the same day in the same unpushed lane.
+Its last sentence is right and its first two are wrong; here is what
+actually happened.
+
+The lane put a finiteness rule in `_resolve_value`, on the
 RESOLVED array rather than on the assembled one, reasoning that a
 declaration boundary sees only what a declaration just produced and so
 needs no answer to the question above. It worked: measured 5 failing
@@ -890,15 +914,17 @@ blocked on OQ-40." A check anywhere changes the behavior that paragraph
 describes, so the SRS moves first or nothing moves. The lane's own note
 here claimed "REQ-39 is not amended, because what changed is a refusal
 the requirement's own 'standard uncertainty' already implies", and that
-was false; it is replaced rather than left, because a wrong reason in
-this file is what the third attempt would read.
+was false. It stands above with a withdrawal marker rather than being
+deleted, because a wrong reason left unmarked is what the third attempt
+would read, and a deleted one is not a record.
 
 **So the question now has an order attached to it,** and that is the
 part a later session needs. Two attempts have been reverted for two
 different reasons: the first for breaking the tests that write NaN
 deliberately, the second for outrunning the requirement. Whatever the
 seat decides, REQ-39's scoping paragraph is amended in the same change,
-with the document version, the revision history and Chapter 11.
+with the document version, the revision history and Chapter 11. The
+three options are laid out in the plan ledger as `ITC-20260730-2249`.
 
 What remains open is unchanged in substance: the UncFrame carries NaN
 both for "this cell has no propagated uncertainty" and for "this

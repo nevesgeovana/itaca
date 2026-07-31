@@ -270,12 +270,23 @@ class NumpyCall:
 
 
 def is_elementwise(node: Node) -> bool:
-    """Report whether every value in the tree depends on its cell alone.
+    """Report whether the tree is safe for a per-cell substitution.
 
     The ITACA operator set of REQ-44 is entirely elementwise: a constant,
     a variable lookup, and the unary and binary operators all map cell to
-    cell. ``np.*`` calls are the one escape hatch REQ-36 opens and they
-    are NOT, because ``np.max`` and ``np.mean`` read the whole array.
+    cell. ``np.*`` calls are the one escape hatch REQ-36 opens, and some
+    of them are not, because ``np.max`` and ``np.mean`` read the whole
+    array.
+
+    The test is therefore CONSERVATIVE rather than exact, and the name
+    is the shorter half of what it does. Any tree carrying a
+    :class:`NumpyCall` answers ``False``, including ``np.round``, which
+    is elementwise; and ``np.sqrt`` answers ``True``, because the
+    differentiable NumPy functions are normalized to :class:`Unary`
+    nodes before this ever sees them (REQ-36). Both errors fall on the
+    safe side: a caller told ``False`` keeps the behavior it already had.
+    Deciding it per function would mean maintaining a second table
+    beside the operator ones, for a gain measured in warnings.
 
     A caller that substitutes a per-cell sentinel into the environment
     must ask this first. ``compute(where=)`` does: it replaces
@@ -293,7 +304,7 @@ def is_elementwise(node: Node) -> bool:
     Returns
     -------
     bool
-        ``True`` when the tree contains no ``np.*`` call.
+        ``True`` when the tree contains no ``np.*`` call at all.
 
     Examples
     --------
