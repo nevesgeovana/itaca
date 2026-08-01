@@ -802,6 +802,7 @@ def test_the_review_deny_names_the_ref_that_is_behind_head(repo: Path) -> None:
     assert "<passes,that,ran> v0.1.0" in reason, reason
 
 
+@pytest.mark.fast  # 0.06 s, and it guards the helper every spawn site uses
 def test_a_child_process_does_not_start_coverage() -> None:
     """A child that measures without branch data aborts the whole run.
 
@@ -826,6 +827,7 @@ def test_a_child_process_does_not_start_coverage() -> None:
     assert done.stdout.strip() == "False", done.stdout
 
 
+@pytest.mark.fast  # 0.01 s: a static scan of test sources, no subprocess
 def test_no_spawn_site_bypasses_child_env() -> None:
     """Every Python subprocess in the suite must go through the helper.
 

@@ -67,9 +67,17 @@ repos:
       # latency on a failing run only and must never be mistaken for the
       # mechanism. The subset FAILS the commit, it does not advise: a fast
       # tier that only warns is the same class as a guard reporting green.
+      #
+      # `or fast` readmits a test that a MODULE-level slow marker swept out
+      # while costing nothing. The marker is applied to a file and cost is a
+      # property of a test: measured 2026-08-01, 57 of test_push_gate.py's 60
+      # tests genuinely cost 0.25 to 1.7 s and three cost 0.17 s between them,
+      # one of which is the 0.01 s guard lane ITA-11 broke and committed
+      # because this gate could not see it. `fast` moves a test INTO this
+      # tier and never out of it.
       - id: pytest-fast
         name: pytest (fast subset, no coverage; pre-push runs the rest)
-        entry: pytest -m "not slow" -x -q --no-cov
+        entry: pytest -m "not slow or fast" -x -q --no-cov
         language: system
         always_run: true
         pass_filenames: false

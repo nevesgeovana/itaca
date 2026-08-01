@@ -361,6 +361,7 @@ def test_the_citation_record_matches_the_release_it_describes() -> None:
     )
 
 
+@pytest.mark.fast  # 0.06 s, and a BOM is written by an ordinary edit
 def test_no_tracked_file_carries_a_byte_order_mark() -> None:
     """No tracked file may start with `EF BB BF`, anywhere in the tree.
 
@@ -525,6 +526,7 @@ class TestIncident0854Guards:
             f"the CHK-1 probe ledger is missing at {_PROBE_CLOSURE_LEDGER}"
         )
 
+    @pytest.mark.fast  # 0.34 s, over the tree, needing no build
     def test_guard_1_the_versioned_tree_carries_no_forbidden_identifier(self) -> None:
         """The tree boundary, run every round because it needs no build."""
         done = _run(

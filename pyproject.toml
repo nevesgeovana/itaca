@@ -268,6 +268,25 @@ markers = [
   # tests/test_tooling_config.py refuses a marker on the contract modules
   # the commit tier must keep.
   "slow: process-level; runs at pre-push and in CI, not at commit time",
+  # `fast` UNDOES a module-level `slow` for one test, and it exists
+  # because a blanket marker is applied to a FILE while cost is a property
+  # of a TEST. Measured 2026-08-01: `test_push_gate.py` marks all 60 of
+  # its tests slow, and 57 of them genuinely cost 0.25 to 1.7 s each, so
+  # the marker is right for the file and wrong for three of its members,
+  # including a 0.01 s static scan. `test_release_integrity.py` hides a
+  # 0.06 s byte-order-mark guard the same way.
+  #
+  # The cost of that is not theoretical. Lane ITA-11 broke the 0.01 s
+  # guard, committed, and learned it only from a reviewer, because the
+  # gate the commit passed could not see it. A guard that costs nothing
+  # belongs at the cheapest gate, whatever its neighbors cost.
+  #
+  # The commit tier therefore selects `not slow or fast`, and the
+  # expression is READ from the hook by tests/test_tooling_config.py
+  # rather than repeated there. This marker cannot be used to make a red
+  # commit green: it moves a test INTO the gate, never out of it, and the
+  # per-test budget in tests/conftest.py still applies once it is there.
+  "fast: cheap enough for the commit tier despite a module-level slow mark",
 ]
 
 [tool.coverage.run]

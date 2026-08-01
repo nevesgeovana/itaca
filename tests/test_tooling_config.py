@@ -203,6 +203,62 @@ _COMMIT_TIER_CONTRACT_MODULES = (
     "tests/test_side_effect_guard.py",
 )
 
+# The list above is MODULE granularity, and that is not enough. A module
+# satisfies it by contributing any one test, so a cheap guard inside a
+# module marked slow WHOLESALE is invisible to it, and both modules named
+# below are marked that way for reasons that have nothing to do with these
+# tests. Measured 2026-08-01: none of the four was collected by the commit
+# tier, and lane ITA-11 broke the first one, committed, and learned it from
+# a reviewer instead of from the gate.
+#
+# Each entry is a guard over the REPOSITORY'S OWN HYGIENE rather than over
+# library behavior, each costs under half a second, and each catches a
+# defect that an ordinary edit introduces. Adding one is a decision: it
+# must carry `@pytest.mark.fast`, its measured cost, and the reason it
+# belongs at the cheapest gate.
+_COMMIT_TIER_GUARD_TESTS = (
+    # 0.01 s. Broken by ITA-11 and caught only in review. It refuses a
+    # spawn site that does not strip COV_CORE_*, which aborts CI after
+    # every test has passed.
+    "tests/test_push_gate.py::test_no_spawn_site_bypasses_child_env",
+    # 0.06 s. The helper that guard is about.
+    "tests/test_push_gate.py::test_a_child_process_does_not_start_coverage",
+    # 0.06 s. A byte order mark is written by one PowerShell round trip and
+    # is invisible in a diff viewer; this repository has done it twice.
+    "tests/test_release_integrity.py::test_no_tracked_file_carries_a_byte_order_mark",
+    # 0.34 s. The identifier boundary over the versioned tree, which needs
+    # no build and so has no reason to wait for the push.
+    "tests/test_release_integrity.py::TestIncident0854Guards"
+    "::test_guard_1_the_versioned_tree_carries_no_forbidden_identifier",
+)
+
+
+def _commit_tier_selection() -> str:
+    """The marker expression the commit hook ACTUALLY runs.
+
+    READ from `.pre-commit-config.yaml`, never written here. The two
+    guards below spawn pytest to measure the commit tier, and a literal
+    copy of the expression would let them measure a tier the hook does not
+    run: the day the hook's selection changes, both would keep reporting
+    on the old one and stay green. That is the same defect one level up
+    that `_COMMIT_TIER_CONTRACT_MODULES` exists to catch.
+    """
+    config = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
+    entry = next(
+        hook["entry"]
+        for repo in config["repos"]
+        if repo.get("repo") == "local"
+        for hook in repo["hooks"]
+        if hook["id"] == "pytest-fast"
+    )
+    _wrapper, argv = split_wrapper(entry)
+    assert "-m" in argv, (
+        f"the commit hook runs {argv!r} with no `-m` selection, so there is "
+        f"no expression to measure the tier with. The commit tier is defined "
+        f"by that selection; restore it."
+    )
+    return argv[argv.index("-m") + 1]
+
 
 def _local_hook_stages() -> dict[str, list[str]]:
     """Every local hook id mapped to the stages it declares."""
@@ -479,9 +535,10 @@ def test_the_contract_modules_stay_in_the_commit_tier() -> None:
     # aggregate test that runs the subset: the guard was paying more than the
     # thing it guards. Collecting once and reading the node ids is the same
     # question asked once.
+    selection = _commit_tier_selection()
     argv = [
         sys.executable, "-m", "pytest", "--collect-only", "-q", "--no-cov",
-        "-m", "not slow", "-p", "no:cacheprovider", "tests",
+        "-m", selection, "-p", "no:cacheprovider", "tests",
     ]  # fmt: skip
     done = subprocess.run(
         argv, capture_output=True, text=True, cwd=str(ROOT), env=child_env()
@@ -514,6 +571,19 @@ def test_the_contract_modules_stay_in_the_commit_tier() -> None:
             f"finding: make it fast again, or take it off this list "
             f"deliberately and say why. Marking one test inside it slow is "
             f"fine and is not what this refuses."
+        )
+    # Per TEST, for the guards a module-level marker would otherwise hide.
+    # Same collection, same question, one notch finer.
+    for node in _COMMIT_TIER_GUARD_TESTS:
+        assert node in collected, (
+            f"{node} is NOT collected by the commit tier's own selection "
+            f"({selection!r}). It is a guard over this repository's hygiene "
+            f"that costs under half a second, and it lives in a module marked "
+            f"slow wholesale for reasons that have nothing to do with it. "
+            f"Restore `@pytest.mark.fast` on it, or take it off this list "
+            f"deliberately and say why a cheap guard should wait for the "
+            f"push. Lane ITA-11 broke the first entry, committed, and learned "
+            f"it from a reviewer, because this gate could not see it."
         )
 
 
@@ -550,9 +620,10 @@ def test_the_commit_tier_subset_is_actually_fast() -> None:
     # `env=child_env()` fell outside the window. The guard was right to be
     # tight and the call is what moved; widening its window to fit this
     # code would have loosened the check that caught it.
+    selection = _commit_tier_selection()
     argv = [
         sys.executable, "-m", "pytest",
-        "-m", "not slow", "-q", "--no-cov", "-p", "no:cacheprovider",
+        "-m", selection, "-q", "--no-cov", "-p", "no:cacheprovider",
     ]  # fmt: skip
     started = time.monotonic()
     done = subprocess.run(
