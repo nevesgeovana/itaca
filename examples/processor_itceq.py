@@ -16,7 +16,16 @@ product of two correlated quantities, and ``compute`` carries no
 lineage between calls, so it refuses that composition rather than
 omitting a covariance term and reporting an uncertainty that is wrong in
 an unpredictable direction (REQ-41). The same correction written as one
-expression is exact by construction and is accepted.
+expression is accepted, because within a single expression every
+occurrence of a variable is the same quantity and the correlation is
+carried exactly.
+
+"Exactly" there means to the first order the GUM linearization already
+works to, which is the accuracy REQ-41 promises everywhere; it is not a
+claim that the propagated uncertainty of a nonlinear expression is
+exact in the ordinary sense. This correction is cubic in ``CL``, so its
+uncertainty is a first-order result, as it would be in any LPU
+treatment.
 
 All data is synthetic (textbook curves), see examples/README.md for the
 provenance statement.
@@ -59,8 +68,10 @@ q_inf = "0.5 * rho * V**2"
 # from the same measured channels, so `CL * blockage` is a product of
 # two correlated quantities across two separate calls, and compute
 # carries no lineage between calls (REQ-41). Written as ONE expression
-# the covariance is exact by construction, which is why the engine
-# accepts this form and refuses the other.
+# every occurrence of CL is the same quantity, so the correlation is
+# carried rather than dropped, which is why the engine accepts this form
+# and refuses the other. The result is still a first-order LPU value:
+# the expression is cubic in CL.
 blockage = "1 + 0.005 * CL**2"
 CL_corr  = "CL * (1 + 0.005 * CL**2)"
 """

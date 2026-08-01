@@ -27,6 +27,15 @@ from itaca.uncertainty.operators import BINARY, UNARY, BinaryOperator, UnaryOper
 _Array = NDArray[Any]
 Node = Union["Const", "Var", "Unary", "Binary", "NumpyCall"]
 
+# The single declaration of the names the expression language supplies
+# as literals (REQ-44). TWO other modules DERIVE from this one and must
+# keep doing so rather than restating it: `itaca/uncertainty/_lineage.py`
+# and `itaca/pproc/equations/parser.py`, the second of which held a
+# hand-written copy until 2026-08-01. A name added here therefore enters
+# the pproc dependency subtraction and the shadow refusal for free; a
+# change to this container's SHAPE reaches both, since each takes
+# `frozenset()` over it. `tests/test_chk1_open_defects.py` fails if
+# either stops deriving.
 _CONSTANTS = {"pi": np.pi, "e": np.e}
 _NUMPY_NORMALIZATION = {
     "sin": "sin",

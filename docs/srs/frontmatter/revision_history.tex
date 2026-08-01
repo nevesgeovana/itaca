@@ -17,9 +17,8 @@ and withdrawing none, correcting REQ-83. The table had drifted in both
 directions at once: it omitted six declared dependencies
 (\code{build}, \code{pyyaml}, \code{scipy}, \code{setuptools},
 \code{setuptools-scm}, \code{uncertainties}), stated a range for
-\code{ruff} where \code{pyproject.toml} carries the exact pin REQ-96
-requires, and carried five rows for packages declared in no extra at
-all. That last group is why the roles are now split: a \code{planned}
+\code{ruff} where \code{pyproject.toml} carries an exact pin, and
+carried five rows for packages declared in no extra at all. That last group is why the roles are now split: a \code{planned}
 or \code{external} row is policy for something not declared yet, and it
 may not name something the file does declare, so a row cannot stay in
 an uncheckable state once the package becomes real. The table is

@@ -100,8 +100,18 @@ def test_chk1_001_the_constant_set_is_one_fact_not_two() -> None:
 
     Both halves are asserted, because either alone is satisfiable
     without the other. Equality alone passes on two literals that
-    happen to agree, which is the defect; the AST alone would pass on a
-    derivation from the wrong source.
+    happen to agree, which is the defect; the source check alone would
+    pass on a derivation from the wrong source.
+
+    The source half asserts POSITIVELY what the binding must be, rather
+    than the absence of string literals in it. Absence-of-X is the shape
+    that goes blind under refactor, and two ordinary ones were measured
+    to defeat it: an annotated assignment
+    (``_EXPRESSION_CONSTANTS: frozenset[str] = frozenset({"pi", "e"})``)
+    is an `ast.AnnAssign` and was skipped entirely, and a two-step
+    ``_NAMES = ("pi", "e")`` then ``frozenset(_NAMES)`` puts the
+    literals outside the node being walked. Both restore the
+    duplication with this guard green.
     """
     import ast
     from pathlib import Path
@@ -112,25 +122,43 @@ def test_chk1_001_the_constant_set_is_one_fact_not_two() -> None:
     assert engine == parser._EXPRESSION_CONSTANTS
 
     source = Path(parser.__file__).read_text(encoding="utf-8")
-    for node in ast.parse(source).body:
-        if not isinstance(node, ast.Assign):
-            continue
-        if "_EXPRESSION_CONSTANTS" not in [
-            target.id for target in node.targets if isinstance(target, ast.Name)
-        ]:
-            continue
-        literals = [
-            child
-            for child in ast.walk(node.value)
-            if isinstance(child, ast.Constant) and isinstance(child.value, str)
-        ]
-        assert not literals, (
-            f"{parser.__file__} enumerates the expression constants as "
-            f"{[literal.value for literal in literals]} instead of deriving "
-            f"them from itaca.uncertainty.expression._CONSTANTS. The two "
-            f"agree today and that is the whole problem: a constant added to "
-            f"the engine would silently stop being subtracted here."
-        )
+    tree = ast.parse(source)
+
+    imported_from_engine = {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "itaca.uncertainty.expression"
+        for alias in node.names
+    }
+
+    bindings = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign | ast.AnnAssign)
+        for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        if isinstance(target, ast.Name) and target.id == "_EXPRESSION_CONSTANTS"
+    ]
+    assert len(bindings) == 1, (
+        f"expected exactly one module-level binding of _EXPRESSION_CONSTANTS "
+        f"in {parser.__file__}, found {len(bindings)}"
+    )
+
+    value = bindings[0].value
+    assert isinstance(value, ast.Call), (
+        f"{parser.__file__} binds _EXPRESSION_CONSTANTS to a "
+        f"{type(value).__name__} rather than to a call deriving it from the "
+        f"expression engine (FND-015 class: a second copy of one fact)."
+    )
+    sources = {argument.id for argument in value.args if isinstance(argument, ast.Name)}
+    assert sources and sources <= imported_from_engine, (
+        f"{parser.__file__} derives _EXPRESSION_CONSTANTS from {sorted(sources)}, "
+        f"which is not imported from itaca.uncertainty.expression (imported: "
+        f"{sorted(imported_from_engine)}). The constants must come from the "
+        f"engine that supplies them, not be restated here: the two agree "
+        f"today and that is the whole problem, since a constant added to the "
+        f"engine would silently stop being subtracted."
+    )
 
 
 @pytest.mark.parametrize("name", sorted(EXPRESSION_CONSTANTS))

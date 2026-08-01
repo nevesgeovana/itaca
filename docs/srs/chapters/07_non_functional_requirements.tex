@@ -130,12 +130,26 @@ quietly stop covering a package the other still covers.
 
 \begin{reqbox}{REQ-83}{\stable}
 \textbf{Pinned dependency version ranges.}\\
-\itc{} declares explicit version ranges for every dependency in
-\code{pyproject.toml}. Table~\ref{tab:dependency-versions} lists the
-minimum tested version, the upper bound, and the role: where
-\code{pyproject.toml} declares the dependency, or that it does not
-declare it yet. CI runs the full test suite against the minimum and the
-latest compatible versions.
+\itc{} declares an explicit PEP 440 specifier for every dependency in
+\code{pyproject.toml}. Table~\ref{tab:dependency-versions} lists that
+specifier and the role: where \code{pyproject.toml} declares the
+dependency, or that it does not declare it yet.
+
+The specifier is usually a bounded range, and it is not always one, so
+this requirement says \emph{specifier} rather than \emph{range with an
+upper bound}. Three rows are deliberately otherwise. \code{ruff} is an
+EXACT pin (see below). \code{setuptools} and \code{setuptools-scm}
+carry a floor with no ceiling, because they are build-time tools
+resolved by the frontend in an isolated environment, where a ceiling
+pins a consumer's toolchain rather than this project's.
+
+CI runs the full test suite against the LATEST compatible versions on
+every supported interpreter, and against the declared minimum of the
+runtime dependencies \code{numpy} and \code{pandas}. It does NOT
+exercise the floor of every row of the table; the development and
+build-time floors are declared and not minimum-tested. That gap is
+stated here rather than left to be inferred from the workflow, and it
+is recorded as a known limitation rather than as a promise.
 
 The table is CHECKED against \code{pyproject.toml} rather than
 generated from it, in both directions, by
@@ -144,9 +158,9 @@ generated from it, in both directions, by
 belongs in a specification and not in a lockfile; checked gives the
 same protection from drift. The check was written because the table had
 drifted in both directions at once: it omitted six declared
-dependencies, stated a range for \code{ruff} where the file carries the
-exact pin REQ-96 requires, and carried five rows for packages declared
-in no extra at all, so a reader could not tell a policy from a plan.
+dependencies, stated a range for \code{ruff} where the file carries an
+exact pin, and carried five rows for packages declared in no extra at
+all, so a reader could not tell a policy from a plan.
 
 That last case is why the roles are split. A \code{planned} row is a
 package this project intends to declare and has not; an
@@ -208,10 +222,14 @@ package this project intends to declare and has not, and
 \end{table}
 
 The \code{ruff} pin is exact rather than a range, and that is
-deliberate: \code{ruff} is declared twice, here and as a
+deliberate. \code{ruff} is declared twice, here and as a
 \code{pre-commit} hook revision that builds its own isolated
-environment, so a range would let CI and the local hook run different
-rule sets (REQ-96). \code{scipy} and \code{uncertainties} are
+environment, so a range would let CI and the local hook resolve
+different versions and run different rule sets. REQ-96 requires the two
+to MIRROR each other and does not itself mandate an exact pin; the pin
+is the means by which that mirror is kept, and
+\code{tests/test\_tooling\_config.py} is what enforces it.
+\code{scipy} and \code{uncertainties} are
 development test oracles (DD-26, DD-25) and are barred from library
 code by the import policy of REQ-82; their presence in this table is
 not a relaxation of that rule.
@@ -223,6 +241,16 @@ toolchain) are imported lazily and checked at the point of use. A missing
 optional dependency raises \code{MissingDependencyError} with an
 actionable installation instruction (e.g.\
 \code{pip install itaca[plot]}).
+
+\emph{Optional} here is the USAGE sense, a dependency the library works
+without, and it is deliberately wider than the \emph{optional} ROLE in
+Table~\ref{tab:dependency-versions}, which means specifically
+\emph{declared in an extra of \code{pyproject.toml}}. Of the five named
+above, only \code{pandas} carries that role today; matplotlib, plotly
+and SMT are \emph{planned} and the LaTeX toolchain is \emph{external},
+because it is not a Python package. The \code{itaca[plot]} extra in the
+example is likewise the shape the message will take, not an extra that
+exists yet: it arrives with the plotting backend it names.
 \end{reqbox}
 
 \begin{reqbox}{REQ-85}{\stable}

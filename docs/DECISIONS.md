@@ -1991,10 +1991,25 @@ special case has nothing left to do.
 **Date:** 2026-08-01
 **Status:** accepted
 **Requirements:** REQ-92
-**Supersedes:** DD-38 in part, the single sentence "read back at run time
-from the installed distribution metadata". Everything else in DD-38
-stands: the version is still derived from the repository by
-`setuptools-scm` at build time and is still never a literal in a file.
+**Supersedes:** DD-38 in part, in TWO sentences rather than one.
+
+The first is "read back at run time from the installed distribution
+metadata", which this entry replaces with the resolution order below.
+
+The second is DD-38's accepted cost, "an editable install freezes the
+version at install time, so `itaca.__version__` goes stale in a working
+tree until the next reinstall". That sentence is now mechanically wrong
+and it is the one a reader would act on. The primary source is
+`itaca/core/_version.py`, which every BUILD of the tree rewrites,
+including a `python -m build` that the test suite performs, so an
+ordinary `pytest` run can change what `itaca.__version__` reports in
+that checkout and no reinstall is involved. A reader following DD-38
+would look for a reinstall that never happened. Naming it here is the
+only available repair, since DD entries are frozen and append-only.
+
+Everything else in DD-38 stands: the version is still derived from the
+repository by `setuptools-scm` at build time and is still never a
+literal in a file.
 
 ### The problem
 
@@ -2062,12 +2077,36 @@ implementation of the version, which is `ITACA-004` itself.
 
 ### What this does NOT fix, named rather than smoothed over
 
-Staleness. In an editable checkout the version file is as old as the
-last build of that checkout, so `Provenance.itaca_version` can still
+**Staleness.** In an editable checkout the version file is as old as the
+last BUILD of that checkout, so `Provenance.itaca_version` can still
 name an earlier tree. What changed is that it is now stale but VALID,
 and deterministic: a true statement about an earlier tree rather than a
 different statement depending on the caller's directory, or none at all.
 Closing the staleness itself requires one of the rejected options above.
+
+**A tree that has never been built is NOT covered, and an earlier draft
+of this entry claimed it was.** The version file is gitignored, so a
+fresh clone, a detached git worktree, or a CI leg before
+`pip install -e .` does not have one, and resolution falls through to
+the metadata path with the `sys.path` scan intact. Measured: the same
+planted `itaca.egg-info` that the reordering defeats on a built tree
+still wins on an unbuilt one, reporting `9.9.9.dev99`.
+
+It is not closed here because the obvious closure is wrong, and that is
+worth recording so the next session does not reach for it. Refusing when
+the found distribution's location does not match the imported package
+would refuse the ordinary development case: an editable install
+legitimately keeps its `dist-info` in site-packages while its code sits
+in the source tree, so those locations differ by design. Nothing cheaper
+distinguishes "the metadata of this tree" from "the metadata of some
+other install that happens to be on the path".
+
+The residual is pinned rather than described.
+`tests/core/test_version_resolution.py` asserts BOTH meanings against
+the tree under test, branching on whether the version file is present,
+so neither branch is assumed. The day the fallback stops being
+cwd-dependent, the residual test fails and says to delete itself and
+this paragraph together.
 
 ### Consequences
 

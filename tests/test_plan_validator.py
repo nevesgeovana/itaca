@@ -43,9 +43,15 @@ the old hardcoded coordination path, so it now proves the DEPLOYED copy
 beside it, not the coordination master. That closes the coupling this
 test previously had to disclose (routed item ITC-20260724-1715), which is
 why the mutation companion can finally be wired as a tier-1 test here.
-The deployed pair moved to kit 0.2.10 (checker) and 0.2.3 (companion) on
-2026-07-30, together with their pins, and the companion still reports
-``0 check(s) could not fail``.
+The deployed pair is at kit 0.2.10, and it got there in two steps a
+couple of days apart, which is worth stating because the gap was the
+defect. The CHECKER moved to 0.2.10 on 2026-07-30. Its mutation
+COMPANION stayed at 0.2.3 until 2026-08-01, so for that window the
+artifact proving this checker can still fail was seven versions behind
+the checker, and nothing could see it: each half was self-consistent
+with its own pin in ``tests/test_kit_drift.py``. Both are now at 0.2.10
+together with their pins, and the companion reports ``0 check(s) could
+not fail`` with an empty-plan-directory case it did not have before.
 """
 
 from __future__ import annotations

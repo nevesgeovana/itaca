@@ -1586,3 +1586,86 @@ represent the induced covariance soundly; the product owner on whether
 `db.correlation` may hold coefficients the user did not write.
 
 **SRS:** REQ-40, REQ-41, REQ-98, REQ-100.
+
+---
+
+## OQ-52: Should an unset `ITACA_PLAN_VALIDATOR` still skip validation silently?
+
+**Raised:** 2026-08-01, lane ITA-4, the kit floor.
+
+`CLAUDE.md` gives three different meanings of "unset" across one family
+of three locator variables, and says so explicitly because the word
+looks like one branch and is not: `ITACA_PLAN_VALIDATOR` SKIPS the
+validation, `ITACA_MANAGEMENT_ROOT` SUBSTITUTES a location and stops if
+it holds nothing, and `COORD_INCIDENT_LEDGER` DENIES a push.
+
+The charter supplies the argument against its own first row. About
+`COORD_INCIDENT_LEDGER` it says "a guard that reads its own missing
+configuration as permission is not a guard, and this one did read it
+that way until kit 0.2.8". That sentence is about guards, and the plan
+validator is a guard. The skip is also announced by CONVENTION: the
+charter requires a session to state it in the record, and no mechanism
+enforces that, so an unannounced skip and a pass leave the same trace.
+This is the shape of `ITC-20260727-1542`, where plan validation had
+been silently skipping for days while the drift test stayed green.
+
+Three arguments cut the other way and none is weak. The plan validator
+gates nothing, unlike the incident ledger, whose absence denies a push
+because that is a safety property; denying on unset would stop work
+that has nothing to do with the ledger. `ITACA_MANAGEMENT_ROOT` already
+stops when the documents cannot be found at all, so the uncovered case
+is narrower than it first appears: a ledger that exists and is not
+checked. And the asymmetry is deliberate and documented, in a section
+whose whole purpose is that no two members agree.
+
+**Options.** (A) Leave it. (B) Unset DENIES, matching
+`COORD_INCIDENT_LEDGER`, so two of three members stop disagreeing about
+the same word. (C) Unset still skips, but the skip becomes machine
+visible rather than conventional.
+
+**The lane's recommendation is C, weakly.** It keeps the branch the
+charter deliberately made different and removes the property that is
+indefensible on its own terms, which is that the skip is SILENT rather
+than that it is a skip. A is the one that should not survive, being the
+option whose cost the charter has already argued against.
+
+**Who decides:** the product owner. This changes a rule the charter
+states, and the locator table is her seat.
+
+**Full analysis:** plan entry `ITC-20260801-1400`.
+
+---
+
+## OQ-53: Should the vendored kit be checked for CURRENCY, and by what locator?
+
+**Raised:** 2026-08-01, lane ITA-4, the kit floor.
+
+`tests/test_kit_drift.py` proves a vendored copy cannot be silently
+HAND-EDITED, and its own docstring states that it does NOT prove a copy
+is CURRENT with the kit, because its manifest is an inlined frozen copy
+rather than a live read of the master. So a repository that has fallen
+behind stays green until someone moves a pin by hand.
+
+That limit is not theoretical. This lane compared every pin against the
+kit README's manifest table with a throwaway script and found three
+rows behind, one of which mattered: the deployed plan checker had been
+upgraded while the mutation companion proving it can still fail was left
+seven versions back, invisible because each half was self-consistent
+with its own pin.
+
+Making that comparison a test needs a locator naming the kit master,
+which would be a fourth member of the locator family, and the family's
+semantics are charter material. It also needs an answer for what an
+unset locator means, which is OQ-52's question one artifact over, so the
+two are worth answering together rather than a month apart.
+
+**The tension.** The inlined manifest is deliberate: it lets the drift
+test run with no cross-repository filesystem access and it cannot
+deadlock a push. A live read gives up that property in exchange for
+seeing staleness. A third shape, a periodic reconciliation that is not
+part of the push gate, may fit better than either.
+
+**Who decides:** the product owner, on whether the locator family gains
+a member and on what its unset branch means.
+
+**Full analysis:** plan entry `ITC-20260801-0900`.

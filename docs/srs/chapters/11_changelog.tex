@@ -15,8 +15,13 @@ it adds or modifies.
 \section*{Document 0.2.10, 2026-08-01, The Dependency Table Is Checked, Not Maintained}
 
 A PATCH revision adding no requirement and withdrawing none, correcting
-REQ-83. The table it carries is normative, it was hand-maintained beside
-\code{pyproject.toml}, and it had drifted in both directions at once.
+REQ-83 and clarifying REQ-84. Design decision DD-48 lands in the same
+window and is recorded in \code{docs/DECISIONS.md}; it changes how
+\code{itaca.\_\_version\_\_} is resolved and supersedes two sentences of
+DD-38, and it modifies no requirement, which is why it appears here as a
+citation rather than as its own paragraph. The table REQ-83 carries is
+normative, it was hand-maintained beside \code{pyproject.toml}, and it
+had drifted in both directions at once.
 
 \paragraph{Changed (REQ-83, the table is checked against the file).}
 Six declared dependencies were absent from it: \code{build},
@@ -24,8 +29,9 @@ Six declared dependencies were absent from it: \code{build},
 and \code{uncertainties}. The \code{ruff} row stated the range
 \code{>=0.5,<1.0} where \code{pyproject.toml} carries the exact pin
 \code{==0.15.22}, so the normative document contradicted the reason
-REQ-96 requires that pin: \code{ruff} is declared twice, and a range
-lets CI and the local hook run different rule sets. And five rows named
+that pin exists: \code{ruff} is declared twice, and a range lets CI and
+the local hook resolve different versions and run different rule sets,
+which is the mirror REQ-96 requires. And five rows named
 packages declared in no extra at all, so a reader could not tell a
 policy from a plan and those rows could not be checked against
 anything.

@@ -44,10 +44,15 @@ emits, is the version that introduces the field.
 
 from __future__ import annotations
 
+import importlib.metadata
 import re
 import tomllib
 from pathlib import Path
 from typing import Any
+
+import pytest
+from packaging.specifiers import SpecifierSet
+from packaging.version import Version
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
@@ -65,6 +70,26 @@ UNDECLARED_ROLES = {"planned", "external"}
 # legacy handling, which is the defect itself.
 SPDX_SETUPTOOLS_FLOOR = 77
 
+#: Floors this project holds for a SECURITY reason, as
+#: ``{package: (fixed_version, advisory)}``. Without this the reason for
+#: a floor lives only in a comment, and relaxing the specifier back to a
+#: vulnerable range reddens nothing: the table check compares the SRS to
+#: `pyproject.toml`, so moving both together is silent.
+SECURITY_FLOORS = {
+    "pytest": ("9.0.3", "CVE-2025-71176, insecure temporary-directory handling"),
+}
+
+#: Declared in an extra for a reason a later editor would not guess, as
+#: ``{package: (extra, why)}``. `pandas` is the case that motivated it:
+#: it lives in `dev` as well as in its own extra because a test imports
+#: it at module scope, so removing it from `dev` breaks the DOCUMENTED
+#: `pip install -e ".[dev]"` at collection time, which is ITACA-015. The
+#: role check below reads a row's single role and cannot see the second
+#: membership, so it is asserted here by name.
+LOAD_BEARING_EXTRA_MEMBERSHIPS = {
+    "pandas": ("dev", "ITACA-015: a test imports pandas at module scope"),
+}
+
 _ROW = re.compile(
     r"^\\code\{(?P<name>[^}]+)\}\s*&\s*(?P<role>\w+)\s*&"
     r"(?P<used_for>[^&]*)&\s*(?P<range>.*?)\\\\\s*$"
@@ -76,23 +101,61 @@ def _pyproject() -> dict[str, Any]:
     return parsed
 
 
+def _unescape(value: str) -> str:
+    """Undo the LaTeX escaping the table needs in text mode.
+
+    Applied to the RANGE as well as to the name, which it was not: a
+    specifier carrying an environment marker (`; python_version < "3.13"`)
+    must be written `python\\_version` in the `.tex`, and comparing that
+    against `pyproject.toml` character for character would make
+    `test_every_row_states_the_declared_specifier` unsatisfiable, with
+    the only remedies being an unbuildable document or a test edit.
+    """
+    return value.replace(r"\_", "_").strip()
+
+
 def _table_rows() -> dict[str, tuple[str, str]]:
-    """Return ``{name: (role, range)}`` parsed from the REQ-83 table."""
+    """Return ``{name: (role, range)}`` parsed from the REQ-83 table.
+
+    Every `\\\\`-terminated line between the header rule and the end of
+    the tabular MUST parse. A regex that silently skips what it cannot
+    match would drop a row rather than fail, and a dropped `planned` or
+    `external` row leaves exactly the unfalsifiable row FND-015 was
+    about: no other check names those, so nothing else would notice.
+    Duplicate names are refused for the same reason, since a dict
+    assignment collapses two rows into the last one and a stale
+    contradictory row above a correct one would be invisible.
+    """
     text = SRS_TABLE.read_text(encoding="utf-8")
     start = text.index(r"\label{tab:dependency-versions}")
-    end = text.index(r"\end{tabularx}", start)
+    body_start = text.index(r"\midrule", start)
+    end = text.index(r"\bottomrule", body_start)
     rows: dict[str, tuple[str, str]] = {}
-    for line in text[start:end].splitlines():
-        match = _ROW.match(line.strip())
-        if match is None:
+    unparsed: list[str] = []
+    for line in text[body_start:end].splitlines():
+        stripped = line.strip()
+        if not stripped.endswith(r"\\"):
             continue
-        name = match["name"].replace(r"\_", "_").strip()
+        match = _ROW.match(stripped)
+        if match is None:
+            unparsed.append(stripped)
+            continue
+        name = _unescape(match["name"])
         raw_range = match["range"].strip()
         declared = re.fullmatch(r"\\code\{(?P<spec>.+)\}", raw_range)
+        assert name not in rows, (
+            f"the REQ-83 table declares {name!r} twice; the second row would "
+            f"silently replace the first and a stale contradictory row would "
+            f"be invisible to every check here"
+        )
         rows[name] = (
             match["role"].strip(),
-            declared["spec"] if declared else raw_range,
+            _unescape(declared["spec"]) if declared else raw_range,
         )
+    assert not unparsed, (
+        f"{len(unparsed)} row(s) of the REQ-83 table did not parse, so they "
+        f"are checked by nothing: {unparsed}"
+    )
     assert rows, f"parsed no rows from the REQ-83 table in {SRS_TABLE}"
     return rows
 
@@ -199,6 +262,74 @@ class TestTheDependencyTableMatchesPyproject:
                     f"under {sorted(declared[name][0])}"
                 )
         assert not problems, "\n".join(problems)
+
+
+class TestSecurityFloorsAreDeclaredAndInstalled:
+    """FND-067: a floor taken for a CVE is a fact, not a comment."""
+
+    @pytest.mark.parametrize("package", sorted(SECURITY_FLOORS))
+    def test_the_declared_floor_is_at_or_above_the_advisorys_fix(
+        self, package: str
+    ) -> None:
+        """`pyproject.toml` may not allow a version the advisory calls vulnerable.
+
+        Measured before this guard existed: nothing in `tests/` named
+        `9.0.3` or the CVE, so relaxing the pin back to `>=8.0` reddened
+        nothing at all.
+        """
+        fixed, advisory = SECURITY_FLOORS[package]
+        specifier = _declared()[package][1]
+        assert SpecifierSet(specifier).contains(fixed), (
+            f"{package} is declared {specifier!r}, which excludes {fixed}, the "
+            f"version that fixes {advisory}."
+        )
+        below = Version(fixed).base_version + ".dev0"
+        assert not SpecifierSet(specifier, prereleases=True).contains(below), (
+            f"{package} is declared {specifier!r}, which still admits {below}, "
+            f"below the fix for {advisory}."
+        )
+
+    @pytest.mark.parametrize("package", sorted(SECURITY_FLOORS))
+    def test_the_running_environment_actually_satisfies_the_floor(
+        self, package: str
+    ) -> None:
+        """The declaration is not the installation.
+
+        A shared virtualenv keeps whatever it was last given, so the
+        floor can be correct in the file and absent from the interpreter
+        running this suite. That gap is FND-046's own shape one tool
+        over, and it is the reason this assertion is separate from the
+        one above.
+        """
+        fixed, advisory = SECURITY_FLOORS[package]
+        installed = importlib.metadata.version(package)
+        assert Version(installed) >= Version(fixed), (
+            f"{package} {installed} is installed here and {fixed} is the fix "
+            f'for {advisory}. Reinstall with pip install -e ".[dev]".'
+        )
+
+
+class TestLoadBearingExtraMemberships:
+    """A membership whose reason a later editor would not guess."""
+
+    @pytest.mark.parametrize("package", sorted(LOAD_BEARING_EXTRA_MEMBERSHIPS))
+    def test_the_membership_survives(self, package: str) -> None:
+        """Measured gap: the SRS row carries ONE role, so a second is unguarded.
+
+        `pandas` sits in its own extra and in `dev`; the table row says
+        `optional` and the role check passes on membership, so dropping
+        it from `dev` left the SRS, this module and
+        `tests/test_tooling_config.py` all green while regressing
+        ITACA-015.
+        """
+        extra, why = LOAD_BEARING_EXTRA_MEMBERSHIPS[package]
+        roles = _declared()[package][0]
+        expected = "dev" if extra == "dev" else "optional"
+        assert expected in roles, (
+            f"{package} is no longer declared in the {extra!r} extra. It is "
+            f"there for a reason that is not visible from the extra itself: "
+            f"{why}."
+        )
 
 
 class TestTheLicenseIsAnSpdxExpression:

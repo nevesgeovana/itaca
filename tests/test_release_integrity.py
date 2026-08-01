@@ -47,6 +47,7 @@ from pathlib import Path
 import identifiers
 import pytest
 from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
+from packaging.version import Version
 
 # MEASURED 539 s with --no-cov on 2026-07-30, against 0.7 to 3.9 s for
 # every module outside this one and test_push_gate.py. It builds real
@@ -655,6 +656,32 @@ class TestBuiltArtifactIdentity:
                 f"named {wheel.name}. A development build is named for the "
                 f"release being worked toward with the commit distance as "
                 f"its dev number (DD-38)."
+            )
+            # The dev suffix alone leaves X.Y.Z unconstrained, so a wheel
+            # named itaca-9.9.9.devN or itaca-0.1.0.devN would pass. This
+            # bounds the RELEASE part without reimplementing
+            # release-branch-semver: whatever the scheme, a development
+            # build names the release being worked TOWARD, so it is
+            # strictly after the last tag and advances exactly one
+            # component of it.
+            built = Version(version)
+            released = Version(tag)
+            assert built > released, (
+                f"the wheel is named {wheel.name}, which is not after the "
+                f"last release tag v{tag}."
+            )
+            advanced = [
+                index
+                for index, (left, right) in enumerate(
+                    zip(built.release, released.release, strict=False)
+                )
+                if left != right
+            ]
+            assert len(advanced) == 1, (
+                f"the wheel is named {wheel.name} and the last tag is v{tag}; "
+                f"a development build advances exactly one component of the "
+                f"released version, and this differs in {len(advanced)}. A "
+                f"setuptools_scm version_scheme change is the usual cause."
             )
 
         # ITACA-004: the filename, the metadata and the code agree.

@@ -211,11 +211,22 @@ class Pin:
     kit_version: str
 
 
-# The kit README manifest, inlined as the fixture, with two DELIBERATE
-# deviations marked in place below (per-file versions differ deliberately
-# and span several kit versions; see the module docstring). This is not a
-# verbatim copy of the manifest of record and must not be resynced from
-# it wholesale.
+# The kit README manifest, inlined as the fixture. Per-file versions
+# differ and span several kit versions, which is the manifest being per
+# file rather than a lag; see the module docstring.
+#
+# AS OF 2026-08-01 this is IDENTICAL to the manifest of record: all 21
+# pins equal the canonical table, hash and version, in both directions.
+# It said "with two DELIBERATE deviations marked in place below" and
+# that was true until this lane closed them, so it is corrected rather
+# than left as a warning about deviations that no longer exist.
+#
+# The rule it was protecting still stands and is the reason this comment
+# is not simply deleted: a deviation IS legitimate, for a pin naming an
+# artifact deployed OUTSIDE this repository, which moves only with the
+# deployed copy it names. When one exists it is marked in place. So do
+# not resync this wholesale from the master; reconcile row by row, and
+# for a deployed artifact move the deployment first.
 MANIFEST: dict[str, Pin] = {
     # 0.2.8, author decision LEDGER-ENVVAR, and the reason this pin moved at
     # the last moment before a tag. itaca sat at 0.2.6, whose ledger check

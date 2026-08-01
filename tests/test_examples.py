@@ -55,7 +55,19 @@ MINIMUM_EXAMPLES = 3
 
 
 def _scripts() -> list[Path]:
-    return sorted(EXAMPLES.glob("*.py"))
+    """Every example script, at any depth under `examples/`.
+
+    `rglob` and not `glob`: a flat glob made the module docstring's
+    "discovered, so a later example is covered by default" true only for
+    examples added beside the existing three. One added at
+    `examples/wt/campaign.py` would have been executed by nothing while
+    the floor below still held.
+    """
+    return sorted(
+        path
+        for path in EXAMPLES.rglob("*.py")
+        if "__pycache__" not in path.parts and "output" not in path.parts
+    )
 
 
 def test_every_example_is_discovered() -> None:
@@ -84,12 +96,18 @@ def test_the_example_runs(script: Path, tmp_path: Path) -> None:
     workspace = tmp_path / "examples"
     shutil.copytree(EXAMPLES, workspace)
 
+    # A bounded wait, not an unbounded one. An example that blocks on a
+    # prompt or a stuck read would otherwise hang the suite with no
+    # failure and no output, and this repository has already spent a
+    # session mistaking a slow run for a hung one; a guard that can hang
+    # teaches exactly that mistake.
     done = subprocess.run(
-        [sys.executable, str(workspace / script.name)],
+        [sys.executable, str(workspace / script.relative_to(EXAMPLES))],
         capture_output=True,
         text=True,
         cwd=str(workspace),
         env=child_env(),
+        timeout=180,
     )
 
     assert done.returncode == 0, (

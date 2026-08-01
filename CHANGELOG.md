@@ -254,11 +254,21 @@ names `release.yml` with environment `pypi`. A publisher naming
   cannot see this because typeshed declares `version() -> str`. The
   generated `itaca/core/_version.py` is now read first, which is found
   by import rather than by a path scan, and a resolution that yields
-  nothing raises `VersionResolutionError` (DD-48, supersedes one
-  sentence of DD-38). A clone that has never been built does not have
-  that file and still resolves from the metadata, unchanged.
-  `Provenance.itaca_version` in an editable checkout remains as old as
-  the last build of that checkout; that residual is named in DD-48.
+  nothing raises `VersionResolutionError` (DD-48, supersedes two
+  sentences of DD-38). A corrupt or unparsable version file degrades to
+  the metadata rather than making `import itaca` fail.
+
+  **Two limits, stated because the first version of this entry
+  overstated the fix.** A tree that has never been BUILT has no version
+  file, so a fresh clone, a detached worktree or a CI leg before
+  `pip install -e .` still resolves through the path scan and can still
+  be shadowed; closing that would require refusing when the found
+  distribution's location differs from the imported package, which is
+  exactly what an editable install looks like, so it would refuse the
+  ordinary development case. And `Provenance.itaca_version` in an
+  editable checkout remains as old as the last build of that checkout.
+  Both are named in DD-48 and pinned by tests that branch on which case
+  applies rather than assuming one.
 
 * **A CSV written by `to_csv` could not be read back by `itc.load`.**
   The loader took the first non-empty line as the header, so the

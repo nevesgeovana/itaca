@@ -32,6 +32,7 @@ import json
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import identifiers
@@ -501,6 +502,110 @@ _SRS_VERSION_SITES = (
 # shapes, one table row), so the list stays explicit and the count is pinned
 # instead.
 _SRS_VERSION_SITE_COUNT = 7
+
+# The DATE of the current revision, wherever it is declared. Separate
+# from the version sites above because the shapes differ and because the
+# lesson is separate: pinning the version alone was measured
+# insufficient. A bump moved all seven version sites and left three of
+# them dated 2026-07-31 with 0.2.9's title, so the title page was dated a
+# day before the revision it contained and the README advertised the
+# previous revision's subject, while this guard was green.
+#
+# `main.tex` writes a long date and everything else writes ISO, so each
+# site declares how to normalize what it captured.
+#
+# The last field says how many times the pattern may match. `"once"` is a
+# live declaration and a second match means the pattern is loose;
+# `"newest"` is a per-revision record whose FIRST match is the current
+# one, and demanding uniqueness there would just be wrong (Chapter 11
+# carries a section per revision, thirteen of them today). Both still
+# refuse ZERO matches, which is the way a guard like this goes vacuous.
+_SRS_DATE_SITES = (
+    (
+        "docs/srs/main.tex",
+        re.compile(r"\\textit\{Date\}\s*& \\textbf\{([A-Z][a-z]+ \d+, \d{4})\}"),
+        "long",
+        "once",
+    ),
+    (
+        "docs/srs/README.md",
+        re.compile(r"document version \d+\.\d+\.\d+\s*\n\((\d{4}-\d\d-\d\d),"),
+        "iso",
+        "once",
+    ),
+    (
+        "CLAUDE.md",
+        re.compile(r"\(document \d+\.\d+\.\d+,\s*\n\s*(\d{4}-\d\d-\d\d);"),
+        "iso",
+        "once",
+    ),
+    (
+        "docs/srs/frontmatter/revision_history.tex",
+        re.compile(r"\\midrule\s*\\midrule\s*\d+\.\d+\.\d+ & (\d{4}-\d\d-\d\d) &"),
+        "iso",
+        "once",
+    ),
+    (
+        "docs/srs/chapters/11_changelog.tex",
+        re.compile(r"\\section\*\{Document \d+\.\d+\.\d+, (\d{4}-\d\d-\d\d),"),
+        "iso",
+        "newest",
+    ),
+)
+_SRS_DATE_SITE_COUNT = 5
+
+
+def _as_iso(value: str, shape: str) -> str:
+    """Normalize a captured date to ISO, so the shapes can be compared."""
+    if shape == "iso":
+        return value
+    return datetime.strptime(value, "%B %d, %Y").date().isoformat()
+
+
+def test_every_document_dating_the_srs_revision_dates_it_the_same_day() -> None:
+    """One revision, one date, in all five places that state it.
+
+    The companion to the version guard below, and it exists because
+    pinning the version alone was measured insufficient. Lane ITA-4
+    bumped 0.2.9 to 0.2.10 across all seven version sites and left the
+    title page reading `July 31, 2026`, the SRS README reading
+    `2026-07-31` with 0.2.9's subtitle, and `CLAUDE.md` reading
+    `2026-07-31`, while the revision history and Chapter 11 both said
+    `2026-08-01`. Three statements of one fact, wrong, in the
+    authoritative document, with every existing guard green: the built
+    PDF was dated a day before the revision it contained.
+
+    A date is not a version, so it needs its own list; what it shares
+    with the version is that a partial edit is the failure mode, and a
+    partial edit is only visible to something that reads the sites
+    together.
+    """
+    assert len(_SRS_DATE_SITES) == _SRS_DATE_SITE_COUNT, (
+        f"_SRS_DATE_SITES holds {len(_SRS_DATE_SITES)} entries, where "
+        f"{_SRS_DATE_SITE_COUNT} is recorded; deleting one narrows this guard "
+        f"silently."
+    )
+    found: dict[str, list[str]] = {}
+    for relative, pattern, shape, cardinality in _SRS_DATE_SITES:
+        text = (_ROOT / relative).read_text(encoding="utf-8")
+        matches = pattern.findall(text)
+        assert matches, (
+            f"{relative}: the revision-date pattern {pattern.pattern!r} matched "
+            f"nothing, which is how this guard goes vacuous."
+        )
+        if cardinality == "once":
+            assert len(matches) == 1, (
+                f"{relative}: the revision-date pattern matched {len(matches)} "
+                f"times where one live declaration is expected; the pattern is "
+                f"too loose to say which date is current."
+            )
+        found.setdefault(_as_iso(matches[0], shape), []).append(relative)
+    assert len(found) == 1, (
+        f"the SRS revision is dated differently in different places: "
+        f"{ {date: sites for date, sites in found.items()} }. The revision "
+        f"history and Chapter 11 are the record; the title page, the SRS "
+        f"README and CLAUDE.md must agree with them."
+    )
 
 
 def test_every_document_naming_the_srs_version_names_the_same_one() -> None:
