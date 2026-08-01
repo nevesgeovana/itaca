@@ -70,11 +70,23 @@ the live tree as its working directory:
 python .claude/kit/review_runner.py open . <lens> [<lens> ...]
 ```
 
-It prints one `lens<TAB>path` line per worktree. Each is a DETACHED
-worktree of the reviewed ref carrying `RR_DIFF.patch`, `RR_PATHS.txt`
-and an empty `RR_FINDINGS.md`. Give each reviewer ITS OWN path as the
-directory to work in, and tell it to read the diff and paths from those
-two files. Pass `--base <rev>` when the range is not the unpushed one.
+It prints one line per lens, tab separated, with FIVE fields:
+
+```
+<lens>	<worktree>	<diff>	<paths>	<findings>
+```
+
+The worktree is a DETACHED, PRISTINE checkout of the reviewed ref. The
+other three are ABSOLUTE paths to `RR_DIFF.patch`, `RR_PATHS.txt` and an
+empty `RR_FINDINGS.md`, and they sit in a sidecar directory BESIDE the
+worktree, not inside it. Give each reviewer its own worktree as the
+directory to work in AND the three paths; a lens told to look in its own
+directory for them finds nothing. Pass `--base <rev>` when the range is
+not the unpushed one.
+
+Read the five fields by splitting on the tab; do not assume the file
+names or reconstruct the paths from the worktree, which is exactly the
+assumption kit 0.2.15 invalidated.
 
 This is `REV007-003`, and it answers two recorded failures with one
 structural cause, reviewers executing inside a tree someone else is
@@ -83,6 +95,19 @@ lane's edits, and two Bash-holding lenses shared one worktree and
 corrupted each other's measurements (`ITC-20260730-0250`). Until this
 was vendored, the charters' prohibition paragraphs were the only
 control, and a prohibition is not a mechanism.
+
+**Why the three files moved out, and why no lens prompt should mention
+them again.** They used to live inside the worktree, where they are
+untracked-but-not-ignored, so this repository's own house-style walk
+scanned them; `RR_DIFF.patch` contains the diff, so any diff touching a
+file that quotes the author's name made every lens report a RED that does
+not exist on the reviewed ref. Lane ITA-4 measured it twice, from two
+independent lenses, and worked around it by carrying an "ignore these
+files" paragraph in all four lens prompts. That paragraph is now WRONG
+and must not be reintroduced: the defect is fixed at its cause
+(`ITC-20260801-1600`), the worktree is pristine under any scanning
+discipline, and a prompt that still names the workaround teaches the next
+lane that it is needed.
 
 Then spawn every applicable reviewer in parallel (one Agent call each),
 passing its worktree path, the git range, and the intent sentence. Do
@@ -95,9 +120,19 @@ Close the worktrees when every pass has reported, and only then:
 python .claude/kit/review_runner.py close .
 ```
 
-`close` collects each `RR_FINDINGS.md` and removes the worktrees. A
-crashed run deliberately leaves them on disk for inspection, and a later
-`close` still finds them, so never remove one by hand.
+`close` collects EVERY `RR_FINDINGS.md` first and only then attempts the
+removals, continuing past any it cannot make and exiting 1 with each
+failure named. A lens still running inside its own worktree is the
+ordinary case, not an exceptional one, and it no longer strands the
+worktrees after it or destroys their findings (`ITC-20260801-0130`). A
+crashed run deliberately leaves the trees on disk for inspection, and a
+later `close` still finds them, so never remove one by hand.
+
+**Run `close` with the body you opened with.** The shared temp root is
+keyed on the repository's name AND a digest of its path, so a worktree
+opened by an older body is not found under a newer root. Before
+re-vendoring this artifact, close first and confirm with
+`git worktree list`.
 
 The five gated charters pin `model: opus` and `effort: low` in their
 own frontmatter (author decision 11, BRF-064, installed 2026-07-30),

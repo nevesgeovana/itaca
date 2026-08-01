@@ -499,9 +499,36 @@ MANIFEST: dict[str, Pin] = {
     # structural cause, a reviewer running `git restore` in the live tree
     # and destroying a lane's uncommitted edits, and two Bash-holding
     # lenses corrupting each other's measurements (`ITC-20260730-0250`).
+    #
+    # 0.2.15 fixes three defects, two of them measured by lanes of this
+    # repository, and it is the one row of that batch with an INTERFACE
+    # change. `open` now prints FIVE tab-separated fields per lens, not
+    # two, because the diff, the paths and the findings moved OUT of the
+    # worktree into a sidecar beside it. `ITC-20260801-1600`: those three
+    # files were untracked-but-not-ignored inside the worktree, so a
+    # house-style walk that asks git for tracked plus untracked files
+    # SCANNED THEM, and `RR_DIFF.patch` contains the diff, so a diff
+    # touching a file that quotes the author's name made every lens report
+    # a red that does not exist on the reviewed ref. The worktree is now a
+    # pristine checkout under ANY consumer's scanning discipline, which is
+    # why the alternative of exempting the filenames here was rejected: it
+    # puts a kit artifact's name into this repository's guard and a
+    # repository that forgets inherits the false red silently.
+    # `ITC-20260801-0130`: `close` removed each worktree inside the loop
+    # that collected its findings and aborted on the first git failure, so
+    # one lens still running stranded every worktree after it AND their
+    # findings were never collected. It now collects everything first,
+    # continues past a failure, and exits 1 naming each one. The third
+    # defect was found by executing the promotion's own fixture: the shared
+    # temp root was keyed on the repository's directory NAME alone, so two
+    # checkouts with the same basename shared a root.
+    #
+    # That last one is why `close` MUST be run with the OLD body before
+    # this pin moves: a worktree opened under the old root is not found
+    # under the new one. ITA-11 ran it and measured no worktrees to close.
     # The declared value agreed with the master body on recomputation.
     "review_runner.py": Pin(
-        "22c48be54b18c73c80d632d0d178d7b94d6f7321d60824d8695b10c79ac278ca", "0.2.11"
+        "dd8b9793c5c5b5e7d01365a1ff5ac889b1ca39722b576ad3159320a7aa8aec97", "0.2.15"
     ),
     "check_side_effect_guard.py": Pin(
         "ba9007941dcc44887e31d70dc74be8efe409f51a249d2b79398e66c276e9810c", "0.2.2"
