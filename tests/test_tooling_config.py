@@ -290,53 +290,80 @@ def test_the_push_tier_runs_the_whole_suite_and_blocks() -> None:
     # wrapper carrying the receipt's name inside a quoted argument passed
     # every assertion while running another program entirely.
     wrapper, argv = split_wrapper(entries["pytest-full"])
-    assert argv[:1] == ["pytest"], (
-        f"the pre-push hook's effective command is {argv!r}, which does not "
-        f"start with pytest. The entry may be wrapped (the receipt takes the "
-        f"real command after `--`), but what runs must still be the suite."
-    )
     if wrapper is not None:
         assert_is_the_vendored_receipt(wrapper)
-    assert "-m" not in argv and "--deselect" not in argv, (
-        f"the pre-push hook runs {argv!r}, which SELECTS. It must run the "
-        f"whole suite: it is the only local gate that sees the slow tests."
-    )
-    assert "--no-cov" not in argv, (
-        f"the pre-push hook runs {argv!r} without coverage, so the 90 "
-        f"percent floor is enforced nowhere locally (REQ-75)."
+    # EQUALITY, not a list of refusals. The first repair here refused `-m`
+    # and `--deselect`, and a reviewer measured that `pytest --co` passes
+    # it: the tier would collect and run nothing while a guard whose whole
+    # purpose is "the blocking tier runs the WHOLE suite" stayed green.
+    # Enumerating the ways to run less is a denylist, and this file already
+    # states one level up why an allowlist is the only safe shape. Coverage
+    # and marker selection are covered by this too, since neither
+    # `--no-cov` nor `-m` can appear in a command that is exactly `pytest`.
+    #
+    # An addition here is not forbidden, it is a DECISION: change this
+    # literal and say in the same edit why the addition does not reduce
+    # what the blocking tier sees.
+    assert argv == ["pytest"], (
+        f"the pre-push hook's effective command is {argv!r} and not exactly "
+        f"['pytest']. This is the only local gate that sees the slow tests "
+        f"and the only one that enforces the 90 percent floor (REQ-75), so "
+        f"it runs the whole suite with nothing added: no marker selection, "
+        f"no -k, no -x, no --co, no --no-cov. If an argument is genuinely "
+        f"needed, add it here with the reason it does not narrow the run."
     )
 
 
 @pytest.mark.parametrize(
-    "entry,why",
+    "entry,expected",
     [
         (
             "python .claude/kit/other_wrapper.py --note "
             '".claude/kit/prepush_receipt.py guard --label pytest-full" '
             "-- pytest",
-            "the receipt's name inside a quoted argument of another program",
+            "which resolves to",
         ),
         (
             "python .claude/kit/prepush_receipt.py status --label pytest-full "
             "-- pytest",
-            "the status subcommand, which answers and runs nothing",
+            "subcommand",
         ),
         (
             "python .claude/kit/prepush_receipt.py guard -- pytest",
-            "no --label, so every wrapped command would share one key",
+            "carries no --label",
         ),
         (
             "python .claude/kit/prepush_receipt.py guard --label -- pytest",
-            "an empty --label value",
+            "and no value",
         ),
         (
             "sh -c .claude/kit/prepush_receipt.py guard --label x -- pytest",
-            "a shell standing where the interpreter must be",
+            "not a Python interpreter",
+        ),
+        (
+            "python .claude/kit/prepush_receipt.py guard --label pytest-full "
+            "--repo /tmp/elsewhere -- pytest",
+            "which is not this repository",
+        ),
+        (
+            "python .claude/kit/prepush_receipt.py guard --label pytest-full "
+            "--quiet -- pytest",
+            "Only --label and --repo are allowed",
         ),
     ],
-    ids=["quoted-name", "status", "no-label", "empty-label", "not-python"],
+    ids=[
+        "quoted-name",
+        "status",
+        "no-label",
+        "empty-label",
+        "not-python",
+        "other-repo",
+        "unknown-option",
+    ],
 )
-def test_a_wrapper_that_is_not_the_receipt_is_refused(entry: str, why: str) -> None:
+def test_a_wrapper_that_is_not_the_receipt_is_refused(
+    entry: str, expected: str
+) -> None:
     """Prove the wrapper check can still fail, on the shapes that defeated it.
 
     The first version of the check above searched the entry STRING, and a
@@ -346,14 +373,43 @@ def test_a_wrapper_that_is_not_the_receipt_is_refused(entry: str, why: str) -> N
     the failure class this repository registers most, so the refusal is
     asserted rather than assumed.
 
+    EACH CASE ASSERTS ITS OWN MESSAGE, and that is not decoration. A bare
+    `pytest.raises(AssertionError)` says only that SOMETHING refused, so
+    every case would keep passing if one early assertion started catching
+    all of them, with the ids still claiming seven distinct reasons. A
+    reviewer traced the ordering by hand and found it correct today; this
+    is what keeps it correct after the next edit.
+
     Every case is a wrapper that a reader would plausibly write and that
     must not stand in front of the blocking suite.
     """
     wrapper, argv = split_wrapper(entry)
-    assert wrapper is not None, f"the fixture for {why} is not even wrapped"
+    assert wrapper is not None, f"the fixture {entry!r} is not even wrapped"
     assert argv[:1] == ["pytest"], "every fixture wraps the real suite"
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=re.escape(expected)):
         assert_is_the_vendored_receipt(wrapper)
+
+
+def test_an_unwrapped_entry_parses_as_unwrapped() -> None:
+    """The branch nothing else reaches, and inverting it hides the check.
+
+    Every caller guards the wrapper assertions with `if wrapper is not
+    None`, so a `split_wrapper` that returned a wrapper for an unwrapped
+    entry, or None for a wrapped one, would silently skip the whole
+    receipt check while every other test stayed green. A reviewer
+    measured that no test exercised this branch: the module's doctests do
+    not run, since the suite collects no `--doctest-modules`.
+    """
+    assert split_wrapper("pytest") == (None, ["pytest"])
+    assert split_wrapper("mypy") == (None, ["mypy"])
+    # A `--` that is part of an option, not a separator, does not split.
+    assert split_wrapper("pytest --no-cov") == (None, ["pytest", "--no-cov"])
+    # The wrapped form, so this test measures the DISTINCTION and not just
+    # one side of it.
+    assert split_wrapper("python r.py guard --label x -- pytest") == (
+        ["python", "r.py", "guard", "--label", "x"],
+        ["pytest"],
+    )
 
 
 def test_the_real_entry_passes_the_same_check() -> None:

@@ -116,7 +116,14 @@ def test_the_receipt_is_wired_to_this_repository_s_blocking_tier() -> None:
     # test searched the entry string for the receipt's path and for
     # `--label pytest-full`, and a reviewer measured that both needles sit
     # happily inside a quoted argument of an entirely different program.
-    assert_is_the_vendored_receipt(wrapper)
+    label = assert_is_the_vendored_receipt(wrapper)
+    assert label == "pytest-full", (
+        f"the blocking tier's receipt carries the label {label!r} and not "
+        f"the hook id 'pytest-full'. A non-empty label is not enough: the "
+        f"label is part of the key, so two hooks sharing one would "
+        f"authorize each other's skip, and a label that drifts from its "
+        f"hook id makes that collision invisible to a reader."
+    )
     assert argv[:1] == ["pytest"], (
         f"the wrapped command is {argv!r}. The receipt must stand in front "
         f"of the suite itself; wrapping anything else means the blocking "
@@ -197,39 +204,67 @@ def test_status_answers_without_writing_anything(tmp_path: Path) -> None:
     )
 
 
+def _git(root: Path, *args: str) -> None:
+    """Run one git command in the throwaway repository.
+
+    ``env=child_env()`` sits on the same call, which is not decoration:
+    ``tests/test_push_gate.py`` reads a window of lines from each
+    ``subprocess.run(`` and refuses a spawn site that does not pass an
+    explicit environment. The first version of this helper spread three
+    spawns over a loop and put the environment out of that window, and
+    the whole suite went red for it. Every spawn here is deliberately one
+    short call so the guard sees what it needs to see.
+
+    The two ``-c`` overrides make the fixture independent of whoever runs
+    it. A global ``commit.gpgsign`` or ``core.hooksPath`` would otherwise
+    fail these tests for a reason that has nothing to do with the
+    receipt. This is a throwaway repository built by a test, not this
+    repository's own signing policy.
+    """
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=",
+            *args,
+        ],
+        check=True,
+        capture_output=True,
+        env=child_env(),
+    )
+
+
 def _init_repo(root: Path) -> None:
     """A throwaway git repository with one commit, for the tests below."""
-    for args in (
-        ("init", "-q"),
-        ("config", "user.email", "ita11@example.invalid"),
-        ("config", "user.name", "ita11"),
-    ):
-        subprocess.run(["git", "-C", str(root), *args], check=True)
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "ita11@example.invalid")
+    _git(root, "config", "user.name", "ita11")
     (root / "tracked.txt").write_text("original\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(root), "add", "tracked.txt"], check=True)
-    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "base"], check=True)
+    _git(root, "add", "tracked.txt")
+    _git(root, "commit", "-q", "-m", "base")
 
 
 def _ask(root: Path, mode: str) -> str:
     """Run the receipt in ``guard`` or ``status`` over a trivial command."""
+    argv = [
+        sys.executable,
+        str(_RECEIPT),
+        mode,
+        "--label",
+        "probe",
+        "--repo",
+        str(root),
+        "--",
+        sys.executable,
+        "-c",
+        "pass",
+    ]
     done = subprocess.run(
-        [
-            sys.executable,
-            str(_RECEIPT),
-            mode,
-            "--label",
-            "probe",
-            "--repo",
-            str(root),
-            "--",
-            sys.executable,
-            "-c",
-            "pass",
-        ],
-        capture_output=True,
-        text=True,
-        env=child_env(),
-        cwd=str(root),
+        argv, capture_output=True, text=True, env=child_env(), cwd=str(root)
     )
     assert done.returncode == 0, done.stdout + done.stderr
     return done.stdout.splitlines()[0]
@@ -265,7 +300,13 @@ def test_the_three_answers_on_a_throwaway_repository(tmp_path: Path) -> None:
     _init_repo(root)
 
     assert "WOULD RUN" in _ask(root, "status"), "a tree with no receipt must run"
-    assert "RUN," in _ask(root, "guard"), "the first guard must run the command"
+    # `startswith`, because "WOULD RUN," contains "RUN," and the two are
+    # opposite answers: `status` never runs the command and `guard` must.
+    first = _ask(root, "guard")
+    assert first.startswith("prepush-receipt: RUN,"), (
+        f"the first guard answered {first!r} instead of RUN. With no "
+        f"receipt on the tree there is nothing that could authorize a skip."
+    )
     assert (root / ".claude" / ".prepush_receipt.json").is_file(), (
         "a passing run wrote no receipt, so nothing was recorded and the "
         "next push pays for the suite again"

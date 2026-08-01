@@ -126,14 +126,19 @@ failure named. A lens still running inside its own worktree is the
 ordinary case, not an exceptional one, and it no longer strands the
 worktrees after it (`ITC-20260801-0130`).
 
-That sentence used to end "or destroys their findings", which is more
-than the code delivers and is corrected rather than left. What is
-guaranteed is that findings written BEFORE the collection survive, since
-they are collected from the sidecar before anything is removed. What is
-not guaranteed is a busy worktree surviving: the removal falls back to
-deleting the directory on ANY failure, so on a platform where that
-succeeds a lens can lose its working directory and whatever it wrote
-after the collection (`ITC-20260802-0010`, routed to the kit). A
+That sentence used to end "or destroys their findings". It was corrected
+once to blame the removal fallback, and that correction was still wrong
+in the other direction, so here is the boundary itself: **what a lens
+writes BEFORE `close` collects survives, and what it writes AFTER does
+not.** Collection happens first, from the sidecar, so nothing already
+written can be lost. The sidecar is then deleted for every worktree whose
+removal SUCCEEDED, which is the ordinary path on every platform, so a
+lens still appending at that moment loses those appends. The removal
+fallback (`ITC-20260802-0010`, routed to the kit) widens the same window;
+it is not the whole of it.
+
+The operational consequence is one line: **do not run `close` until every
+lens has reported.** A
 crashed run deliberately leaves the trees on disk for inspection, and a
 later `close` still finds them, so never remove one by hand.
 
@@ -209,10 +214,12 @@ documented as known.
 
 This is an INSTRUCTION, not a mechanism, and the difference is stated
 because this repository's own rule says documentation is not a guard.
-Nothing in the repository can run this automatically: the ledger lives
-outside it, under a locator, and giving it one is `OQ-53`. What the
-repository does guarantee is that the checker is present, executable and
-mutation-proven (`tests/test_review_rounds.py`).
+Whether it should become mechanical is `OQ-54`. What stands in the way is
+not a locator, since `ITACA_MANAGEMENT_ROOT` already names where the
+ledger lives: it is that a hook has no lane identity, and that a gate
+needs an answer for an absent root which that variable does not give.
+What the repository does guarantee is that the checker is present,
+executable and mutation-proven (`tests/test_review_rounds.py`).
 
 The ledger FORMAT is PROPOSED rather than settled. If a lane finds it
 wrong, that is a kit promotion, never an edit to the vendored copy.

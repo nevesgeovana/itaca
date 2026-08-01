@@ -61,7 +61,7 @@ def split_wrapper(entry: str) -> tuple[list[str] | None, list[str]]:
     return argv[:cut], argv[cut + 1 :]
 
 
-def assert_is_the_vendored_receipt(wrapper: list[str]) -> None:
+def assert_is_the_vendored_receipt(wrapper: list[str]) -> str:
     """Refuse any wrapper that is not the vendored pre-push receipt.
 
     Positional and resolved, never a substring: the program is a Python
@@ -75,6 +75,16 @@ def assert_is_the_vendored_receipt(wrapper: list[str]) -> None:
     ----------
     wrapper : list of str
         The tokens before the bare ``--``, from :func:`split_wrapper`.
+
+    Returns
+    -------
+    str
+        The parsed ``--label`` value. Returned rather than merely checked
+        for non-emptiness, because the label is part of the receipt key
+        and is the only thing keeping two wrapped commands from
+        authorizing each other's skip, so a CALLER has to be able to pin
+        WHICH label it is. Checking only that one exists let a rename, or
+        a second hook reusing the same label, pass everything.
 
     Raises
     ------
@@ -106,15 +116,52 @@ def assert_is_the_vendored_receipt(wrapper: list[str]) -> None:
         f"Only `guard` runs the command; `status` answers and runs NOTHING, "
         f"so the blocking tier would block on nothing."
     )
+    # An ALLOWLIST, not a search. The first version of this function asked
+    # only whether `--label` was present, and a reviewer measured what that
+    # admits: `--repo <elsewhere>` is an option the receipt honors, so the
+    # wrapper could prove it is the right program and still gate on another
+    # tree entirely, letting a receipt keyed to an unrelated repository
+    # authorize the skip. That is round one's own defect surviving its fix,
+    # one option over.
     options = wrapper[3:]
-    assert "--label" in options, (
+    label = None
+    index = 0
+    while index < len(options):
+        name = options[index]
+        assert name in ("--label", "--repo"), (
+            f"the wrapper {wrapper!r} passes {name!r} to the receipt. Only "
+            f"--label and --repo are allowed in front of the blocking suite; "
+            f"anything else changes what the guard measures, and an option "
+            f"this check does not understand is refused rather than ignored."
+        )
+        assert index + 1 < len(options), (
+            f"the wrapper {wrapper!r} ends with {name!r} and no value, so the "
+            f"receipt would refuse the invocation and the tier would not run."
+        )
+        value = options[index + 1]
+        if name == "--label":
+            assert value and not value.startswith("-"), (
+                f"the wrapper {wrapper!r} has --label with no value, so the "
+                f"label is empty and every wrapped command shares one key. "
+                f"Give it a name, conventionally the hook id."
+            )
+            label = value
+        else:
+            candidate = Path(value)
+            resolved = (
+                candidate if candidate.is_absolute() else _ROOT / candidate
+            ).resolve()
+            assert resolved == _ROOT.resolve(), (
+                f"the wrapper {wrapper!r} points --repo at {resolved}, which "
+                f"is not this repository at {_ROOT}. The receipt would then "
+                f"key on another tree, so a run over unrelated content could "
+                f"authorize skipping this one's suite. Drop --repo and let it "
+                f"resolve the root from the working directory."
+            )
+        index += 2
+    assert label is not None, (
         f"the wrapper {wrapper!r} carries no --label. The label is part of "
         f"the receipt key, and it is what stops two wrapped commands from "
         f"authorizing each other's skip."
     )
-    label = options[options.index("--label") + 1 :]
-    assert label and label[0] and not label[0].startswith("-"), (
-        f"the wrapper {wrapper!r} has --label with no value after it, so the "
-        f"label is empty and every wrapped command shares one key. Give it a "
-        f"name, conventionally the hook id."
-    )
+    return label

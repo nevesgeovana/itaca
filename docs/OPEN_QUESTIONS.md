@@ -1673,3 +1673,51 @@ part of the push gate, may fit better than either.
 a member and on what its unset branch means.
 
 **Full analysis:** plan entry `ITC-20260801-0900`.
+
+---
+
+## OQ-54: Should the two-round review cap be MECHANICAL, and what would run it?
+
+**Status:** open (product owner)
+
+**Raised:** 2026-08-01, lane ITA-11, the kit 0.2.15 adoption.
+
+Kit 0.2.15 vendors `check_review_rounds.py`, the mechanism for the cap
+that `review-policy.md` has stated since 0.2.7 and nothing enforced. It
+reads a lane's round ledger and refuses a ledger that REGISTERS a finding
+about a previous round's fix, a third round with no named authority, or a
+ledger that certifies nothing.
+
+After the adoption, nothing in this repository applies it to a ledger.
+The `role-review` skill runs it as a closing step, which is an
+INSTRUCTION, and this repository's own rule says documentation is not a
+guard. Three reviewer lenses found that independently in one round.
+
+**What is actually missing, stated precisely because an earlier version
+of this got it wrong.** It is NOT a locator for the ledger: the ledger
+lives under the management root and `ITACA_MANAGEMENT_ROOT` already names
+that, and the checker takes a plain `--ledger <path>`. What is missing is
+two other things. A hook or a test has no LANE IDENTITY, so it cannot
+know which ledger belongs to the work in front of it. And an automatic
+invoker would be a gate, so it needs an answer for what an unset or
+absent root means at that moment; the management root's unset branch
+SUBSTITUTES a location rather than denying, which is the wrong shape for
+a gate and the right shape for a writer.
+
+**The tension.** A mechanical cap is the only kind that survives an
+operator who is in a hurry, and the operator in a hurry is exactly who
+the cap exists for. Against that: the ledger is a closing record, it
+validates only once a lane is over, and a gate that refuses a push
+because a lane has not finished writing its record would be refusing the
+wrong thing. A third shape, checking it at session close rather than at
+the push, may fit better than either.
+
+**Not OQ-53.** That one asks whether the vendored KIT is checked for
+CURRENCY and by what locator. Both are locator-adjacent and they are
+different questions; lane ITA-11 first cited OQ-53 here and three lenses
+measured the citation false.
+
+**Who decides:** the product owner, on whether the cap becomes a gate and
+at which moment it would run.
+
+**Full analysis:** plan entry `ITC-20260802-0120`.

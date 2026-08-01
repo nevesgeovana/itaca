@@ -32,10 +32,18 @@ would all pass if it were never applied at all. What DOES apply it is the
 resolved management root and runs this checker against it before the
 review closes. That is an INSTRUCTION and this repository's own rule says
 documentation is not a guard, so the honest description is: vendored,
-mutation-proven, and applied by a skill rather than by a mechanism. A
-mechanical invoker is not possible here without a fourth locator, because
-the ledger lives outside this repository by the same decision that moved
-the plan ledger out (`OQ-53`).
+mutation-proven, and applied by a skill rather than by a mechanism.
+
+Whether it SHOULD be mechanical is `OQ-54`, raised by this lane. What is
+missing is not a locator: `ITACA_MANAGEMENT_ROOT` already names where the
+ledger lives and the checker takes a plain `--ledger <path>`. It is a
+LANE IDENTITY at hook time, so an invoker could know which ledger belongs
+to the work in front of it, and a decision about what an absent root
+means at a GATE, since that variable's unset branch substitutes a
+location rather than denying. An earlier version of this docstring said a
+fourth locator was needed and attributed the question to `OQ-53`; both
+were measured false by reviewers, OQ-53 being the vendored-kit currency
+question.
 
 WHY THE COMPANION RUNS HERE rather than sitting beside the checker
 unexecuted. A checker in `.claude/kit` that nothing calls is the same
