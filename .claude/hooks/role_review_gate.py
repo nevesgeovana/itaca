@@ -1,8 +1,8 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.8
+# kit-version: 0.2.16
 # artifact: role_review_gate.py
-# body-sha256: 21095fd67f9ed2fe9986f11c4efd21ba1e3ac5cfc535b115f9fe1b2919fd6c05
-# canonical-source: itaca hardened basis, and at 0.2.8 the per-target LEDGER_ENV_BY_REPO superset is RETIRED rather than documented: author decision LEDGER-ENVVAR gives every workspace ONE variable, COORD_INCIDENT_LEDGER, and an absent one now DENIES. There is no coordination flavor left to diverge, so a vendored copy and this master differ in nothing at all. Measured cause: the derived-name fallback meant the coordination repository resolved a variable that had never existed, and unset read as does-not-apply, so the level that writes the incidents was the only one of three this gate did not stop.
+# body-sha256: 8dd77671321f5d4f76d44ee9ae5ff5eb72288586ba20a31251039fc5e28d8f3a
+# canonical-source: itaca hardened basis, and at 0.2.8 the per-target LEDGER_ENV_BY_REPO superset is RETIRED rather than documented: author decision LEDGER-ENVVAR gives every workspace ONE variable, COORD_INCIDENT_LEDGER, and an absent one now DENIES. There is no coordination flavor left to diverge, so a vendored copy and this master differ in nothing at all. Measured cause: the derived-name fallback meant the coordination repository resolved a variable that had never existed, and unset read as does-not-apply, so the level that writes the incidents was the only one of three this gate did not stop. 0.2.16 gives _strip_heredocs a POWERSHELL branch (ITC-20260801-2245: a here-string leaves an odd quote count, shlex raises, and the fail-closed fallback denies a COMMIT whose message merely mentions push, on the word pre-push alone) and closes a fail-OPEN found by running that fix's own new fixture against the pre-fix body (INC-20260802-1450-shared: an unterminated heredoc opener dropped every remaining line and a real git push went with them, reachable in two lines with no heredoc). Both branches now strip nothing when an opener is never terminated. See coordination/DESIGN_HUB-12_kit_batch.md item 1.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # END KIT PROVENANCE (body verbatim below)
 #!/usr/bin/env python3
@@ -183,6 +183,11 @@ _POSIX_C_CLUSTER = re.compile(r"^-[A-Za-z]*c[A-Za-z]*$")
 # Bounded hard so a crafted command cannot drive unbounded recursion, but
 # more than 1 so a single nesting does not defeat the gate.
 _WRAP_MAX_DEPTH = 4
+# A PowerShell here-string OPENER: `@'` or `@"` as the last thing on its
+# line. PowerShell requires the opener to end the line and the terminator
+# (`'@` / `"@`) to start one at column 0, so both halves are anchored here
+# rather than searched for anywhere. See _strip_powershell_herestrings.
+_PWSH_HERE_OPEN = re.compile(r"@(['\"])[ \t]*$")
 
 
 def _shell_family(basename: str) -> str | None:
@@ -221,28 +226,150 @@ def _is_wrapper_command_flag(family: str, flag: str) -> bool:
 
 
 def _strip_heredocs(command: str) -> str:
-    """Remove heredoc bodies before the command is tokenized.
+    """Remove heredoc and here-string bodies before the command is tokenized.
 
     A heredoc body is data the shell feeds to another program, not a
     command it runs. Leaving it in means a commit message that merely
     describes a push blocks the commit that documents it, which is both
     a false positive and an incentive to write vaguer messages.
+
+    BOTH BRANCHES STRIP NOTHING WHEN THE OPENER IS NEVER TERMINATED, and
+    that rule is the whole of ``INC-20260802-1450-shared``. It is stated
+    here as well as in each branch because it is the only property of this
+    function a caller depends on: stripping can only ever REMOVE tokens
+    from what is scanned, so a branch that guesses at an unterminated
+    opener can hide a push, and neither of them guesses.
+
+    POWERSHELL RUNS FIRST. With both branches conservative the order no
+    longer changes an answer, and it is kept because the here-string is
+    the narrower, anchored form: its opener must END a line and its
+    terminator must START one at column 0, while the heredoc pattern
+    matches ``<<WORD`` anywhere including inside a quoted message. Letting
+    the precise branch consume its own text first leaves the loose one
+    less to match against.
+    """
+    return _strip_bash_heredocs(_strip_powershell_herestrings(command))
+
+
+def _strip_powershell_herestrings(command: str) -> str:
+    """Remove PowerShell here-string bodies (``@'`` ... ``'@``).
+
+    ADDED 0.2.16, from ``ITC-20260801-2245``, the gate cannot parse a
+    PowerShell here-string. ``_strip_heredocs`` existed for exactly this
+    false positive and its own docstring named it, and it handled the BASH
+    form only, in a workspace whose primary shell is PowerShell.
+
+    THE MEASURED DEFECT. A here-string opens ``@'`` and closes ``'@``, so
+    the body carries an odd number of quotes, ``shlex.split(...,
+    posix=False)`` raises, and the gate takes its documented fail-CLOSED
+    branch: raw text matching ``\\bgit\\b`` and ``\\bpush\\b`` is a push.
+    So ``git commit -m @'...'@`` whose MESSAGE describes a push is DENIED
+    as a push. Worse in practice than that sentence sounds: a hyphen is a
+    word boundary, so ``pre-push`` alone satisfies the pattern, and every
+    message in an adoption lane names that tier. The workaround in use was
+    ``git commit -F <file>``.
+
+    THE OPENER's two characters become an empty quoted token, so the line
+    they sat on still tokenizes; the body is dropped; the terminator's own
+    line KEEPS whatever follows the two-character delimiter, because a
+    PowerShell pipeline may follow it and a real ``git push`` there must
+    still be seen.
+
+    THE TERMINATOR MUST SIT AT COLUMN 0, which is PowerShell's own rule:
+    an indented ``'@`` is a parse error there, so treating one as a
+    terminator would strip lines the shell never would.
+
+    AN UNCLOSED HERE-STRING STRIPS NOTHING. The command is returned
+    unchanged, so every token after the opener is still scanned. The bash
+    branch below now applies the same rule, for the reason recorded in its
+    own docstring; do not make either of them guess at an opener whose
+    terminator never arrived, because guessing there is what hid a push.
+
+    THE FALLBACK IS NOT RELAXED. It is the half that is correct: a command
+    whose quotes do not balance is still treated as a push that could not
+    be confirmed safe. What this branch removes is the false POSITIVE that
+    fallback produced on an ordinary commit message, and it removes it by
+    making the text parseable rather than by weakening the refusal.
+
+    AND THE FALLBACK IS NOT A NET, which is the lesson
+    ``INC-20260802-1450-shared`` cost. ``shlex(posix=False)`` does NOT
+    raise on every unbalanced quote: given ``git commit -m @'`` it returns
+    ``@'`` as an ordinary token and parses on. So a stripping bug that
+    removes a real push produces a clean parse with a push missing from
+    it, and nothing downstream notices. Every branch here has to be right
+    on its own; none of them may lean on the fallback to catch it.
     """
     lines = command.splitlines()
     kept: list[str] = []
     index = 0
     while index < len(lines):
         line = lines[index]
-        kept.append(line)
+        opener = _PWSH_HERE_OPEN.search(line)
+        if opener is None:
+            kept.append(line)
+            index += 1
+            continue
+        quote = opener.group(1)
+        terminator = quote + "@"
+        end = index + 1
+        while end < len(lines) and not lines[end].startswith(terminator):
+            end += 1
+        if end >= len(lines):
+            return command  # unterminated: strip nothing, fail closed
+        kept.append(line[: opener.start()] + quote + quote + lines[end][2:])
+        index = end + 1
+    return "\n".join(kept)
+
+
+def _strip_bash_heredocs(command: str) -> str:
+    """Remove bash heredoc bodies (``<<EOF`` ... ``EOF``).
+
+    AN UNTERMINATED OPENER STRIPS NOTHING, changed at 0.2.16 from
+    ``INC-20260802-1450-shared``, an unterminated heredoc opener hides a
+    real push. Through 0.2.15 an opener with no matching delimiter line
+    dropped EVERY remaining line, and a ``git push`` among them went with
+    them. That is the fail-OPEN direction in the one body whose whole
+    purpose is to fail closed, and it is reachable in two lines with no
+    heredoc anywhere in the command::
+
+        git commit -m "see the <<EOF form"
+        git push origin main
+
+    The opener pattern matches ``<<EOF`` INSIDE the quoted message, finds
+    no ``EOF`` line, and takes the push with it. MEASURED against the 0.2.8
+    body, which is what both libraries vendor: ``is_push=False``. It was
+    found by executing this promotion's own new fixture against the pre-fix
+    body, not by reading, and the shape it was found in is why: the
+    unbalanced quote a here-string leaves does NOT make
+    ``shlex(posix=False)`` raise, so the documented fail-closed fallback
+    never runs and the token stream is simply short a push.
+
+    The repair is the rule the PowerShell branch above already applies, so
+    the two are now symmetric and a reader has nothing to reconcile: a
+    heredoc whose delimiter never arrives is not a heredoc this function
+    understands, so it strips nothing and leaves the command as written.
+    That direction can only ever ADD tokens to what is scanned, so it
+    cannot hide a push, and a genuine terminated heredoc is untouched.
+    """
+    lines = command.splitlines()
+    kept: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
         opener = re.search(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)", line)
+        kept.append(line)
         index += 1
         if opener is None:
             continue
         delimiter = opener.group(2)
-        while index < len(lines) and lines[index].strip() != delimiter:
-            index += 1
-        if index < len(lines):
-            index += 1  # drop the closing delimiter line too
+        end = index
+        while end < len(lines) and lines[end].strip() != delimiter:
+            end += 1
+        if end >= len(lines):
+            # Unterminated: strip nothing at all, from this opener onward.
+            # See the docstring; dropping the remainder hid a real push.
+            return command
+        index = end + 1  # drop the body and the closing delimiter line
     return "\n".join(kept)
 
 

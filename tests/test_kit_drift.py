@@ -46,11 +46,16 @@ needs no cross-repo filesystem access and cannot deadlock a push. A MIXED
 manifest (per-file body hashes and versions, not one kit-wide hash) is
 expected and correct, and the pins below are per file:
 
-- 0.2.8: ``role_review_gate.py``, author decision LEDGER-ENVVAR. One
+- 0.2.16: ``role_review_gate.py``, the SECOND fail-open removed from this
+  one body. ``INC-20260802-1450-shared``: an unterminated heredoc opener
+  made the stripper drop every remaining line of a guarded command, so a
+  real ``git push`` on the next line was never seen. Its 0.2.8 history is
+  the first one: author decision LEDGER-ENVVAR gave every workspace one
   variable, ``COORD_INCIDENT_LEDGER``, and an ABSENT ledger DENIES a push
   where 0.2.6 read absence as does-not-apply. itaca sat at 0.2.6 for a day
   after the fix existed and so carried a gate that could FAIL OPEN
-  (``ITC-20260730-0215``, DD-44).
+  (``ITC-20260730-0215``, DD-44). The entry below carries the
+  measurement.
 - 0.2.9: ``write_attestation.py``, the INC-20260729-2355 guard. Its own
   entry below carries the detail.
 - 0.2.14 and 0.2.13: the release path, four rows in one adoption.
@@ -239,9 +244,40 @@ MANIFEST: dict[str, Pin] = {
     # COORD_INCIDENT_LEDGER, and an ABSENT one denies. The rename is the
     # visible half and the fail-open removal is the load-bearing one.
     #
+    # 0.2.16 is the SECOND fail-open removed from this body, and it is why
+    # this row was vendored alone, ahead of everything else in that batch.
+    # `INC-20260802-1450-shared`: an unterminated heredoc opener made
+    # `_strip_heredocs` drop every remaining line of the command, and a real
+    # `git push` went with them. Two lines, no heredoc anywhere:
+    #
+    #     git commit -m "see the <<EOF form"
+    #     git push origin main
+    #
+    # MEASURED HERE against this repository's own deployed 0.2.8 body before
+    # the pin moved: that command and two reductions of it produced NO
+    # DECISION AT ALL, which is not a weaker refusal but no refusal, while
+    # the control (a bare unattested push) denied. On the 0.2.16 body all
+    # four deny.
+    #
+    # The premise that made the old body read as safe is also false, and it
+    # is worth carrying here because it is what a reviewer would lean on:
+    # the design note says an unbalanced quote makes the parse fail and the
+    # raw-text fallback catches the push. `shlex.split(..., posix=False)`
+    # does NOT raise on every unbalanced quote, so a stripping bug yields a
+    # CLEAN PARSE with the push missing from it. The fallback is not a net,
+    # and every branch of the stripper has to be correct on its own.
+    #
+    # 0.2.16 also gives the stripper a POWERSHELL branch
+    # (`ITC-20260801-2245`), so a commit whose MESSAGE describes a push is no
+    # longer denied as a push and the `git commit -F <file>` workaround can
+    # be retired. NO DENY PROSE MOVED at 0.2.16, which matters because this
+    # repository pins several deny phrases by hand; `tests/test_push_gate.py`
+    # and `tests/test_review_gate.py` are unchanged in verdict across this
+    # row.
+    #
     # The declared value agreed with the master body on recomputation.
     "role_review_gate.py": Pin(
-        "21095fd67f9ed2fe9986f11c4efd21ba1e3ac5cfc535b115f9fe1b2919fd6c05", "0.2.8"
+        "8dd77671321f5d4f76d44ee9ae5ff5eb72288586ba20a31251039fc5e28d8f3a", "0.2.16"
     ),
     # 0.2.9, the INC-20260729-2355 guard: the attestation refuses while
     # TRACKED files carry uncommitted changes, and reports untracked paths
