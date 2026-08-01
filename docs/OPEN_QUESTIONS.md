@@ -1737,7 +1737,7 @@ applied by a mechanism and not only by a skill's instruction. It FAILS
 when the root resolves and that ledger is absent, because a review that
 wrote no ledger is work not done and not a configuration state, and it
 FAILS when another lane's ledger is strictly newer than the certified one,
-which is the silent direction of a hand-edited constant. The gate answer
+which is the silent direction of a constant nobody moved. The gate answer
 this entry asked for is written in `CLAUDE.md` under the three charter
 calls: at THIS gate an unresolvable root is a SKIP that must be announced,
 never a denial, because a suite that refused to run on an unconfigured

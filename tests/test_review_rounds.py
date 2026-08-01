@@ -47,16 +47,22 @@ alone.
 
 WHAT IS STILL NOT MECHANICAL, so the improvement is not read as wider
 than it is. `--root <root> --all` is NOT wired, and the reason is
-measured: run against the real root on adoption day it reported 2
-ledgers checked and 2 refused, 22 and 24 violations, EVERY ONE of them
-the new rule 8. Both ledgers are lane ITA-11's and both were written
-before `property=` existed. They are NOT retrofitted, because writing the
-sentence after the fix is not the mechanism and the whole value of the
-field is at the moment of writing; they stay as closed historical
-records. So this module checks the LANE form against a ledger written
-under rule 8 from its first line, and wiring `--all` waits on those two
-being resolved, which is the author's call over another lane's closed
-record.
+measured. Run against the real root on 2026-08-02, before this lane's own
+ledger existed, `--root "$ITACA_MANAGEMENT_ROOT" --all` reported 2 ledgers
+checked and 2 refused, 22 violations each, EVERY ONE of them the new rule
+8, with 22 `fixed` rows in each. Both are lane ITA-11's WORK, and only one
+says so in its `lane:` field: the other declares `lane: ITC-20260802-0330`,
+the plan item it reviews, so the filename convention and the `lane:` field
+are not the same thing. Both were written before `property=` existed.
+
+They are NOT retrofitted, because writing the sentence after the fix is
+not the mechanism and the whole value of the field is at the moment of
+writing; they stay as closed historical records. So this module checks the
+LANE form against a ledger written under rule 8 from its first line, and
+wiring `--all` waits on those two being resolved, which is the author's
+call over another lane's closed record (`ITC-20260802-1715`). The same
+invocation now reports 3 ledgers checked and 2 refused: this lane's own
+ledger is the difference, and it VERIFIES.
 
 The rest of `OQ-54` is unchanged: a LANE IDENTITY at hook time, so an
 invoker could know which ledger belongs to the work in front of it. The
@@ -128,9 +134,13 @@ _ROUNDS_MUTATIONS = _KIT / "check_review_rounds_mutations.py"
 #: which is `ITC-20260802-1715` and is stated rather than papered over.
 _LANE = "ITA-12"
 
-#: The convention the kit writes down at 0.2.16, used here to enumerate
-#: what the root holds.
-_LEDGER_GLOB = "*_rounds.ledger"
+#: The convention the kit writes down at 0.2.16. ONE copy of the fact:
+#: both the glob and the per-lane filename derive from it, because two
+#: copies of a kit convention drift apart on a kit rename and the glob's
+#: failure is the misleading one (it matches nothing and the error blames
+#: the root).
+_LEDGER_SUFFIX = "_rounds.ledger"
+_LEDGER_GLOB = f"*{_LEDGER_SUFFIX}"
 
 #: A minimal ledger that certifies one round with one fixed finding, used
 #: by the hermetic locator cases. It carries `property=` because rule 8
@@ -246,7 +256,7 @@ def test_the_locator_resolves_a_ledger_from_a_root_and_a_lane(
     resolver that always exits 0 passes the first and fails the second; a
     resolver that always exits 2 does the reverse.
     """
-    (tmp_path / "PROBE_rounds.ledger").write_text(_VALID_LEDGER, encoding="utf-8")
+    (tmp_path / f"PROBE{_LEDGER_SUFFIX}").write_text(_VALID_LEDGER, encoding="utf-8")
 
     found = _run(str(_ROUNDS_CHECK), "--root", str(tmp_path), "--lane", "PROBE")
     assert found.returncode == 0, (
@@ -263,7 +273,7 @@ def test_the_locator_resolves_a_ledger_from_a_root_and_a_lane(
         f"checker that reports clean over nothing is the failure this kit "
         f"registers most often.\n{absent.stdout}{absent.stderr}"
     )
-    assert "NOSUCH_rounds.ledger" in (absent.stdout + absent.stderr), (
+    assert f"NOSUCH{_LEDGER_SUFFIX}" in (absent.stdout + absent.stderr), (
         f"the refusal did not name the path it looked for, so an operator "
         f"cannot tell a wrong root from a wrong lane.\n"
         f"{absent.stdout}{absent.stderr}"
@@ -310,7 +320,7 @@ def test_the_lane_ledger_this_repository_certifies_is_clean() -> None:
     write one, which is work not done and not a configuration state.
     """
     root = _resolved_root()
-    ledger = root / f"{_LANE}_rounds.ledger"
+    ledger = root / f"{_LANE}{_LEDGER_SUFFIX}"
     assert ledger.is_file(), (
         f"no round ledger for lane {_LANE} at {ledger}, although the "
         f"management root resolved. The role-review skill writes it as the "
@@ -337,11 +347,21 @@ def test_the_certified_ledger_is_not_older_than_another_lane_s() -> None:
     read. Three reviewer lenses found that independently in this module's
     own round one.
 
-    Ties PASS, deliberately. The root is a git tree elsewhere, and a fresh
-    clone gives every file the same checkout time, so a strict comparison
-    would fail on a machine that had done nothing wrong. Only a ledger
-    STRICTLY newer than the certified one is a finding, which is exactly
-    the shape of "a later lane wrote one and nobody moved the constant".
+    IT COMPARES MTIME, which is metadata on a tree outside this
+    repository, and that is the weakest part of this guard. It is chosen
+    because the ledger format carries no date field to compare instead:
+    the alternative is asking git in the other tree, which makes a
+    commit-tier test depend on another repository's history being
+    readable. The direction is right and the anchor is soft, so the
+    failure message names all three causes rather than asserting the one
+    the test was written for.
+
+    Ties PASS. The stated reason used to be that a fresh clone gives every
+    file the same checkout time; round two measured that `st_mtime` is a
+    float with sub-second resolution, so ties are nearly unreachable and
+    the concession buys almost nothing. It is kept because it can only
+    ever make this guard quieter, never louder, and a guard that can false
+    fire on a tie would be worse than one that misses it.
     """
     root = _resolved_root()
     ledgers = sorted(root.glob(_LEDGER_GLOB))
@@ -351,19 +371,32 @@ def test_the_certified_ledger_is_not_older_than_another_lane_s() -> None:
         f"either the wrong root or a review process that has stopped "
         f"recording; it is not a clean run."
     )
-    certified = root / f"{_LANE}_rounds.ledger"
+    certified = root / f"{_LANE}{_LEDGER_SUFFIX}"
     if not certified.is_file():
-        return  # the sibling test above owns that failure and names it
+        # ANNOUNCED, not a bare return. The sibling test above owns that
+        # failure, but "owns it" holds only while both are selected: a
+        # `-k` run, a marker change or a future split would turn a silent
+        # return into a silent pass, in the one module whose whole thesis
+        # is that an unannounced skip is the defect.
+        pytest.skip(
+            f"no ledger for lane {_LANE} at {certified}; "
+            f"test_the_lane_ledger_this_repository_certifies_is_clean owns "
+            f"that failure and this staleness check has nothing to compare"
+        )
     newer = [
         path.name
         for path in ledgers
         if path.stat().st_mtime > certified.stat().st_mtime
     ]
     assert not newer, (
-        f"{newer} are newer than the ledger this suite certifies "
-        f"({certified.name}), so a later lane wrote a round ledger and "
-        f"`_LANE` was never moved. The suite is certifying a closed record "
-        f"and reading nothing about the current work. Move `_LANE` to the "
-        f"current lane, or wire `--root <root> --all` once the two "
-        f"pre-rule-8 ledgers are resolved (`ITC-20260802-1715`)."
+        f"{newer} are newer by mtime than the ledger this suite certifies "
+        f"({certified.name}). THREE causes, and the remedy differs: a later "
+        f"lane wrote a round ledger and `_LANE` was never moved, in which "
+        f"case move `_LANE`; an OLDER ledger was edited after this one was "
+        f"written, a typo repair or a reformat, in which case read `lane:` "
+        f"in the named files and change nothing here; or `--root <root> "
+        f"--all` should be wired now that the pre-rule-8 ledgers are "
+        f"resolved (`ITC-20260802-1715`), which retires this check. This "
+        f"guard compares FILE MTIME on a tree outside this repository, "
+        f"because the ledger format carries no date to compare instead."
     )

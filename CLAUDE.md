@@ -143,8 +143,10 @@ rather than left to a default.
 
 **DD-50 is the record and this section is the operative summary.** The
 reasoning, the measurements behind each answer and the refused exemption
-live there, per the authority chain; where the two appear to disagree,
-DD-50 is the decision and this is the instruction.
+live there, per the authority chain. Where the two disagree, DD-50 is the
+decision and this section is the defect: fix this section, never DD-50,
+which is frozen. DD-51 corrects three statements of fact inside DD-50 and
+is part of the same record.
 
 **Citations will be checked in ADVISORY mode, and the checker is NOT YET
 VENDORED.** `check_citations.py` comes from `ITC-20260802-0340`, cite an
@@ -158,11 +160,13 @@ largest authority is LaTeX: requirements are `reqbox` environments in
 `docs/srs/`, which none of the checker's three index forms can read, so
 REQ, the most-cited prefix here, cannot be resolved at all and is covered
 by `tests/test_requirement_trace.py` instead. The second is that over the
-whole prose corpus advisory mode already reports 25 citations as carrying
-no title, and every one of the 25 is FALSE, produced by the citation form
-meeting an ordinary prose comma or a comma-separated list of ids. That
-number is reproducible only from the invocation it came from, which is
-recorded with it in `ITC-20260802-1705`, not here.
+whole prose corpus advisory mode already REFUSES 25 citations, and every
+one of the 25 is FALSE, produced by the citation form meeting ordinary
+English in four ways DD-50 enumerates. Refusals and notes are different
+verdicts and the mode governs only the second: a refusal exits 1 in either
+mode, which is why advisory is not the same as quiet. That number is
+reproducible only from the invocation it came from, which is recorded with
+it in `ITC-20260802-1705`, not here.
 
 WHY IT IS NOT VENDORED YET: the master's body carries an em dash and an en
 dash, and the rule above is "No exceptions", so vendoring it would put the
@@ -201,11 +205,8 @@ documents live" below, where a set-but-invalid root still stops and
 reports. This gate reads that stop as a skip, and says which.
 
 A MISSING LEDGER IS NOT A CONFIGURATION FACT and does not share that
-branch. A root that resolves while the lane's ledger is absent FAILS,
-because the review not writing one is work not done. Stacking the two
-skips let "the skill never wrote one" read exactly like "the clone is not
-configured", which is how a cap that nothing applies keeps sounding
-applied.
+branch. A root that resolves while the lane's ledger is absent FAILS: a
+review that wrote no ledger is work not done. DD-50 records why.
 
 **Spawns are judged by the call.** `check_spawn_env.py` runs in tier 1
 over `tests/` and `itaca/`, from `ITC-20260802-0200`, the spawn guard

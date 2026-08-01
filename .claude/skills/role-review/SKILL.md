@@ -259,10 +259,12 @@ never a denial.
 
 WHAT THAT DOES NOT CATCH, because a claim about a mechanism is worth
 exactly its exceptions. A resolved root with no ledger for the named lane
-FAILS, so a review that wrote none is caught. A ledger newer than the
-certified one FAILS, so a constant left behind is caught. A lane that
-writes NO ledger AND moves nothing is caught by neither, and that is
-`ITC-20260802-1715`, waiting on `--all`.
+FAILS, so a review that wrote none is caught. A ledger STRICTLY NEWER BY
+MTIME than the certified one FAILS, so a constant left behind is caught
+wherever mtimes differ; the anchor is file metadata on a tree outside the
+repository, because the ledger format carries no date to compare instead.
+A lane that writes NO ledger AND moves nothing is caught by neither, and
+that is `ITC-20260802-1715`, waiting on `--all`.
 
 What remains of `OQ-54` is the part a locator never was: a hook has no
 LANE IDENTITY, so the lane is a constant in that test rather than a

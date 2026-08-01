@@ -258,10 +258,13 @@ def test_the_heredoc_stripper_actually_removes_a_body(gate: ModuleType) -> None:
 # end-to-end decision: an end-to-end verdict can stay correct by luck.
 #
 # MEASURED RED against the 0.2.8 body taken out of git at ad0698b, before
-# the pin moved: 4 of the 5 assertions below were wrong there and 0 are
-# wrong on the vendored 0.2.16 body. The three fail-open cases each
-# stripped the push away and reported `is_push=False`; the here-string
-# commit was DENIED as a push although it is a commit.
+# the pin moved: 4 of the 5 CASES below were wrong there and 0 are wrong
+# on the vendored 0.2.16 body. The unit is the case and not the assert
+# statement, because a reader cannot infer it: counted as asserts it is 6
+# of 8, since each of the three fail-open cases fails both of its
+# assertions. The three fail-open cases each stripped the push away and
+# reported `is_push=False`; the here-string commit was DENIED as a push
+# although it is a commit.
 #
 # THE FIFTH ASSERTION WAS ALREADY CORRECT AT 0.2.8, and it is named rather
 # than quietly counted: a push written AFTER a terminated here-string was

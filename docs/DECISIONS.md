@@ -2278,3 +2278,69 @@ above is taken anyway, so the next lane wires rather than decides again.
 Measured, so the scope is not guessed: of the eleven 0.2.16 masters,
 `check_citations.py` is the only one carrying either character, and its
 own companion is clean.
+
+---
+
+## DD-51: Four corrections to DD-50, which froze at the commit that shipped it
+
+**Date:** 2026-08-02
+**Status:** confirmed
+**Context:** ITA-12 round two. Supersedes four statements of fact inside
+DD-50 and nothing else: DD-50's three decisions stand exactly as written.
+**Supersedes:** DD-50, in the four respects below only.
+
+This entry exists because DD-50 was published by the commit that closed
+ITA-12's first review round, and the second round found four factual
+errors in it. An entry freezes at the commit that ships it, not at the
+push, so the instrument is a superseding entry rather than an edit, and
+that rule is exactly what DD-30 records having been broken once before.
+
+**1. Nine of eleven rows are vendored, not eight.** DD-50's Context reads
+"Eight of eleven rows landed", and eight plus the two deliberately absent
+is ten, not eleven. The ninth is `role_review_gate.py`, which shipped one
+commit earlier with `INC-20260802-1450-shared` rather than with the
+adoption commit, and was miscounted for that reason. Measured: nine bodies
+carry `"0.2.16"` in the drift manifest.
+
+**2. The 25 citations are REFUSED, not reported as carrying no title.**
+DD-50's decision 1 says advisory mode "reports 25 citations as carrying no
+title". The checker puts the no-title class in NOTES, of which there were
+342; the 25 are refusals, which are refusals in both modes. The wording
+DD-50 replaced was correct, and the replacement was a round-one repair
+that traded a true sentence for a false one. This is the same defect the
+round-one findings were about, made while fixing them.
+
+**3. The framing sentence does not describe decision 3.** DD-50 opens
+"The kit ships three checkers whose CONFIGURATION it deliberately declines
+to decide". That is true of the citation mode and of the round-ledger
+root, and false of `check_spawn_env.py`, which has no configuration this
+repository chose: decision 3 is an ADOPTION choice, whether the vendored
+checker joins the existing local guard or replaces it. The correct framing
+is that the kit declines to settle three ADOPTION questions, two of them
+configuration and one of them a relationship to a guard that already
+existed here.
+
+**4. The local walk is not "over the same node set".** DD-50's decision 3
+says the checker's `env=` gap "is closed here by a second,
+repository-local walk over the same node set". When DD-50 was written the
+local walk covered `tests/` while the checker covered `tests/` and
+`itaca/`, so the claim was false by construction and harmless only because
+`itaca/` holds no `subprocess` call at all. The walk now covers both
+trees, so the claim DD-50 makes is true of the code as it stands after
+this entry, and was not true of the code DD-50 shipped with.
+
+### What is NOT corrected, so this entry's scope is legible
+
+The three decisions themselves, the refused exemption and its precedent,
+and every measurement about the dash characters, the spawn checker's first
+run and the REQ citations were re-verified in round two and hold exactly
+as DD-50 states them.
+
+### The rule this pair demonstrates, which is worth more than the entry
+
+A decision record should cite the invocation and the incident id for a
+measurement rather than restate the number. DD-50 restates counts, and two
+of the four corrections above are counts. `CLAUDE.md` was edited in the
+same round to stop carrying the citation number and point at
+`ITC-20260802-1705` instead; DD entries should do the same, and the next
+one that carries a measurement carries its command line with it.

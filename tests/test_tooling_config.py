@@ -217,8 +217,11 @@ _COMMIT_TIER_CONTRACT_MODULES = (
     # This module holds the ONLY application of the two-round cap to a real
     # ledger, plus the hermetic locator pair, and it has no module-level
     # `slow` today, so its place in the commit tier was an accident of
-    # absence rather than a declaration. Measured cost of its commit-tier
-    # members: 0.17 s, 0.08 s and under 0.01 s.
+    # absence rather than a declaration. Measured: five commit-tier tests,
+    # about 1.6 s wall including collection. The count is given rather than
+    # a per-test list, because a list of three figures for five members is
+    # a number in a unit the reader cannot infer, which is the defect this
+    # lane's own worst findings were.
     "tests/test_review_rounds.py",
 )
 

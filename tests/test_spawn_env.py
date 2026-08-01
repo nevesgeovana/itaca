@@ -83,6 +83,7 @@ import ast
 import re
 import subprocess
 import sys
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -110,7 +111,7 @@ _WALKED = ("tests", "itaca")
 
 #: Floors on the checker's own accounting line, set well under the counts
 #: measured on 2026-08-02 by `check_spawn_env.py tests itaca`, which
-#: reported 148 modules and 33 spawn calls, so they catch a walk that
+#: reported 147 modules and 33 spawn calls, so they catch a walk that
 #: collapsed rather than ordinary drift.
 #:
 #: THESE REPLACE THE RETIRED GUARD'S FLOORS, they do not carry them over,
@@ -126,6 +127,15 @@ _WALKED = ("tests", "itaca")
 #: does not distinguish an interpreter from any other program.
 _MODULE_FLOOR = 100
 _SPAWN_FLOOR = 20
+
+#: A SEPARATE floor for the value walk below, which counts a different
+#: population: the calls it can resolve an `env=` value for, over the same
+#: two trees. The two numbers are equal today, 33 and 33, only because
+#: `itaca/` holds no `subprocess` call at all, and one constant serving two
+#: populations stops meaning what its comment says the day they diverge.
+#: That is the defect `_INTERPRETER_FLOOR` was split out for, one reader
+#: over, and it is not repeated here.
+_VALUE_WALK_SPAWN_FLOOR = 20
 _INTERPRETER_FLOOR = 10
 
 _COUNTS = re.compile(
@@ -220,16 +230,24 @@ def test_no_spawn_site_in_either_tree_bypasses_an_explicit_environment() -> None
     )
 
 
-def _spawn_calls(tree: str) -> list[tuple[Path, ast.Call]]:
-    """Every ``subprocess`` spawn Call under ``tree``, with its module.
+def _spawn_calls(*trees: str) -> list[tuple[Path, ast.Call]]:
+    """Every ``subprocess`` spawn Call under ``trees``, with its module.
 
-    The same node set the vendored checker judges, read here for the one
-    question the checker deliberately does not answer: what the ``env``
-    keyword's VALUE is.
+    The same node set the vendored checker judges, over the same trees,
+    read here for the one question the checker deliberately does not
+    answer: what the ``env`` keyword's VALUE is.
+
+    The caller passes ``_WALKED`` rather than a literal. A first version
+    walked ``tests`` alone while the checker walked both, which was
+    harmless only because ``itaca/`` holds no ``subprocess`` call at all,
+    and would have gone silently false on the first spawn added to library
+    code while the docstring said the gap was closed.
     """
     names = {"run", "Popen", "call", "check_call", "check_output"}
     found: list[tuple[Path, ast.Call]] = []
-    for path in sorted((_ROOT / tree).rglob("*.py")):
+    for path in sorted(
+        candidate for tree in trees for candidate in (_ROOT / tree).rglob("*.py")
+    ):
         tree_ast = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree_ast):
             if not isinstance(node, ast.Call):
@@ -250,14 +268,26 @@ def _spawn_calls(tree: str) -> list[tuple[Path, ast.Call]]:
 #: is a narrowing of the same guarantee rather than a second one.
 _HELPERS = frozenset({"child_env", "hook_env"})
 
-#: The annotation `tests/conftest.py` gives the `child_env` FIXTURE, which
-#: is how a module in a subdirectory reaches the helper without importing
-#: it. A parameter carrying it is the helper under another name.
+#: The TypeAlias a CONSUMING module declares for the `child_env` fixture,
+#: which is how a module in a subdirectory reaches the helper without
+#: importing it (`tests/core/test_version_resolution.py` defines it). A
+#: parameter annotated with it is the helper under another name.
+#:
+#: `tests/conftest.py` itself annotates the fixture
+#: `Callable[..., dict[str, str]]`, so this alias is a convention of the
+#: consumers and not of the fixture. A module that annotates the fixture
+#: some other way is NOT recognized here and its spawn sites are reported,
+#: which is the safe direction and is why the alias is not guessed at.
 _FIXTURE_ANNOTATION = "EnvFactory"
 
 
+@cache
 def _helper_names(path: Path) -> frozenset[str]:
     """Every name in ``path`` that IS one of the helpers.
+
+    Cached per path: this is called once per spawn call and would
+    otherwise re-read and re-parse a module for every call in it, on a
+    guard the commit tier pays for.
 
     Three ways a spawn site legitimately reaches them, all of them present
     in this suite, and a first version of this walk recognized only the
@@ -269,6 +299,17 @@ def _helper_names(path: Path) -> frozenset[str]:
     3. taking the fixture as a parameter, ``env: EnvFactory``, then
        ``env=env(PYTHONPATH=...)``, which is what a module in a
        subdirectory must do.
+
+    A BOUND NAME IS TRUSTED ONLY IF EVERY ASSIGNMENT TO IT IS A HELPER
+    CALL, and that is not fussiness. This walk is flow-insensitive: it
+    sees a module's names, not a function's. Trusting a name on ONE
+    helper assignment let a DIFFERENT function in the same module write
+    ``env = os.environ.copy()`` and pass ``env=env`` unreported, which is
+    the exact `COV_CORE_*` inheritance this guard exists to stop. Round
+    two measured that on a synthetic module: `env=os.environ` and
+    `env=None` were reported and the rebound local was not. Latent rather
+    than live here, because the only assignments to `env` under `tests/`
+    today are the helper itself and one `hook_env(...)`.
     """
     names = set(_HELPERS)
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -281,15 +322,18 @@ def _helper_names(path: Path) -> frozenset[str]:
             names.add(node.arg)
     # A second pass, because an assignment may name a fixture parameter
     # collected above and the walk order does not guarantee it was seen.
+    # Every assignment to a name is collected, helper or not, so a name
+    # assigned anything else anywhere is subtracted rather than trusted.
+    bound: dict[str, list[bool]] = {}
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+        if not isinstance(node, ast.Assign):
             continue
-        callee = node.value.func
-        called = callee.id if isinstance(callee, ast.Name) else None
-        if called in names:
-            names.update(
-                target.id for target in node.targets if isinstance(target, ast.Name)
-            )
+        callee = node.value.func if isinstance(node.value, ast.Call) else None
+        from_helper = isinstance(callee, ast.Name) and callee.id in names
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                bound.setdefault(target.id, []).append(from_helper)
+    names.update(name for name, sources in bound.items() if all(sources))
     return frozenset(names)
 
 
@@ -323,12 +367,23 @@ def test_every_spawn_in_the_suite_passes_the_stripping_helper() -> None:
     because the eight sites this lane changed were changed on the strength
     of that helper, and nothing asserted they use it.
 
+    THE SCOPE IS ``_WALKED``, the same two trees the checker walks, so the
+    claim above is true by construction and not by ``itaca/`` happening to
+    hold no spawn today.
+
+    WHAT IT STILL CANNOT SEE, because a guard's exceptions are worth its
+    claim: this walk is FLOW-INSENSITIVE. It reads a module's names, not a
+    function's. A name is trusted only when EVERY assignment to it in the
+    module is a helper call, which is what keeps one rebinding elsewhere
+    from excusing a site, but a value reached through a call this walk
+    cannot resolve is not judged at all.
+
     Read the accounting: a walk that found no call would satisfy
     ``assert not offenders`` and read exactly like compliance.
     """
     offenders: list[str] = []
     interpreter_spawns = 0
-    calls = _spawn_calls("tests")
+    calls = _spawn_calls(*_WALKED)
     for path, node in calls:
         env = next((kw for kw in node.keywords if kw.arg == "env"), None)
         argv = node.args[0] if node.args else None
@@ -345,10 +400,11 @@ def test_every_spawn_in_the_suite_passes_the_stripping_helper() -> None:
             continue  # the vendored checker owns that verdict, not this one
         if not _is_the_helper(env.value, _helper_names(path)):
             offenders.append(f"{path.relative_to(_ROOT).as_posix()}:{node.lineno}")
-    assert len(calls) >= _SPAWN_FLOOR, (
-        f"the value walk found only {len(calls)} spawn call(s) under tests/, "
-        f"below the floor of {_SPAWN_FLOOR}. The walk is finding nothing, so "
-        f"a green verdict here means nothing; fix the walk before reading it."
+    assert len(calls) >= _VALUE_WALK_SPAWN_FLOOR, (
+        f"the value walk found only {len(calls)} spawn call(s) under "
+        f"{list(_WALKED)}, below the floor of {_VALUE_WALK_SPAWN_FLOOR}. The "
+        f"walk is finding nothing, so a green verdict here means nothing; fix "
+        f"the walk before reading it."
     )
     assert interpreter_spawns >= _INTERPRETER_FLOOR, (
         f"only {interpreter_spawns} spawn(s) of sys.executable were found, "

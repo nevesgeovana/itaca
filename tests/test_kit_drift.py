@@ -564,6 +564,13 @@ MANIFEST: dict[str, Pin] = {
     # Confirmed by CODE POINT, U+2013 and U+2014, rather than by rendered
     # output, which cannot tell the two from a hyphen.
     #
+    # THE MASTER IS NOT IN THIS TREE, deliberately, so those line numbers
+    # cannot be checked from a clone of this repository: they are of kit
+    # 0.2.16's `check_citations.py` as published, and a reader confirms
+    # them in the kit repository rather than here. They go stale silently
+    # on the next master revision, which is one more reason this row waits
+    # on a kit promotion rather than on anything local.
+    #
     # That is functional and harmless everywhere except here: CLAUDE.md
     # states "Never use em dashes or en dashes anywhere, in any file. No
     # exceptions", and `tests/test_house_style.py` walks every vendored
