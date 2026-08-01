@@ -93,7 +93,9 @@ def draft_prov(prov: Provenance) -> Provenance:
 # ---------------------------------------------------------------------------
 # The commit tier stays fast BY CONSTRUCTION, not by vigilance.
 #
-# `.pre-commit-config.yaml` runs `pytest -m "not slow"` on every commit, with
+# `.pre-commit-config.yaml` runs `pytest -m "not slow or fast"` on every
+# commit (the `or fast` readmits the cheap guards a module-level marker
+# swept out; see the `fast` entry in pyproject's markers), with
 # a p95 budget of 30 seconds. A budget nothing enforces is a wish: unmarked
 # slow tests accrete one at a time, each defensible on its own, and a year
 # later the fast tier is the suite again. That is exactly how the hook NAMED
@@ -131,8 +133,23 @@ _FAST_TEST_BUDGET_SECONDS = 3.0
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
-    """Accumulate the wall time of each phase, per unmarked test."""
-    if report.when == "setup" and "slow" in getattr(report, "keywords", {}):
+    """Accumulate the wall time of each phase, per unmarked test.
+
+    `slow` AND NOT `fast`. A `fast` test inside a module carrying
+    `pytestmark = pytest.mark.slow` still has `slow` among its keywords,
+    so exempting on that word alone left the one population the `fast`
+    marker creates with no per-test budget at all: the marker's whole
+    purpose is to put a test INTO the commit tier, and it was putting it
+    there unmeasured.
+
+    MEASURED before the fix, with a probe module carrying a module-level
+    `slow` and one `fast` test sleeping 3.5 s, run with the commit tier's
+    own selection: `1 passed in 3.83s`, exit 0, no budget refusal. The
+    documentation claimed the opposite, which is why this reads the
+    condition it means rather than the word it used to key on.
+    """
+    keywords = getattr(report, "keywords", {})
+    if report.when == "setup" and "slow" in keywords and "fast" not in keywords:
         _seen_slow.add(report.nodeid)
     if report.nodeid in _seen_slow:
         return
@@ -147,7 +164,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Refuse a run where an unmarked test blew the commit-tier budget.
 
     ONLY WHEN COVERAGE IS OFF, which is the condition the commit tier
-    actually runs in (`pytest -m "not slow" --no-cov`). Coverage
+    actually runs in (`pytest -m "not slow or fast" --no-cov`). Coverage
     instrumentation inflates wall time by roughly half again on the tests
     that walk the tree, and the first version of this check did not make
     the distinction: the full suite, which runs WITH coverage, reported
@@ -187,12 +204,15 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     raise pytest.UsageError(
         f"{len(over)} test(s) exceeded the {_FAST_TEST_BUDGET_SECONDS:.1f}s "
         f"commit-tier budget without carrying the `slow` marker:\n{listed}\n"
-        f'The commit tier runs `pytest -m "not slow"` and is budgeted at a '
-        f"p95 under 30 seconds, so an unmarked test this size makes every "
-        f"commit in this repository pay for it. Either decorate that TEST "
-        f"`@pytest.mark.slow` (it then runs at pre-push, where it still "
+        f'The commit tier runs `pytest -m "not slow or fast"` and is budgeted '
+        f"at a p95 under 30 seconds, so an unmarked test this size makes "
+        f"every commit in this repository pay for it. Either decorate that "
+        f"TEST `@pytest.mark.slow` (it then runs at pre-push, where it still "
         f"blocks, and in CI), or make it faster. Use module-level "
         f"`pytestmark` only to move a whole module, and note that "
         f"tests/test_tooling_config.py refuses it on the contract modules. "
+        f"A test carrying `@pytest.mark.fast` is budgeted here even inside a "
+        f"module marked slow, deliberately: that marker admits a test to this "
+        f"tier, so it cannot also excuse it from the tier's budget. "
         f"Do not raise the budget to make this pass."
     )

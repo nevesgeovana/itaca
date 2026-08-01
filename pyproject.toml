@@ -252,7 +252,7 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --cov=itaca --cov-report=term-missing --cov-fail-under=90"
 markers = [
-  # The COMMIT tier runs `-m "not slow"`. A marked module does not stop
+  # The COMMIT tier runs `-m "not slow or fast"`. A marked module does not stop
   # being mandatory: the pre-push hook runs the whole suite with coverage
   # and blocks, and CI runs it on every pull request. What the marker
   # changes is WHERE it runs, never WHETHER.
@@ -285,7 +285,14 @@ markers = [
   # expression is READ from the hook by tests/test_tooling_config.py
   # rather than repeated there. This marker cannot be used to make a red
   # commit green: it moves a test INTO the gate, never out of it, and the
-  # per-test budget in tests/conftest.py still applies once it is there.
+  # per-test budget in tests/conftest.py applies once it is there.
+  #
+  # That last clause was FALSE when this comment was first written, and a
+  # reviewer measured it: the budget exempted anything whose keywords held
+  # `slow`, which a `fast` test inside a slow module still does, so this
+  # marker created the one population entering the commit tier with no
+  # per-test cost guard at all. A 3.5 s probe passed the tier in 3.83 s
+  # with no refusal. The exemption now reads `slow` AND NOT `fast`.
   "fast: cheap enough for the commit tier despite a module-level slow mark",
 ]
 

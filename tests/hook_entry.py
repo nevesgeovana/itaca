@@ -61,6 +61,53 @@ def split_wrapper(entry: str) -> tuple[list[str] | None, list[str]]:
     return argv[:cut], argv[cut + 1 :]
 
 
+def marker_expression(argv: list[str]) -> str:
+    """The marker selection a pytest argv actually runs under.
+
+    Parameters
+    ----------
+    argv : list of str
+        A pytest command line, from :func:`split_wrapper`.
+
+    Returns
+    -------
+    str
+        The value of the single ``-m`` option.
+
+    Raises
+    ------
+    AssertionError
+        When there is no ``-m``, when one carries no value, or when there
+        is MORE THAN ONE. pytest honors the LAST of several, and a reader
+        of the config sees the first, so the two disagree exactly where a
+        guard built on this would report on a tier the hook does not run.
+        The ambiguity is refused rather than resolved, because a config
+        with two selections is a mistake whichever one wins.
+
+    Examples
+    --------
+    >>> marker_expression(["pytest", "-m", "not slow", "-q"])
+    'not slow'
+    """
+    positions = [i for i, token in enumerate(argv) if token == "-m"]
+    assert positions, (
+        f"the command {argv!r} carries no `-m` selection, so there is no "
+        f"expression to measure a tier with. A tier is DEFINED by its "
+        f"selection; restore it."
+    )
+    assert len(positions) == 1, (
+        f"the command {argv!r} carries {len(positions)} `-m` options. pytest "
+        f"honors the LAST and a reader sees the first, so a guard reading "
+        f"this would measure a tier the hook does not run. Write one "
+        f"selection, combining the terms with `and` or `or`."
+    )
+    index = positions[0]
+    assert index + 1 < len(argv), (
+        f"the command {argv!r} ends with `-m` and no expression after it."
+    )
+    return argv[index + 1]
+
+
 def assert_is_the_vendored_receipt(wrapper: list[str]) -> str:
     """Refuse any wrapper that is not the vendored pre-push receipt.
 

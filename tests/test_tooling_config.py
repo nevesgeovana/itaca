@@ -38,7 +38,11 @@ from typing import Any
 import pytest
 import yaml
 from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
-from hook_entry import assert_is_the_vendored_receipt, split_wrapper
+from hook_entry import (
+    assert_is_the_vendored_receipt,
+    marker_expression,
+    split_wrapper,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
@@ -212,10 +216,29 @@ _COMMIT_TIER_CONTRACT_MODULES = (
 # a reviewer instead of from the gate.
 #
 # Each entry is a guard over the REPOSITORY'S OWN HYGIENE rather than over
-# library behavior, each costs under half a second, and each catches a
-# defect that an ordinary edit introduces. Adding one is a decision: it
-# must carry `@pytest.mark.fast`, its measured cost, and the reason it
-# belongs at the cheapest gate.
+# library behavior, and each catches a defect that an ordinary edit
+# introduces. Adding one is a decision: it must carry `@pytest.mark.fast`,
+# its measured cost, and the reason it belongs at the cheapest gate.
+#
+# ON COST, stated exactly because the first version of this comment
+# overclaimed it. The durations below are MEASUREMENTS, not an enforced
+# threshold: nothing refuses a 0.9 s entry. What IS enforced is the same
+# three-second per-test budget every commit-tier test carries, which
+# reaches these tests only since the `slow and not fast` repair in
+# tests/conftest.py; before that repair a `fast` test was exempt, which a
+# reviewer measured with a 3.5 s probe that passed silently.
+#
+# WHAT THE FOUR COST THE TIER, since a single-sample comparison first
+# reported it as nothing: three runs of each selection, minimum of each,
+# gave 17.59 s without them and 18.45 s with them. About 0.9 s, against a
+# p95 target of 30 s. Cheap, and not free, and the difference between
+# those two words is why the number is here.
+#
+# The one cheap test in these modules deliberately NOT promoted is
+# `test_a_push_with_no_resolvable_repo_denies_with_the_repo_kind` (0.11 s).
+# It is cheap enough and it is about the GATE'S BEHAVIOR rather than about
+# this repository's hygiene, so it fails the criterion above. Cheapness is
+# a precondition here, never the reason.
 _COMMIT_TIER_GUARD_TESTS = (
     # 0.01 s. Broken by ITA-11 and caught only in review. It refuses a
     # spawn site that does not strip COV_CORE_*, which aborts CI after
@@ -234,7 +257,12 @@ _COMMIT_TIER_GUARD_TESTS = (
 
 
 def _commit_tier_selection() -> str:
-    """The marker expression the commit hook ACTUALLY runs.
+    """The marker expression the commit hook ACTUALLY runs (REQ-96).
+
+    REQ-96 promises the pre-commit hooks are a local mirror of CI. The
+    selection is the whole of what makes the commit hook a SUBSET rather
+    than the suite, so it is the part of that promise this file must read
+    from the carrier.
 
     READ from `.pre-commit-config.yaml`, never written here. The two
     guards below spawn pytest to measure the commit tier, and a literal
@@ -252,12 +280,7 @@ def _commit_tier_selection() -> str:
         if hook["id"] == "pytest-fast"
     )
     _wrapper, argv = split_wrapper(entry)
-    assert "-m" in argv, (
-        f"the commit hook runs {argv!r} with no `-m` selection, so there is "
-        f"no expression to measure the tier with. The commit tier is defined "
-        f"by that selection; restore it."
-    )
-    return argv[argv.index("-m") + 1]
+    return marker_expression(argv)
 
 
 def _local_hook_stages() -> dict[str, list[str]]:
@@ -294,11 +317,16 @@ def test_the_commit_tier_runs_only_the_fast_subset() -> None:
         "all. Restore `pytest-fast` with the `not slow` selection."
     )
     entry = entries["pytest-fast"]
-    assert "not slow" in entry, (
-        f"the commit hook runs {entry!r}, with no marker selection, so it "
-        f"runs the FULL suite on every commit. That is the exact defect "
-        f"BRF-063 measured: a hook named fast that was not. Select the "
-        f'subset with -m "not slow".'
+    # PARSED, not searched. A substring check passed for any expression
+    # containing the words, including one that widens the tier back to the
+    # whole suite, which is the defect this assertion exists to refuse.
+    selection = _commit_tier_selection()
+    assert selection.split()[:2] == ["not", "slow"], (
+        f"the commit hook selects {selection!r}, which does not begin by "
+        f"EXCLUDING the slow tier, so it runs the FULL suite on every "
+        f"commit. That is the exact defect BRF-063 measured: a hook named "
+        f'fast that was not. Select the subset with -m "not slow", widened '
+        f"only by `or fast` for tests declared in _COMMIT_TIER_GUARD_TESTS."
     )
     assert "--no-cov" in entry, (
         f"the commit hook runs {entry!r} with coverage on. Coverage is the "
@@ -446,6 +474,43 @@ def test_a_wrapper_that_is_not_the_receipt_is_refused(
         assert_is_the_vendored_receipt(wrapper)
 
 
+@pytest.mark.parametrize(
+    "argv,expected",
+    [
+        (["pytest", "-m", "not slow", "-q"], "carries no `-m`"),
+        (["pytest", "-m", "not slow", "-m", "fast"], "2 `-m` options"),
+        (["pytest", "-q", "-m"], "ends with `-m`"),
+    ],
+    ids=["no-selection", "two-selections", "dangling"],
+)
+def test_the_selection_reader_refuses_what_it_cannot_answer(
+    argv: list[str], expected: str
+) -> None:
+    """The helper both tier guards depend on, falsified directly.
+
+    Two of these are real hazards rather than shapes. pytest honors the
+    LAST of several `-m` options while a reader of the config sees the
+    first, so a second selection would make both tier guards measure a
+    tier the hook does not run, which is the exact defect the helper
+    exists to remove. And a missing selection means the hook runs the
+    whole suite on every commit, which is BRF-063.
+
+    The first case is deliberately a valid argv with the `-m` REMOVED, so
+    the test cannot pass merely because the input was malformed.
+    """
+    if expected == "carries no `-m`":
+        argv = [token for token in argv if token != "-m" and token != "not slow"]
+    with pytest.raises(AssertionError, match=re.escape(expected)):
+        marker_expression(argv)
+
+
+def test_the_selection_reader_answers_the_ordinary_case() -> None:
+    """The control, so the refusals above are not refusing everything."""
+    assert marker_expression(["pytest", "-m", "not slow or fast", "-x"]) == (
+        "not slow or fast"
+    )
+
+
 def test_an_unwrapped_entry_parses_as_unwrapped() -> None:
     """The branch nothing else reaches, and inverting it hides the check.
 
@@ -588,6 +653,59 @@ def test_the_contract_modules_stay_in_the_commit_tier() -> None:
 
 
 @pytest.mark.slow
+def test_no_undeclared_test_uses_the_fast_marker() -> None:
+    """The other direction: collected-by-`fast` must equal the declared list.
+
+    The contract check above asserts list -> collected, so it catches a
+    guard that LOST its marker. Nothing asserted collected -> list, so a
+    fifth `@pytest.mark.fast` added later would enter the commit tier with
+    neither a measured cost nor a stated reason, which the list's own
+    preamble declares mandatory. `fast` is the only route into that tier
+    that a module-level marker does not govern, so it is the one that
+    needs both directions.
+
+    MARKED `slow`, and the reason is a measurement rather than a habit.
+    This needs its own collection, and the sibling above already spends
+    about four seconds on one; a second in the same commit-tier test would
+    break the three-second per-test budget, and the honest answer to that
+    is to run this at the tier that can afford it rather than to raise the
+    budget. The cheaper direction stays where a developer feels it.
+    """
+    argv = [
+        sys.executable, "-m", "pytest", "--collect-only", "-q", "--no-cov",
+        "-m", "fast", "-p", "no:cacheprovider", "tests",
+    ]  # fmt: skip
+    done = subprocess.run(
+        argv, capture_output=True, text=True, cwd=str(ROOT), env=child_env()
+    )
+    assert done.returncode == 0, (
+        f"collecting `-m fast` failed, so this guard cannot say which tests "
+        f"carry the marker:\n{done.stdout[-2000:]}"
+    )
+    collected = {
+        line.strip()
+        for line in done.stdout.replace("\\", "/").splitlines()
+        if "::" in line and line.strip().startswith("tests/")
+    }
+    declared = set(_COMMIT_TIER_GUARD_TESTS)
+    undeclared = sorted(collected - declared)
+    assert not undeclared, (
+        f"these tests carry `@pytest.mark.fast` and are not in "
+        f"_COMMIT_TIER_GUARD_TESTS: {undeclared}. The marker admits a test to "
+        f"the commit tier, which every developer pays for on every commit, so "
+        f"admission is a decision that is written down with its measured cost "
+        f"and its reason. Add the entry, or drop the marker."
+    )
+    missing = sorted(declared - collected)
+    assert not missing, (
+        f"these tests are declared commit-tier guards but do not carry "
+        f"`@pytest.mark.fast`: {missing}. The sibling contract check may pass "
+        f"anyway if their module stops being slow, which would make this list "
+        f"silently inert."
+    )
+
+
+@pytest.mark.slow
 def test_the_commit_tier_subset_is_actually_fast() -> None:
     """Measure the aggregate, because no per-test rule can see it.
 
@@ -637,7 +755,7 @@ def test_the_commit_tier_subset_is_actually_fast() -> None:
         f"the commit-tier subset took {elapsed:.1f}s in this run, against a "
         f"p95 target of 30 s and a drift ceiling of 60 s. The subset has "
         f"grown into the tier it was split out of. Find what got slow "
-        f'(pytest --durations=25 -m "not slow") and mark it or fix it; '
+        f"(pytest --durations=25 -m {selection!r}) and mark it or fix it; "
         f"do not raise this ceiling."
     )
 

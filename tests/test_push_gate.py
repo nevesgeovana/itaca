@@ -837,8 +837,11 @@ def test_no_spawn_site_bypasses_child_env() -> None:
     """
     root = Path(__file__).resolve().parent
     offenders: list[str] = []
+    scanned = 0
+    interpreter_spawns = 0
     for path in sorted(root.rglob("test_*.py")):
         lines = path.read_text(encoding="utf-8").splitlines()
+        scanned += 1
         for index, line in enumerate(lines):
             if "subprocess.run(" not in line and "subprocess.Popen(" not in line:
                 continue
@@ -847,9 +850,37 @@ def test_no_spawn_site_bypasses_child_env() -> None:
             # A first version required both on one line and therefore
             # missed the only real offender in the suite.
             window = "\n".join(lines[index : index + 14])
-            if "sys.executable" in window and "env=" not in window:
+            if "sys.executable" not in window:
+                continue
+            interpreter_spawns += 1
+            if "env=" not in window:
                 offenders.append(f"{path.name}:{index + 1}")
-    assert not offenders, f"spawn sites with no explicit env: {offenders}"
+    # READ THE ACCOUNTING, not only the verdict. `assert not offenders` alone
+    # is satisfied by a walk that opened nothing and by a spawn idiom this
+    # scan stopped recognizing, and both read exactly like compliance. The
+    # sibling guard promoted beside this one already carries a floor
+    # (`test_release_integrity.py`, `assert checked >= 100`), and this one
+    # did not; a reviewer measured the asymmetry in the commit that moved
+    # both into the commit tier. Floors are set well under the current
+    # counts, so they catch collapse rather than drift.
+    assert scanned >= 20, (
+        f"the spawn-site scan opened only {scanned} test module(s), which is "
+        f"far below this suite's size. The walk is finding nothing, so a "
+        f"green verdict here means nothing; fix the walk before reading it."
+    )
+    assert interpreter_spawns >= 10, (
+        f"the scan recognized only {interpreter_spawns} interpreter spawn "
+        f"site(s). This suite spawns Python from many modules, so a count "
+        f"this low means the idiom moved and the scan no longer sees it, not "
+        f"that the sites went away. The verdict below would then be vacuous."
+    )
+    assert not offenders, (
+        f"spawn sites with no explicit env: {offenders}. Every spawn of "
+        f"sys.executable must pass env=child_env(), which strips COV_CORE_*; "
+        f"without it the child starts coverage and the run can abort AFTER "
+        f"every test has passed. Put env= on the call itself, within a few "
+        f"lines of subprocess.run(, rather than widening this window."
+    )
 
 
 def test_no_partial_coverage_file_survives_a_hook_run(repo: Path) -> None:

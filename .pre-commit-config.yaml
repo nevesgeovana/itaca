@@ -63,7 +63,7 @@ repos:
         always_run: true
         pass_filenames: false
         stages: [pre-commit]
-      # The COMMIT tier. `-m "not slow"` is what buys the budget; `-x` buys
+      # The COMMIT tier. `-m "not slow or fast"` is what buys the budget; `-x` buys
       # latency on a failing run only and must never be mistaken for the
       # mechanism. The subset FAILS the commit, it does not advise: a fast
       # tier that only warns is the same class as a guard reporting green.
