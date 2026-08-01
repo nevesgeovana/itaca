@@ -1,4 +1,14 @@
-"""Every subprocess spawn passes an explicit environment, judged per CALL.
+"""Every subprocess spawn carries its own ``env=`` keyword, judged per CALL.
+
+WHAT THE VENDORED CHECKER PROVES, stated first because the obvious summary
+overstates it. It proves an ``env`` keyword is PRESENT on the call node. It
+does not prove the keyword's VALUE is a stripped environment: ``env=None``
+is inheritance, which is the ``COV_CORE_*`` failure mode itself, and is
+reported clean, and a ``**kwargs`` splat is reported UNVERIFIABLE and also
+exits 0. The checker's own docstring says so, and that boundary is right
+for an artifact two repositories share.
+``test_every_spawn_in_the_suite_passes_the_stripping_helper`` below is what
+closes it here.
 
 Usage example (TDD anchor)::
 
@@ -25,7 +35,7 @@ call, made here. The adoption brief asks only that the two not be left
 claiming the same coverage, because two guards that disagree teach a
 reader to trust neither. The retired one has both failure directions
 reachable; the vendored checker parses each module with ``ast`` and
-requires an ``env`` keyword ON the ``Call`` node, so a neighbour's keyword
+requires an ``env`` keyword ON the ``Call`` node, so a neighbor's keyword
 is a different node and is invisible to it.
 
 WHAT WAS MEASURED WHEN THE CHECKER FIRST RAN HERE, before anything was
@@ -46,8 +56,15 @@ THE ACCOUNTING IS WHAT THE RETIREMENT MUST NOT LOSE. The retired guard
 carried two floors, ``scanned >= 20`` and ``interpreter_spawns >= 10``,
 which exist because ``assert not offenders`` alone is satisfied by a walk
 that opened nothing and by a spawn idiom the scan stopped recognizing, and
-both read exactly like compliance. The checker prints its own accounting
-line, so the floors move onto THAT line rather than being dropped.
+both read exactly like compliance.
+
+They are REPLACED rather than moved, and only one of the two lands on the
+checker's own accounting line. ``scanned`` becomes ``_MODULE_FLOOR`` over
+a wider tree. ``interpreter_spawns`` cannot: the checker counts spawns of
+ANY program and does not distinguish an interpreter, so a floor on its
+number would be held up by the git spawns alone while the population the
+``COV_CORE_*`` incident belongs to went to zero. ``_INTERPRETER_FLOOR``
+therefore stays a source-level count, in the value walk below.
 
 WHAT IS NOT REPLACED. ``test_a_child_process_does_not_start_coverage`` in
 ``tests/test_push_gate.py`` stays where it is. It is the BEHAVIORAL half,
@@ -62,6 +79,7 @@ convention is a guard with a door in it.
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 import sys
@@ -77,13 +95,38 @@ _SPAWN_MUTATIONS = _KIT / "check_spawn_env_mutations.py"
 
 #: The directories the guard covers. Both trees, so a spawn added to
 #: library code is judged by the same rule as one added to the suite.
+#:
+#: `.claude/` IS EXCLUDED, and the reason is stated because an unstated
+#: scope boundary is how a reader concludes the tree is clean. Measured on
+#: 2026-08-02, `python .claude/kit/check_spawn_env.py .claude` reports
+#: `checked 19 module(s), 21 spawn call(s), 20 unguarded, 0 unverifiable`.
+#: Every one of the twenty is inside a VENDORED KIT BODY, which this
+#: repository is forbidden to hand-edit: the drift pin in
+#: `tests/test_kit_drift.py` refuses it, so the fix is a kit promotion and
+#: not an edit here. Walking that tree would produce a permanent red no
+#: lane could clear, which is the shape that teaches a repository to switch
+#: a guard off. Routed rather than absorbed.
 _WALKED = ("tests", "itaca")
 
 #: Floors on the checker's own accounting line, set well under the counts
-#: measured on adoption (147 modules, 32 spawn calls) so they catch a walk
-#: that collapsed rather than ordinary drift.
+#: measured on 2026-08-02 by `check_spawn_env.py tests itaca`, which
+#: reported 148 modules and 33 spawn calls, so they catch a walk that
+#: collapsed rather than ordinary drift.
+#:
+#: THESE REPLACE THE RETIRED GUARD'S FLOORS, they do not carry them over,
+#: and the difference matters in one direction. The retired floors were 20
+#: test MODULES and 10 spawns OF `sys.executable`; these are 100 modules
+#: over two trees and 20 spawns OF ANY KIND. The second is a WIDER
+#: population, so a collapse confined to interpreter spawns, which is the
+#: population the `COV_CORE_*` incident belongs to, would no longer be
+#: floored: the git spawns alone hold the number above 20.
+#:
+#: `_INTERPRETER_FLOOR` is therefore kept as a second floor, on the narrow
+#: population, counted from the source rather than from the checker, which
+#: does not distinguish an interpreter from any other program.
 _MODULE_FLOOR = 100
 _SPAWN_FLOOR = 20
+_INTERPRETER_FLOOR = 10
 
 _COUNTS = re.compile(
     r"checked (\d+) module\(s\), (\d+) spawn call\(s\), "
@@ -138,8 +181,9 @@ def test_no_spawn_site_in_either_tree_bypasses_an_explicit_environment() -> None
     walk that opened nothing produces, and what a checker that stopped
     recognizing the spawn idiom produces, and both read exactly like
     compliance. The floors below are what tells those apart, and they are
-    the ones the retired window guard carried, moved onto the line the
-    checker prints for itself.
+    the ones the retired window guard carried, insofar as the checker's
+    own counts can carry them; the module docstring says which one cannot
+    and where it went instead.
 
     The UNVERIFIABLE count is read and reported rather than pinned. A
     ``**kwargs`` splat satisfies the check and is named as unverifiable,
@@ -173,6 +217,154 @@ def test_no_spawn_site_in_either_tree_bypasses_an_explicit_environment() -> None
         f"passed. Put env= ON THE CALL, and never widen a window to make a "
         f"report go away: judging a call by the lines around it is the "
         f"defect this checker replaced.\n{done.stdout}{done.stderr}"
+    )
+
+
+def _spawn_calls(tree: str) -> list[tuple[Path, ast.Call]]:
+    """Every ``subprocess`` spawn Call under ``tree``, with its module.
+
+    The same node set the vendored checker judges, read here for the one
+    question the checker deliberately does not answer: what the ``env``
+    keyword's VALUE is.
+    """
+    names = {"run", "Popen", "call", "check_call", "check_output"}
+    found: list[tuple[Path, ast.Call]] = []
+    for path in sorted((_ROOT / tree).rglob("*.py")):
+        tree_ast = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree_ast):
+            if not isinstance(node, ast.Call):
+                continue
+            callee = node.func
+            if (
+                isinstance(callee, ast.Attribute)
+                and callee.attr in names
+                and isinstance(callee.value, ast.Name)
+                and callee.value.id == "subprocess"
+            ):
+                found.append((path, node))
+    return found
+
+
+#: The two helpers that strip coverage measurement. `hook_env` builds on
+#: `child_env` and additionally clears every ledger-shaped variable, so it
+#: is a narrowing of the same guarantee rather than a second one.
+_HELPERS = frozenset({"child_env", "hook_env"})
+
+#: The annotation `tests/conftest.py` gives the `child_env` FIXTURE, which
+#: is how a module in a subdirectory reaches the helper without importing
+#: it. A parameter carrying it is the helper under another name.
+_FIXTURE_ANNOTATION = "EnvFactory"
+
+
+def _helper_names(path: Path) -> frozenset[str]:
+    """Every name in ``path`` that IS one of the helpers.
+
+    Three ways a spawn site legitimately reaches them, all of them present
+    in this suite, and a first version of this walk recognized only the
+    first and reported the other two as offenders:
+
+    1. calling one directly, ``env=child_env()``;
+    2. binding one to a local first, ``env = hook_env(...)`` then
+       ``env=env``, which the push-gate helper does;
+    3. taking the fixture as a parameter, ``env: EnvFactory``, then
+       ``env=env(PYTHONPATH=...)``, which is what a module in a
+       subdirectory must do.
+    """
+    names = set(_HELPERS)
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.arg)
+            and node.annotation is not None
+            and _FIXTURE_ANNOTATION in ast.unparse(node.annotation)
+        ):
+            names.add(node.arg)
+    # A second pass, because an assignment may name a fixture parameter
+    # collected above and the walk order does not guarantee it was seen.
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        callee = node.value.func
+        called = callee.id if isinstance(callee, ast.Name) else None
+        if called in names:
+            names.update(
+                target.id for target in node.targets if isinstance(target, ast.Name)
+            )
+    return frozenset(names)
+
+
+def _is_the_helper(value: ast.expr, names: frozenset[str]) -> bool:
+    """Whether an ``env=`` value comes from one of the helpers."""
+    if isinstance(value, ast.Name):
+        return value.id in names
+    if isinstance(value, ast.Call):
+        callee = value.func
+        if isinstance(callee, ast.Name):
+            return callee.id in names
+        if isinstance(callee, ast.Attribute):
+            return callee.attr in names
+    return False
+
+
+def test_every_spawn_in_the_suite_passes_the_stripping_helper() -> None:
+    """`env=` PRESENCE is not `env=child_env()`, and only one of them is safe.
+
+    The vendored checker requires an ``env`` keyword ON the call and stops
+    there, which its own docstring states: it cannot see inside a dict it
+    did not build. That is the right boundary for a shared artifact and it
+    leaves one gap this repository can close on its own. ``env=os.environ``
+    satisfies the checker exactly as ``env=child_env()`` does, and it
+    re-introduces the whole failure the rule exists for: a child that
+    inherits ``COV_CORE_*`` starts coverage without branch data and aborts
+    the run in teardown, AFTER every test has passed.
+
+    The retired window guard had the same gap, matching the text ``env=``,
+    so this is new ground rather than a regression. It is closed here
+    because the eight sites this lane changed were changed on the strength
+    of that helper, and nothing asserted they use it.
+
+    Read the accounting: a walk that found no call would satisfy
+    ``assert not offenders`` and read exactly like compliance.
+    """
+    offenders: list[str] = []
+    interpreter_spawns = 0
+    calls = _spawn_calls("tests")
+    for path, node in calls:
+        env = next((kw for kw in node.keywords if kw.arg == "env"), None)
+        argv = node.args[0] if node.args else None
+        if isinstance(argv, ast.List) and argv.elts:
+            first = argv.elts[0]
+            if (
+                isinstance(first, ast.Attribute)
+                and first.attr == "executable"
+                and isinstance(first.value, ast.Name)
+                and first.value.id == "sys"
+            ):
+                interpreter_spawns += 1
+        if env is None:
+            continue  # the vendored checker owns that verdict, not this one
+        if not _is_the_helper(env.value, _helper_names(path)):
+            offenders.append(f"{path.relative_to(_ROOT).as_posix()}:{node.lineno}")
+    assert len(calls) >= _SPAWN_FLOOR, (
+        f"the value walk found only {len(calls)} spawn call(s) under tests/, "
+        f"below the floor of {_SPAWN_FLOOR}. The walk is finding nothing, so "
+        f"a green verdict here means nothing; fix the walk before reading it."
+    )
+    assert interpreter_spawns >= _INTERPRETER_FLOOR, (
+        f"only {interpreter_spawns} spawn(s) of sys.executable were found, "
+        f"below the floor of {_INTERPRETER_FLOOR}. That is the NARROW "
+        f"population the COV_CORE_* incident belongs to, and the checker's "
+        f"own count cannot see it because it does not distinguish an "
+        f"interpreter from any other program. A count this low means the "
+        f"idiom moved and this walk no longer sees it."
+    )
+    assert not offenders, (
+        f"these spawn calls pass an env= whose value is not child_env() or "
+        f"hook_env(): {offenders}. The vendored checker accepts any env "
+        f"keyword, so env=os.environ satisfies it while inheriting "
+        f"COV_CORE_* and aborting the run after every test has passed. Pass "
+        f"the stripping helper, or add a new helper here and to this list "
+        f"deliberately."
     )
 
 

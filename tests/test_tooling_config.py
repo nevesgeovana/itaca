@@ -212,6 +212,14 @@ _COMMIT_TIER_CONTRACT_MODULES = (
     # what stops the replacement being marked slow later and quietly
     # leaving the gate the retired one was promoted onto.
     "tests/test_spawn_env.py",
+    # Added with kit 0.2.16, and the argument is the same one, which is why
+    # leaving it out was a round-one finding from three lenses at once.
+    # This module holds the ONLY application of the two-round cap to a real
+    # ledger, plus the hermetic locator pair, and it has no module-level
+    # `slow` today, so its place in the commit tier was an accident of
+    # absence rather than a declaration. Measured cost of its commit-tier
+    # members: 0.17 s, 0.08 s and under 0.01 s.
+    "tests/test_review_rounds.py",
 )
 
 # The list above is MODULE granularity, and that is not enough. A module

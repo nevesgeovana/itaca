@@ -133,11 +133,18 @@ Write the attestation and the push as separate commands. The hook
 inspects the whole command string, so a combined command is seen as a
 push and denied before the attestation runs.
 
-### Two charter calls the kit hands to this repository (adopted 2026-08-02)
+### Three charter calls the kit hands to this repository (adopted 2026-08-02)
 
-Kit 0.2.16 ships two checkers whose configuration is deliberately not the
-kit's to decide. Both answers are here, taken rather than left to a
-default.
+Kit 0.2.16 hands this repository three decisions it deliberately does not
+take itself: the citation mode, what an unresolvable management root means
+at the round-ledger gate, and whether the vendored spawn checker joins the
+existing window guard or replaces it. All three answers are here, taken
+rather than left to a default.
+
+**DD-50 is the record and this section is the operative summary.** The
+reasoning, the measurements behind each answer and the refused exemption
+live there, per the authority chain; where the two appear to disagree,
+DD-50 is the decision and this is the instruction.
 
 **Citations will be checked in ADVISORY mode, and the checker is NOT YET
 VENDORED.** `check_citations.py` comes from `ITC-20260802-0340`, cite an
@@ -151,21 +158,20 @@ largest authority is LaTeX: requirements are `reqbox` environments in
 `docs/srs/`, which none of the checker's three index forms can read, so
 REQ, the most-cited prefix here, cannot be resolved at all and is covered
 by `tests/test_requirement_trace.py` instead. The second is that over the
-whole prose corpus advisory mode already reports 25 refusals and every one
-of them is FALSE, produced by the citation form meeting an ordinary prose
-comma or a comma-separated list of ids.
+whole prose corpus advisory mode already reports 25 citations as carrying
+no title, and every one of the 25 is FALSE, produced by the citation form
+meeting an ordinary prose comma or a comma-separated list of ids. That
+number is reproducible only from the invocation it came from, which is
+recorded with it in `ITC-20260802-1705`, not here.
 
-WHY IT IS NOT VENDORED YET, stated here rather than left to be
-rediscovered: the master's body carries an em dash and an en dash inside a
-strip character class, and the rule above is "No exceptions". Vendoring it
-turns `tests/test_house_style.py` red on a body this repository is
-forbidden to hand-edit, so the style rule and the drift pin would
-contradict each other. The exemption was considered and refused, on this
-repository's own precedent: a vendored body that reached the tree exempt
-from that walk by accident had the walk widened to reach it rather than
-the exemption kept. The defect is routed to the coordination level, the
-decision above stands, and the next lane vendors and wires rather than
-deciding again. `tests/test_kit_drift.py` carries the measurement.
+WHY IT IS NOT VENDORED YET: the master's body carries an em dash and an en
+dash, and the rule above is "No exceptions", so vendoring it would put the
+house-style guard and the drift pin in contradiction on a body this
+repository is forbidden to hand-edit. The exemption was considered and
+refused. `tests/test_kit_drift.py`, at the deliberately absent
+`check_citations.py` rows, carries the measurement, the precedent that
+decided it and the routing; read it there. The decision above stands, and
+the next lane vendors and wires rather than deciding again.
 
 WRITE CITATIONS WITH THEIR TITLES ANYWAY, and starting now rather than
 when the checker lands. Advisory is what the machine will enforce, not
@@ -176,17 +182,30 @@ written, which is the only moment at which it is cheap. Until the checker
 is vendored this is a convention with no mechanism, and this sentence is
 the whole of it.
 
-**An unset management root SKIPS the round-ledger check and says so.**
-`check_review_rounds.py` gained a locator at 0.2.16, from
+**An UNRESOLVABLE management root SKIPS the round-ledger check and says
+so, and unresolvable here covers unset, absent and set-but-invalid
+alike.** `check_review_rounds.py` gained a locator at 0.2.16, from
 `ITC-20260802-0120`, the round ledger has no locator so nothing can check
 it. It reads NO environment variable of its own; the caller passes a root,
-and this is the row saying what an absent root means AT THIS GATE. It is a
-SKIP that must be ANNOUNCED, never a denial, on the same rule
+and this is the row saying what an unresolvable root means AT THIS GATE.
+It is a SKIP that must be ANNOUNCED, never a denial, on the same rule
 `tests/test_kit_drift.py` already applies to every env-located artifact: a
 suite that refused to run on an unconfigured clone would gate nothing and
 stop everything. This does not join the locator family in the table below
 and adds no variable to it. The denial branch stays where it is, with
 `COORD_INCIDENT_LEDGER` alone.
+
+This is a branch AT THIS GATE and not a change to the resolution rule: how
+the root itself resolves is the single home under "Where the session
+documents live" below, where a set-but-invalid root still stops and
+reports. This gate reads that stop as a skip, and says which.
+
+A MISSING LEDGER IS NOT A CONFIGURATION FACT and does not share that
+branch. A root that resolves while the lane's ledger is absent FAILS,
+because the review not writing one is work not done. Stacking the two
+skips let "the skill never wrote one" read exactly like "the clone is not
+configured", which is how a cap that nothing applies keeps sounding
+applied.
 
 **Spawns are judged by the call.** `check_spawn_env.py` runs in tier 1
 over `tests/` and `itaca/`, from `ITC-20260802-0200`, the spawn guard

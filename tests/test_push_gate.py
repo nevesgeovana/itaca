@@ -835,14 +835,14 @@ def test_a_child_process_does_not_start_coverage() -> None:
 
 
 # `test_no_spawn_site_bypasses_child_env` STOOD HERE and is RETIRED at kit
-# 0.2.16, in favour of `tests/test_spawn_env.py`. It is named rather than
+# 0.2.16, in favor of `tests/test_spawn_env.py`. It is named rather than
 # deleted silently, because a guard that disappears from a file reads as a
 # guard that was never needed.
 #
 # It decided whether a spawn site passed an explicit environment by reading
 # a fixed window of fourteen lines after each `subprocess.run(`, and
 # `ITC-20260802-0200` is written about exactly that. Lane ITA-11 round two
-# met BOTH of the shape's failure directions in one commit: a neighbour's
+# met BOTH of the shape's failure directions in one commit: a neighbor's
 # `env=` sixteen lines away excused two real offenders, and a correct call
 # whose argv was written one element per line was reported as an offender
 # seventeen lines from its own opening. The vendored checker judges the

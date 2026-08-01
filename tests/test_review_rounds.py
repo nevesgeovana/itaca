@@ -116,7 +116,21 @@ _ROUNDS_MUTATIONS = _KIT / "check_review_rounds_mutations.py"
 #: what writes the ledger it names. Checking every ledger under the root
 #: instead is what `--all` is for, and the module docstring says why that
 #: is not wired here yet.
+#:
+#: THE DANGEROUS DIRECTION IS A STALE VALUE, not an absent ledger, and it
+#: was named by three reviewer lenses at once. An absent ledger is loud. A
+#: constant left behind is SILENT: the previous lane's ledger is still
+#: there and still clean, so the suite certifies a closed historical record
+#: while the current lane's ledger is never read, and nothing says so.
+#: `test_the_certified_ledger_is_not_older_than_another_lane_s` below is
+#: what makes that direction loud too. It is a floor and not a mechanism:
+#: a lane that writes NO ledger and moves nothing is still not caught,
+#: which is `ITC-20260802-1715` and is stated rather than papered over.
 _LANE = "ITA-12"
+
+#: The convention the kit writes down at 0.2.16, used here to enumerate
+#: what the root holds.
+_LEDGER_GLOB = "*_rounds.ledger"
 
 #: A minimal ledger that certifies one round with one fixed finding, used
 #: by the hermetic locator cases. It carries `property=` because rule 8
@@ -256,23 +270,25 @@ def test_the_locator_resolves_a_ledger_from_a_root_and_a_lane(
     )
 
 
-def test_the_lane_ledger_this_repository_certifies_is_clean() -> None:
-    """Run the checker against a REAL ledger, which is the whole point.
+def _resolved_root() -> Path:
+    """The management root, or a skip naming why the cap went unchecked.
 
-    `ITC-20260802-0120` is not that the cap lacked a mechanism; it is that
-    nothing ever applied the mechanism to a ledger. This is what applies
-    it. The ledger lives under the resolved management root, outside this
-    repository, so it is the same shape as the env-located pins in
-    `tests/test_kit_drift.py`: checked where configured, and SKIPPED WITH
-    THE REASON NAMED where it is not, so a clone that configured nothing
-    still runs a green suite and the run says what went unread.
+    ONLY the resolution itself may skip here, and that is the charter
+    branch written in CLAUDE.md: at THIS gate an unresolvable
+    `ITACA_MANAGEMENT_ROOT` is a skip that must be ANNOUNCED, never a
+    denial, so a clone that configured nothing still runs a green suite
+    and the run says what went unread. Unresolvable covers unset, absent
+    and set-but-invalid alike, because `resolve_management_root` refuses
+    all three the same way.
 
-    That skip is the charter branch, written in CLAUDE.md: at THIS gate an
-    unset or unresolvable `ITACA_MANAGEMENT_ROOT` is a skip that must be
-    announced. It is not a denial, and it is not silence.
+    A MISSING LEDGER IS NOT A CONFIGURATION FACT and must not share that
+    branch. Stacking a second skip behind the first was this module's own
+    round-one defect: "the skill never wrote one" then read exactly like
+    "the clone is not configured", and the claim that the cap is applied
+    stayed true-sounding while nothing applied it.
     """
     try:
-        root, branch = resolve_management_root(
+        root, _branch = resolve_management_root(
             os.environ.get("ITACA_MANAGEMENT_ROOT"), repo=_ROOT
         )
     except ManagementRootError as error:
@@ -281,14 +297,27 @@ def test_the_lane_ledger_this_repository_certifies_is_clean() -> None:
             f"{_LANE}'s round ledger cannot be located. The two-round cap is "
             f"UNCHECKED here, not satisfied."
         )
+    return root
+
+
+def test_the_lane_ledger_this_repository_certifies_is_clean() -> None:
+    """Run the checker against a REAL ledger, which is the whole point.
+
+    `ITC-20260802-0120` is not that the cap lacked a mechanism; it is that
+    nothing ever applied the mechanism to a ledger. This is what applies
+    it, and it FAILS rather than skips when the ledger is absent: a
+    configured root with no ledger for the lane means the review did not
+    write one, which is work not done and not a configuration state.
+    """
+    root = _resolved_root()
     ledger = root / f"{_LANE}_rounds.ledger"
-    if not ledger.is_file():
-        pytest.skip(
-            f"no round ledger for lane {_LANE} at {ledger} (root resolved by "
-            f"the {branch} branch). The cap is UNCHECKED for this lane, not "
-            f"satisfied; the role-review skill writes the ledger as the "
-            f"review closes."
-        )
+    assert ledger.is_file(), (
+        f"no round ledger for lane {_LANE} at {ledger}, although the "
+        f"management root resolved. The role-review skill writes it as the "
+        f"review closes, one line per finding, with `property=` on every "
+        f"`fixed` row. Write it, or move `_LANE` in this module to the lane "
+        f"whose ledger this suite should certify."
+    )
     done = _run(str(_ROUNDS_CHECK), "--root", str(root), "--lane", _LANE)
     assert done.returncode == 0, (
         f"lane {_LANE}'s round ledger at {ledger} is REFUSED by the two-round "
@@ -296,4 +325,45 @@ def test_the_lane_ledger_this_repository_certifies_is_clean() -> None:
         f"was registered rather than fixed, a third round with no named "
         f"authority, a ledger certifying nothing, or a `fixed` row with no "
         f"`property=` sentence.\n{done.stdout}{done.stderr}"
+    )
+
+
+def test_the_certified_ledger_is_not_older_than_another_lane_s() -> None:
+    """A newer lane ledger must not sit unchecked behind a stale constant.
+
+    The silent direction of `_LANE`. Once a ledger exists for it the test
+    above goes green and STAYS green for every later lane, certifying a
+    closed historical record while the current lane's ledger is never
+    read. Three reviewer lenses found that independently in this module's
+    own round one.
+
+    Ties PASS, deliberately. The root is a git tree elsewhere, and a fresh
+    clone gives every file the same checkout time, so a strict comparison
+    would fail on a machine that had done nothing wrong. Only a ledger
+    STRICTLY newer than the certified one is a finding, which is exactly
+    the shape of "a later lane wrote one and nobody moved the constant".
+    """
+    root = _resolved_root()
+    ledgers = sorted(root.glob(_LEDGER_GLOB))
+    assert ledgers, (
+        f"the resolved management root {root} holds no {_LEDGER_GLOB} at "
+        f"all. Every reviewed lane writes one, so a root holding none is "
+        f"either the wrong root or a review process that has stopped "
+        f"recording; it is not a clean run."
+    )
+    certified = root / f"{_LANE}_rounds.ledger"
+    if not certified.is_file():
+        return  # the sibling test above owns that failure and names it
+    newer = [
+        path.name
+        for path in ledgers
+        if path.stat().st_mtime > certified.stat().st_mtime
+    ]
+    assert not newer, (
+        f"{newer} are newer than the ledger this suite certifies "
+        f"({certified.name}), so a later lane wrote a round ledger and "
+        f"`_LANE` was never moved. The suite is certifying a closed record "
+        f"and reading nothing about the current work. Move `_LANE` to the "
+        f"current lane, or wire `--root <root> --all` once the two "
+        f"pre-rule-8 ledgers are resolved (`ITC-20260802-1715`)."
     )

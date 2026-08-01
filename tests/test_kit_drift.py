@@ -335,7 +335,7 @@ MANIFEST: dict[str, Pin] = {
     # byte-identical command a second time, so giving the duplicate a
     # mechanism of its own would make that item harder to act on.
     #
-    # 0.2.16 makes the receipt authorise only the tree the suite actually ran
+    # 0.2.16 makes the receipt authorize only the tree the suite actually ran
     # against. Two defects, measured as one design because their invariants
     # were the same sentence: the key stored was RECOMPUTED after the child
     # exited (`ITC-20260801-2320`), and a receipt was written for a run whose
@@ -469,21 +469,40 @@ MANIFEST: dict[str, Pin] = {
     #
     # 0.2.16 adds RULE 8 and a LOCATOR, and rule 8 REDDENS EXISTING LEDGERS
     # deliberately: a `fixed` row must carry `property=`, one sentence
-    # stating the invariant the fix establishes. Measured here against the
-    # real root before anything was decided, `--root <root> --all` reported
-    # 2 ledgers checked and 2 refused, 22 and 24 violations, EVERY ONE of
-    # them rule 8. Both are lane ITA-11's and both were written before the
-    # field existed.
+    # stating the invariant the fix establishes.
+    #
+    # MEASURED 2026-08-02 by
+    #
+    #     python .claude/kit/check_review_rounds.py \
+    #         --root "$ITACA_MANAGEMENT_ROOT" --all
+    #
+    #     ---- ITA-11-followup_rounds.ledger ----   REFUSED: 22 violation(s)
+    #     ---- ITA-11_rounds.ledger ----            REFUSED: 22 violation(s)
+    #     2 ledger(s) checked, 2 refused                          EXIT 1
+    #
+    # Every one of the 44 violations is rule 8, and each ledger carries 22
+    # `fixed` rows, which is the same number by construction. The invocation
+    # is written out because a count with no invocation beside it cannot be
+    # re-run, and a first version of this note recorded "22 and 24" and
+    # "forty-five invariants" from a reading rather than from this output.
+    #
+    # BOTH ARE LANE ITA-11'S WORK and only one says so in its `lane:` field:
+    # `ITA-11_rounds.ledger` declares `lane: ITA-11` and
+    # `ITA-11-followup_rounds.ledger` declares `lane: ITC-20260802-0330`,
+    # the plan item it reviews. The filename convention and the `lane:`
+    # field are not the same thing, which is worth knowing before wiring
+    # anything that assumes they are.
     #
     # THEY ARE NOT RETROFITTED, which is this repository's call and is
     # recorded here because it decides what tier 1 can run. The policy says
     # writing the sentence after the fix is not the mechanism, and the whole
-    # value of the field is at the moment of writing; inventing forty-five
+    # value of the field is at the moment of writing; inventing 44
     # invariants for fixes another lane made would produce a record that
     # reads as evidence and is not. So they stay as closed historical
     # records, `--all` is NOT wired, and `tests/test_review_rounds.py` runs
     # the LANE form against a ledger written under rule 8 from its first
-    # line. Wiring `--all` needs those two resolved and is registered.
+    # line. Wiring `--all` needs those two resolved and is registered as
+    # `ITC-20260802-1715`.
     #
     # The locator adds NO environment variable, on the precedent
     # `prepush_receipt.py` set: `--root <dir> --lane <id>` resolves
@@ -502,7 +521,7 @@ MANIFEST: dict[str, Pin] = {
     # `test_no_spawn_site_bypasses_child_env`, which decided the question by
     # reading a fixed window of lines after each `subprocess.run(`, and lane
     # ITA-11 round two met both of that shape's failure directions in one
-    # commit: a neighbour's `env=` sixteen lines away excused two real
+    # commit: a neighbor's `env=` sixteen lines away excused two real
     # offenders, and a correct call whose argv was written one element per
     # line was reported as an offender seventeen lines from its own opening.
     #
@@ -514,11 +533,14 @@ MANIFEST: dict[str, Pin] = {
     # is the ACCOUNTING, so the replacement asserts a floor on the checker's
     # own checked-count line; `tests/test_spawn_env.py` carries both.
     #
-    # MEASURED on first run over `tests/`: 79 modules, 32 spawn calls, 8
-    # unguarded, 0 unverifiable. All eight were `git` spawns, which the
-    # retired guard never looked at because it only ever considered
-    # `sys.executable`. They were fixed in the same commit rather than
-    # registered, because a wired checker that is red wires nothing.
+    # MEASURED 2026-08-02 by `python .claude/kit/check_spawn_env.py tests`
+    # on first run, before any edit: `checked 79 module(s), 32 spawn
+    # call(s), 8 unguarded, 0 unverifiable`, EXIT 1. All eight were `git`
+    # spawns, which the retired guard never looked at because it only ever
+    # considered `sys.executable`. They were fixed in the same commit
+    # rather than registered, because a wired checker that is red wires
+    # nothing. The same invocation now reports 80 modules and 33 spawn
+    # calls, 0 unguarded: this lane's own module is the difference.
     # Both declared values agreed with the master bodies on recomputation.
     "check_spawn_env.py": Pin(
         "b5db024d0e110f379bc9c019ed2ef117e14a952b95895593d81a2e394a3c7619", "0.2.16"
@@ -532,12 +554,20 @@ MANIFEST: dict[str, Pin] = {
     # recorded here rather than in a lane document, because the next lane to
     # read this file is the one that will try again.
     #
-    # The master's body carries an EM DASH and an EN DASH, both inside the
-    # character class of a `.lstrip(" :-.**")` at line 262 of its body, where
-    # they strip a dash separator out of a heading. That is functional and
-    # harmless everywhere except here: CLAUDE.md states "Never use em dashes
-    # or en dashes anywhere, in any file. No exceptions", and
-    # `tests/test_house_style.py` walks every vendored body for exactly that.
+    # The master's body carries an EM DASH and an EN DASH, in the character
+    # class of an `lstrip` that removes a heading's separator, at FILE line
+    # 262 of `check_citations.py` (body line 255; the file line is what a
+    # reader opens the master at). The class holds a space, a colon, a
+    # hyphen, a period, the en dash and the em dash. IT IS NOT QUOTED HERE,
+    # and that is not squeamishness: this file is itself walked by the dash
+    # guard, so quoting it would redden the very check the note is about.
+    # Confirmed by CODE POINT, U+2013 and U+2014, rather than by rendered
+    # output, which cannot tell the two from a hyphen.
+    #
+    # That is functional and harmless everywhere except here: CLAUDE.md
+    # states "Never use em dashes or en dashes anywhere, in any file. No
+    # exceptions", and `tests/test_house_style.py` walks every vendored
+    # body for exactly that.
     # Vendoring the pair turns that walk RED on a file this repository is
     # forbidden to hand-edit, so the two guards would contradict each other
     # and one of them would have to be weakened.
@@ -547,7 +577,7 @@ MANIFEST: dict[str, Pin] = {
     # is a vendored kit body that reached the tree exempt from the dash walk
     # BY ACCIDENT, and the walk was widened to reach it rather than the
     # exemption being kept, with CLAUDE.md's "No exceptions" cited in the
-    # comment that did it. The kit has honoured that before too, at 0.2.15,
+    # comment that did it. The kit has honored that before too, at 0.2.15,
     # when four British spellings inside bodies this walk scans were changed
     # for it. So the defect is routed to the coordination level, and the two
     # rows are vendored by the lane that adopts the fixed master. The

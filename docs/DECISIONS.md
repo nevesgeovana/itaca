@@ -2169,3 +2169,112 @@ failing. A unit test drives the resolution ORDER directly, with both
 sources answering different values, so the order is proven without
 needing a built tree: on an unbuilt tree the branch tests skip, and
 reverting the order was measured to ship green there without it.
+
+---
+
+## DD-50: Three charter calls the kit hands to this repository, and one row it could not vendor
+
+**Date:** 2026-08-02
+**Status:** confirmed
+**Context:** ITA-12, adopting kit 0.2.16. Eight of eleven rows landed;
+`check_citations.py` and its companion did not, and the reason is a rule
+this file already carries rather than a fault in the artifact. Partly
+answers `OQ-54`, and closes nothing: `INC-20260802-1450-shared` releases
+itaca by leaving its `repos` field, not by being marked fixed.
+
+The kit ships three checkers whose CONFIGURATION it deliberately declines
+to decide, on the precedent `prepush_receipt.py` set at 0.2.15: the caller
+passes what a gate needs, and each consumer's charter says what an absent
+answer means at its own gate. This entry records the three answers, so
+`CLAUDE.md` points at a decision rather than being one.
+
+### 1. Citations are checked in ADVISORY mode
+
+`--mode mandatory` refuses a citation carrying no title fragment;
+`--mode advisory` reports it and exits 0. A MISMATCH between a quoted
+title and the title its id carries is refused in BOTH modes, so advisory
+does not give up the check the artifact exists for.
+
+Two measurements decided it, and neither is about prose cost.
+
+The first is that this repository's largest authority is invisible to the
+checker. Requirements are `reqbox` environments in LaTeX under
+`docs/srs/`, and the checker indexes markdown headings, markdown table
+rows and YAML frontmatter. Run with the default prefixes, all 19 REQ
+citations in `CLAUDE.md` are reported as allocated nowhere, every one
+falsely. Mandatory mode over a corpus whose largest authority cannot be
+read would be a mechanism claiming more than it measures, which is the
+defect class this workspace registers most often. REQ is covered instead
+by `tests/test_requirement_trace.py`, which reads the reqboxes directly.
+
+The second is that the citation FORM is ambiguous with English. Over the
+whole prose corpus advisory mode reports 25 citations as carrying no
+title, and every one of the 25 is a false reading: a comma-separated list
+of ids, an ordinary prose comma after an id, a full slug id in backticks,
+and the `canonical-source:` line of a VENDORED KIT HEADER, which this
+repository is forbidden to edit at all. Both are routed
+(`ITC-20260802-1705`, `ITC-20260802-1710`).
+
+### 2. An unresolvable management root SKIPS the round-ledger check, and says so
+
+`check_review_rounds.py` gained a locator at 0.2.16 and reads no
+environment variable of its own, so what an absent root means at a gate is
+this repository's answer to give. It is a SKIP that must be ANNOUNCED,
+never a denial, on the rule `tests/test_kit_drift.py` already applies to
+every env-located artifact: a suite that refused to run on an
+unconfigured clone would gate nothing and stop everything.
+
+This does not join the locator family of DD-31 and DD-44 and adds no
+variable to it. The denial branch stays with `COORD_INCIDENT_LEDGER`
+alone, which is DD-44 and is untouched.
+
+**A missing LEDGER is not a configuration fact and does not share that
+branch.** A root that resolves while the lane's ledger is absent FAILS.
+Stacking the two skips was this lane's own round-one defect: "the review
+wrote no ledger" then reads exactly like "the clone is not configured",
+which is how a cap that nothing applies keeps sounding applied.
+
+### 3. The spawn guard is REPLACED, not joined
+
+`check_spawn_env.py` judges a spawn by the CALL, parsed with `ast`. This
+repository already had `test_no_spawn_site_bypasses_child_env`, which
+judged the same question by a fourteen-line window and is the guard
+`ITC-20260802-0200` is written about. It is RETIRED rather than kept
+beside the checker: two guards claiming the same coverage teach a reader
+to trust neither, and the retired one has both of its failure directions
+reachable while the checker has neither.
+
+Measured on first run over `tests/`: 79 modules, 32 spawn calls, 8
+unguarded, 0 unverifiable. All eight were `git` spawns, invisible to the
+retired guard because it only ever considered `sys.executable`. All eight
+were fixed in the vendoring commit, because a wired checker that is red
+wires nothing.
+
+The checker's boundary is stated rather than assumed: it proves an `env`
+keyword is PRESENT on the call, not that its value is a stripped
+environment, so `env=os.environ` satisfies it. That gap is closed here by
+a second, repository-local walk over the same node set.
+
+### The row that could not be vendored, and why an exemption was refused
+
+`check_citations.py` carries an em dash and an en dash inside a strip
+character class. This file's own repository rule is "Never use em dashes
+or en dashes anywhere, in any file. No exceptions", and
+`tests/test_house_style.py` walks every vendored body for exactly that.
+Vendoring it turned that walk red on a body the drift pin forbids
+hand-editing, so the style rule and the pin would have contradicted each
+other and one of them would have had to be weakened.
+
+The exemption was considered and REFUSED, on this repository's own
+precedent rather than on taste: `release.yml.template` is a vendored kit
+body that reached this tree exempt from the dash walk by accident, and
+the walk was WIDENED to reach it rather than the exemption kept, citing
+the same "No exceptions". The kit has honored that direction before, at
+0.2.15, when four British spellings inside bodies this walk scans were
+changed for it. Carving an exception to an explicit charter rule is not a
+lane's call, so the defect is routed (`ITC-20260802-1700`) and decision 1
+above is taken anyway, so the next lane wires rather than decides again.
+
+Measured, so the scope is not guessed: of the eleven 0.2.16 masters,
+`check_citations.py` is the only one carrying either character, and its
+own companion is clean.

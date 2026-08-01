@@ -1721,3 +1721,34 @@ measured the citation false.
 at which moment it would run.
 
 **Full analysis:** plan entry `ITC-20260802-0120`.
+
+**Partly answered, 2026-08-02, lane ITA-12, the kit 0.2.16 adoption.**
+The question stays OPEN and its remaining half is narrower than it was.
+
+Kit 0.2.16 writes down the CONVENTION this entry said was not the missing
+piece, `<root>/<lane>_rounds.ledger`, and resolves it with
+`--root <dir> --lane <id>` while adding no environment variable. So the
+locator question is settled without joining the locator family, and this
+entry's own reading was right that it was never the obstacle.
+
+WHAT THIS REPOSITORY WIRED. `tests/test_review_rounds.py` runs the checker
+in TIER 1 against the ledger of the lane it names, so the cap is now
+applied by a mechanism and not only by a skill's instruction. It FAILS
+when the root resolves and that ledger is absent, because a review that
+wrote no ledger is work not done and not a configuration state, and it
+FAILS when another lane's ledger is strictly newer than the certified one,
+which is the silent direction of a hand-edited constant. The gate answer
+this entry asked for is written in `CLAUDE.md` under the three charter
+calls: at THIS gate an unresolvable root is a SKIP that must be announced,
+never a denial, because a suite that refused to run on an unconfigured
+clone would gate nothing and stop everything. That answer is scoped to
+this gate and changes nothing about how the root itself resolves.
+
+WHAT REMAINS OPEN, and it is the half this entry named first: there is
+still no LANE IDENTITY at test time, so the lane is a module constant. A
+lane that writes no ledger AND moves nothing is caught by neither guard.
+Checking every ledger under the root would need no identity at all, and
+what blocks that is two closed pre-rule-8 ledgers that the new required
+`property=` field refuses and that were deliberately not retrofitted
+(`ITC-20260802-1715`). Whether the cap becomes a PUSH gate, and at which
+moment, is still the product owner's call and is untouched here.

@@ -251,10 +251,18 @@ RUNNING IT HERE IS AN INSTRUCTION, and the difference from a mechanism is
 stated because this repository's own rule says documentation is not a
 guard. Since kit 0.2.16 it is no longer the only thing:
 `tests/test_review_rounds.py` runs the checker in tier 1 against the
-ledger of the lane it names, so a ledger that violates the cap reddens the
-suite rather than waiting for whoever remembers to run this command. The
-charter answers the gate question that variable does not: an unresolvable
-`ITACA_MANAGEMENT_ROOT` is a SKIP that must be announced, never a denial.
+ledger of the LANE NAMED IN THAT MODULE, so a ledger that violates the cap
+reddens the suite rather than waiting for whoever remembers to run this
+command. The charter answers the gate question that variable does not: an
+unresolvable `ITACA_MANAGEMENT_ROOT` is a SKIP that must be announced,
+never a denial.
+
+WHAT THAT DOES NOT CATCH, because a claim about a mechanism is worth
+exactly its exceptions. A resolved root with no ledger for the named lane
+FAILS, so a review that wrote none is caught. A ledger newer than the
+certified one FAILS, so a constant left behind is caught. A lane that
+writes NO ledger AND moves nothing is caught by neither, and that is
+`ITC-20260802-1715`, waiting on `--all`.
 
 What remains of `OQ-54` is the part a locator never was: a hook has no
 LANE IDENTITY, so the lane is a constant in that test rather than a

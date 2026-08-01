@@ -241,3 +241,109 @@ def test_the_heredoc_stripper_actually_removes_a_body(gate: ModuleType) -> None:
     assert "must be stripped" not in stripped, "heredoc body was not removed"
     # The opener line itself is kept; only the body is dropped.
     assert "git commit -F -" in stripped
+
+
+# INC-20260802-1450-shared, and the reason these live here rather than
+# beside the drift pin. Kit 0.2.16 closed a FAIL-OPEN in this body: an
+# unterminated heredoc opener made `_strip_heredocs` drop every remaining
+# line of the command, and a real `git push` went with them. The only thing
+# in this repository that would have noticed its return was the body-sha256
+# pin in `tests/test_kit_drift.py`, which is a CHANGE detector and not a
+# BEHAVIOR detector: a re-vendor that regresses the branch and updates the
+# hash mechanically ships green.
+#
+# That is the same argument `test_the_heredoc_stripper_actually_removes_a_body`
+# above was written from, one incident earlier, and it is why the assertion
+# surface is `_find_git_push` and `_strip_heredocs` rather than the
+# end-to-end decision: an end-to-end verdict can stay correct by luck.
+#
+# MEASURED RED against the 0.2.8 body taken out of git at ad0698b, before
+# the pin moved: 4 of the 5 assertions below were wrong there and 0 are
+# wrong on the vendored 0.2.16 body. The three fail-open cases each
+# stripped the push away and reported `is_push=False`; the here-string
+# commit was DENIED as a push although it is a commit.
+#
+# THE FIFTH ASSERTION WAS ALREADY CORRECT AT 0.2.8, and it is named rather
+# than quietly counted: a push written AFTER a terminated here-string was
+# kept there too. It is a regression detector for something the fix must
+# not break, not evidence that the fix works, and a guard whose whole set
+# measured red would have been the stronger claim. This one does not, so
+# the number is 4 of 5.
+_UNTERMINATED_OPENERS = (
+    ('git commit -m "see the <<EOF form"', "a message naming the <<EOF form"),
+    ('git commit -m "about <<HEREDOC" &&', "the same with a trailing &&"),
+    ('git commit -m "a << b"', "a << that is not a heredoc at all"),
+)
+
+
+@pytest.mark.parametrize(
+    "first_line,why",
+    _UNTERMINATED_OPENERS,
+    ids=[why for _, why in _UNTERMINATED_OPENERS],
+)
+def test_an_unterminated_opener_never_hides_the_push_on_the_next_line(
+    gate: ModuleType, first_line: str, why: str
+) -> None:
+    """An opener with no terminator must strip NOTHING (`INC-20260802-1450-shared`).
+
+    Stripping can only ever take tokens AWAY from what is scanned, so in a
+    gate that must fail closed there is exactly one safe reading of an input
+    the stripper does not understand, and it is to strip nothing.
+
+    The documented fallback does not save this. The design note says an
+    unbalanced quote makes the parse fail and raw text matching `git` and
+    `push` is then treated as a push; that is false in general, because
+    `shlex.split(..., posix=False)` does not raise on every unbalanced
+    quote. A stripping bug therefore yields a CLEAN PARSE with the push
+    missing from it, and nothing downstream notices.
+    """
+    command = f"{first_line}\ngit push origin main"
+    stripped = gate._strip_heredocs(command)
+    assert "git push origin main" in stripped, (
+        f"the stripper dropped a real push that follows {why}. An opener "
+        f"whose terminator never arrives must leave the command as written; "
+        f"anything else removes tokens the gate has to scan."
+    )
+    is_push, _, _ = gate._find_git_push(command)
+    assert is_push is True, (
+        f"the gate does not see the push that follows {why}. This is "
+        f"INC-20260802-1450-shared: is_push False is not a weaker refusal, "
+        f"it is no refusal at all, because the gate returns without "
+        f"evaluating an attestation, a ledger or a release check."
+    )
+
+
+def test_a_powershell_here_string_hides_the_push_its_body_mentions(
+    gate: ModuleType,
+) -> None:
+    """A commit whose MESSAGE describes a push is not a push (`ITC-20260801-2245`).
+
+    The opposite direction to the test above, closed in the same kit
+    promotion, and it is a false POSITIVE rather than a fail-open: a
+    PowerShell here-string leaves an odd quote count, `shlex` raised, and
+    the fail-closed fallback denied a COMMIT on the word `pre-push` alone,
+    because a hyphen is a word boundary. Every commit message in this lane
+    describes the push path, so the cost was a workaround (`git commit -F`)
+    carried in a skill.
+
+    The second assertion is what keeps the fix honest: a here-string that IS
+    terminated must still not hide a push written after its terminator.
+    """
+    hidden = (
+        "git commit -m @'\n"
+        "this message body mentions git push and pre-push and must be data\n"
+        "'@"
+    )
+    is_push, _, _ = gate._find_git_push(hidden)
+    assert is_push is False, (
+        "a commit whose here-string MESSAGE mentions a push is denied as a "
+        "push. The here-string body is data; nothing inside one may make the "
+        "gate see a push."
+    )
+    followed = f"{hidden}\ngit push origin main"
+    stripped = gate._strip_heredocs(followed)
+    assert "git push origin main" in stripped, (
+        "a terminated here-string swallowed the push written AFTER its "
+        "terminator. Only the lines strictly between the opener and the "
+        "terminator are data."
+    )
