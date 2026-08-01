@@ -124,7 +124,16 @@ python .claude/kit/review_runner.py close .
 removals, continuing past any it cannot make and exiting 1 with each
 failure named. A lens still running inside its own worktree is the
 ordinary case, not an exceptional one, and it no longer strands the
-worktrees after it or destroys their findings (`ITC-20260801-0130`). A
+worktrees after it (`ITC-20260801-0130`).
+
+That sentence used to end "or destroys their findings", which is more
+than the code delivers and is corrected rather than left. What is
+guaranteed is that findings written BEFORE the collection survive, since
+they are collected from the sidecar before anything is removed. What is
+not guaranteed is a busy worktree surviving: the removal falls back to
+deleting the directory on ANY failure, so on a platform where that
+succeeds a lens can lose its working directory and whatever it wrote
+after the collection (`ITC-20260802-0010`, routed to the kit). A
 crashed run deliberately leaves the trees on disk for inspection, and a
 later `close` still finds them, so never remove one by hand.
 
@@ -171,11 +180,42 @@ numerical analyst) become questions to the author, never an agent's
 call. Re-run a reviewer only when its findings forced substantive
 rework of the item.
 
-## 5. Record the passes
+## 5. Record the passes, and the round ledger the cap is checked against
 
 The session close lists, per work item: the passes that ran,
 findings fixed, findings registered, and questions raised to the
 author. A clean pass is recorded as clean; silence is not a record.
+
+**The cap is two rounds, and it is CHECKED and not merely stated.** Write
+the lane's round ledger under the resolved management root, one line per
+finding, in the format `.claude/kit/check_review_rounds.py` reads, and run
+it before the review closes:
+
+```
+python .claude/kit/check_review_rounds.py --ledger <resolved root>/<lane>_rounds.ledger
+```
+
+Read the output and not only the exit code: it prints the lane, the round
+count and the number of findings, so a ledger that certifies almost
+nothing is visible rather than merely non-zero.
+
+The rule it enforces is the one a flat count gets wrong. A round-two
+finding **about a previous round's fix** is that fix not being done: it is
+FIXED in the round that found it and it is never registered. Only a
+finding on NEW ground is registered, and then the lane closes. Lane ITA-4
+is why: six of its round-one fixes did not guard, and a flat
+two-rounds-then-register cap would have shipped every one of them
+documented as known.
+
+This is an INSTRUCTION, not a mechanism, and the difference is stated
+because this repository's own rule says documentation is not a guard.
+Nothing in the repository can run this automatically: the ledger lives
+outside it, under a locator, and giving it one is `OQ-53`. What the
+repository does guarantee is that the checker is present, executable and
+mutation-proven (`tests/test_review_rounds.py`).
+
+The ledger FORMAT is PROPOSED rather than settled. If a lane finds it
+wrong, that is a kit promotion, never an edit to the vendored copy.
 
 ## 6. Write the push attestation (mandatory, clears the git-push gate)
 

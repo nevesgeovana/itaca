@@ -24,10 +24,25 @@ round's fix (that finding is the fix not being done, and it is fixed in
 the round that found it), refuses a third round with no named authority,
 and refuses a ledger that certifies nothing.
 
+WHAT THIS MODULE DOES NOT PROVE, said first because a reviewer measured
+that the paragraph below reads as if it did. Nothing in this repository
+applies the cap to a real ledger from a hook or from CI, and these tests
+would all pass if it were never applied at all. What DOES apply it is the
+`role-review` skill, which records a lane's round ledger under the
+resolved management root and runs this checker against it before the
+review closes. That is an INSTRUCTION and this repository's own rule says
+documentation is not a guard, so the honest description is: vendored,
+mutation-proven, and applied by a skill rather than by a mechanism. A
+mechanical invoker is not possible here without a fourth locator, because
+the ledger lives outside this repository by the same decision that moved
+the plan ledger out (`OQ-53`).
+
 WHY THE COMPANION RUNS HERE rather than sitting beside the checker
 unexecuted. A checker in `.claude/kit` that nothing calls is the same
 shape as the defect it exists to catch, which this repository already
-names for `ITACA-006`. It is also the drift lane ITA-4 measured directly:
+names for `ITACA-006`. Running the companion answers DRIFT, not
+enforcement, and the two are not the same claim. It is also the drift
+lane ITA-4 measured directly:
 the deployed plan checker had been upgraded to 0.2.10 while the mutation
 companion proving it can still fail sat at 0.2.3, both internally
 consistent and no test able to see it. A companion that runs in tier 1

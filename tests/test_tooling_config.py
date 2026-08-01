@@ -38,6 +38,7 @@ from typing import Any
 import pytest
 import yaml
 from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
+from hook_entry import assert_is_the_vendored_receipt, split_wrapper
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
@@ -281,47 +282,106 @@ def test_the_push_tier_runs_the_whole_suite_and_blocks() -> None:
         f"the full-suite hook declares stages {stages.get('pytest-full')!r}; "
         f"it must be pre-push, or it is back on every commit."
     )
-    declared = entries["pytest-full"]
     # Kit 0.2.15 lets this entry be WRAPPED in the pre-push receipt, which
     # skips a command already passed on an identical tree and environment.
     # Everything below is a claim about WHAT ACTUALLY RUNS, so it reads the
-    # wrapped command and not the wrapper. Without this split the three
-    # assertions would be satisfied by any wrapper whose own argv happens
-    # to avoid the strings they look for, including a wrapper that runs
-    # something else entirely, so the guard would pass while nothing ran.
-    wrapper, separator, wrapped = declared.partition(" -- ")
-    full = wrapped if separator else declared
-    assert full.split()[:1] == ["pytest"], (
-        f"the pre-push hook's effective command is {full!r}, which does not "
+    # PARSED command and not the entry string. The first repair here split
+    # on `" -- "` and searched substrings, and a reviewer measured that a
+    # wrapper carrying the receipt's name inside a quoted argument passed
+    # every assertion while running another program entirely.
+    wrapper, argv = split_wrapper(entries["pytest-full"])
+    assert argv[:1] == ["pytest"], (
+        f"the pre-push hook's effective command is {argv!r}, which does not "
         f"start with pytest. The entry may be wrapped (the receipt takes the "
-        f"real command after ` -- `), but what runs must still be the suite."
+        f"real command after `--`), but what runs must still be the suite."
     )
-    if separator:
-        assert wrapper.split()[:1] == ["python"] and "guard" in wrapper.split(), (
-            f"the pre-push hook is wrapped by {wrapper!r}, which is not the "
-            f"kit receipt's `guard` subcommand. Only `prepush_receipt.py "
-            f"guard` may stand in front of the suite here: it runs the "
-            f"command unless an exact-match receipt exists, and every unknown "
-            f"state runs. Any other wrapper is an unreviewed gate."
-        )
-        assert "prepush_receipt.py" in wrapper, (
-            f"the pre-push hook is wrapped by {wrapper!r}, which is not the "
-            f"vendored receipt. The receipt is drift-pinned in "
-            f"tests/test_kit_drift.py; an unpinned wrapper is not."
-        )
-        assert "--label" in wrapper.split(), (
-            f"the wrapper {wrapper!r} carries no --label. The label is part "
-            f"of the receipt key, and it is what stops two wrapped commands "
-            f"from authorizing each other's skip."
-        )
-    assert "not slow" not in full and "-m" not in full.split(), (
-        f"the pre-push hook runs {full!r}, which SELECTS. It must run the "
+    if wrapper is not None:
+        assert_is_the_vendored_receipt(wrapper)
+    assert "-m" not in argv and "--deselect" not in argv, (
+        f"the pre-push hook runs {argv!r}, which SELECTS. It must run the "
         f"whole suite: it is the only local gate that sees the slow tests."
     )
-    assert "--no-cov" not in full, (
-        f"the pre-push hook runs {full!r} without coverage, so the 90 "
+    assert "--no-cov" not in argv, (
+        f"the pre-push hook runs {argv!r} without coverage, so the 90 "
         f"percent floor is enforced nowhere locally (REQ-75)."
     )
+
+
+@pytest.mark.parametrize(
+    "entry,why",
+    [
+        (
+            "python .claude/kit/other_wrapper.py --note "
+            '".claude/kit/prepush_receipt.py guard --label pytest-full" '
+            "-- pytest",
+            "the receipt's name inside a quoted argument of another program",
+        ),
+        (
+            "python .claude/kit/prepush_receipt.py status --label pytest-full "
+            "-- pytest",
+            "the status subcommand, which answers and runs nothing",
+        ),
+        (
+            "python .claude/kit/prepush_receipt.py guard -- pytest",
+            "no --label, so every wrapped command would share one key",
+        ),
+        (
+            "python .claude/kit/prepush_receipt.py guard --label -- pytest",
+            "an empty --label value",
+        ),
+        (
+            "sh -c .claude/kit/prepush_receipt.py guard --label x -- pytest",
+            "a shell standing where the interpreter must be",
+        ),
+    ],
+    ids=["quoted-name", "status", "no-label", "empty-label", "not-python"],
+)
+def test_a_wrapper_that_is_not_the_receipt_is_refused(entry: str, why: str) -> None:
+    """Prove the wrapper check can still fail, on the shapes that defeated it.
+
+    The first version of the check above searched the entry STRING, and a
+    reviewer measured that the first case here satisfied all seven of its
+    assertions across two modules while the program actually executed was
+    `other_wrapper.py`. A guard that cannot refuse the thing it names is
+    the failure class this repository registers most, so the refusal is
+    asserted rather than assumed.
+
+    Every case is a wrapper that a reader would plausibly write and that
+    must not stand in front of the blocking suite.
+    """
+    wrapper, argv = split_wrapper(entry)
+    assert wrapper is not None, f"the fixture for {why} is not even wrapped"
+    assert argv[:1] == ["pytest"], "every fixture wraps the real suite"
+    with pytest.raises(AssertionError):
+        assert_is_the_vendored_receipt(wrapper)
+
+
+def test_the_real_entry_passes_the_same_check() -> None:
+    """The control: the refusals above are not refusing everything.
+
+    A parametrized refusal test passes just as happily when the assertion
+    it calls rejects every input, including the correct one, so the live
+    entry is driven through the same function as the positive case.
+    """
+    config = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
+    entry = next(
+        hook["entry"]
+        for repo in config["repos"]
+        if repo.get("repo") == "local"
+        for hook in repo["hooks"]
+        if hook["id"] == "pytest-full"
+    )
+    wrapper, argv = split_wrapper(entry)
+    assert wrapper is not None, (
+        f"the pre-push entry {entry!r} is not wrapped at all, so this control "
+        f"is measuring nothing. If the wrapper was deliberately removed, "
+        f"remove this test with it."
+    )
+    assert argv[:1] == ["pytest"], (
+        f"the live entry wraps {argv!r}, so the refusals above and this "
+        f"control are not comparing the same shape."
+    )
+    assert_is_the_vendored_receipt(wrapper)
 
 
 def test_the_coverage_floor_is_declared_with_its_value() -> None:
