@@ -362,6 +362,239 @@ def test_the_citation_record_matches_the_release_it_describes() -> None:
     )
 
 
+# --------------------------------------------------------------------------
+# The known-limitations gate (ITA-2D).
+#
+# v0.2.0 shipped with a `### Known open` block and nothing required it. The
+# block is what makes shipping with known defects legitimate rather than
+# quiet, so the next release must not be able to omit it by forgetting.
+#
+# The RULE is a pure function and the TAG CHECK only applies it. That split
+# is the design, not tidiness: the nearest precedent in this file,
+# `test_the_citation_record_matches_the_release_it_describes`, is
+# conditional on a tag and therefore inert on every tree except one, so its
+# rule has executed approximately never. A guard that has not run its own
+# rule is not a proven guard.
+# --------------------------------------------------------------------------
+
+_LIMITATION_HEADINGS = ("known open", "known limitation")
+_MINIMUM_LIMITATION_LINES = 3
+
+
+def release_section(changelog: str, version: str) -> str | None:
+    """The body of the `## [version] - date` section, or ``None``.
+
+    Bounded by the next `## ` heading, so a later release cannot lend its
+    limitations block to an earlier one.
+    """
+    opening = re.compile(rf"^## \[{re.escape(version)}\][^\n]*$", re.MULTILINE)
+    start = opening.search(changelog)
+    if start is None:
+        return None
+    rest = changelog[start.end() :]
+    following = re.search(r"^## ", rest, re.MULTILINE)
+    return rest if following is None else rest[: following.start()]
+
+
+def known_limitation_lines(section: str) -> list[str]:
+    """The non-blank lines under this section's known-limitations heading.
+
+    Empty when the heading is absent, and empty when the heading is there
+    with nothing under it. The second case is the one worth having: a
+    heading added to satisfy a checker and left hollow discloses nothing,
+    and would otherwise pass.
+
+    A `#` opening a line inside a fenced code block is read as a heading
+    and ends the collection early. That is deliberate rather than
+    overlooked: tracking fences would add a branch, and the branch would
+    need its own proof to be worth anything. The direction it errs in is
+    what makes leaving it safe, and the case list pins that direction: a
+    miscounted fence UNDER-counts, so the rule refuses where it should
+    have accepted. A guard that occasionally asks for more disclosure is
+    the failure this one is allowed to have.
+    """
+    lines = section.splitlines()
+    collected: list[str] = []
+    inside = False
+    for line in lines:
+        if line.startswith("#"):
+            heading = line.lstrip("#").strip().casefold()
+            inside = any(word in heading for word in _LIMITATION_HEADINGS)
+            continue
+        if inside and line.strip():
+            collected.append(line)
+    return collected
+
+
+def notes_disclose_known_limitations(section: str) -> bool:
+    """The rule the tag gate applies. One place, so one thing is mutated."""
+    return len(known_limitation_lines(section)) >= _MINIMUM_LIMITATION_LINES
+
+
+# Each case is (label, section text, must the rule accept it). The refusing
+# cases come first because they are what the guard exists for; a case list
+# with no refusals proves a predicate that returns True.
+_LIMITATION_CASES: tuple[tuple[str, str, bool], ...] = (
+    ("no heading at all", "### Added\n\n* a thing\n* another\n* a third\n", False),
+    (
+        "a hollow heading, which is the shape a checker invites",
+        "### Known open\n\n### Added\n\n* a thing\n",
+        False,
+    ),
+    (
+        "a heading with less than the floor under it",
+        "### Known open\n\n* one lonely bullet\n",
+        False,
+    ),
+    (
+        "the shape v0.2.0 actually shipped",
+        "### Known open\n\n**Ships with known defects.**\n\n* one\n* two\n",
+        True,
+    ),
+    (
+        "the other spelling, which prose may reach for",
+        "### Known limitations\n\n* one\n* two\n* three\n",
+        True,
+    ),
+    (
+        "a deeper heading level still counts",
+        "#### Known open\n\n* one\n* two\n* three\n",
+        True,
+    ),
+)
+
+
+@pytest.mark.fast  # 0.01 s, pure string work, and it is the RULE
+def test_the_known_limitations_rule_accepts_and_refuses() -> None:
+    """The rule executes on every run, against cases in both directions.
+
+    MEASURED RED before the rule existed, in two ways. Against a predicate
+    mutated to `return True`, all four refusing cases came back wrong.
+    Against the repository's real `[Unreleased]` section as it stood at
+    `f3d790d`, the rule REFUSED: `grep -in "known limitation|known open"`
+    over `CHANGELOG.md` returned lines 509, 826 and 999, and all three sit
+    inside `[0.2.0]`, which opens at line 452. The Unreleased notes carried
+    no limitations block at all, so the guard's first subject was real.
+    """
+    wrong = [
+        label
+        for label, section, expected in _LIMITATION_CASES
+        if notes_disclose_known_limitations(section) is not expected
+    ]
+    assert not wrong, f"{len(wrong)} of {len(_LIMITATION_CASES)} cases wrong: {wrong}"
+    accepted = sum(1 for _, _, expected in _LIMITATION_CASES if expected)
+    assert accepted and accepted < len(_LIMITATION_CASES), (
+        f"the case list must exercise both verdicts, and it accepts "
+        f"{accepted} of {len(_LIMITATION_CASES)}. A list with no refusals "
+        f"passes a predicate that returns True and proves nothing."
+    )
+
+
+@pytest.mark.fast  # 0.01 s, pure string work
+def test_a_section_cannot_borrow_the_next_release_s_limitations() -> None:
+    """`release_section` stops at the next `## `, measured on the real file.
+
+    Written because the case list above cannot test this: every case there
+    is already a single section, so a `release_section` that ran to the end
+    of the file would pass all seven. Without the bound, `[Unreleased]`
+    would inherit `[0.2.0]`'s `### Known open` block and the gate would be
+    green on notes that disclose nothing, which is precisely the state this
+    lane found the file in.
+    """
+    changelog = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    unreleased = release_section(changelog, "Unreleased")
+    shipped = release_section(changelog, "0.2.0")
+    assert unreleased is not None and shipped is not None
+    assert "## [0.2.0]" not in unreleased, (
+        "the [Unreleased] section runs past the next release heading, so it "
+        "would inherit that release's disclosures"
+    )
+    assert "## [0.1.0]" not in shipped, (
+        "the [0.2.0] section runs past the next release heading"
+    )
+    assert release_section(changelog, "9.9.9") is None, (
+        "a version with no section must be reported as absent, not as an "
+        "empty string that then reads as a section carrying nothing"
+    )
+
+
+@pytest.mark.fast  # 0.01 s, reads one file
+def test_the_unreleased_notes_disclose_known_limitations() -> None:
+    """`[Unreleased]` carries the block, so the tag cannot be the first ask.
+
+    The tag check below is the gate; this is the part that fails EARLY.
+    Discovering at the tag that the release notes are incomplete is
+    discovering it at the one moment when the remedy is slow and the
+    pressure to skip it is highest, which is how `[Unreleased]` reached
+    `f3d790d` with zero limitation statements while `[0.2.0]` carried
+    three.
+    """
+    section = release_section(
+        (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8"), "Unreleased"
+    )
+    assert section is not None, "CHANGELOG.md has no ## [Unreleased] section"
+    lines = known_limitation_lines(section)
+    assert notes_disclose_known_limitations(section), (
+        f"the [Unreleased] section of CHANGELOG.md carries "
+        f"{len(lines)} line(s) under a known-limitations heading and needs "
+        f"at least {_MINIMUM_LIMITATION_LINES}. What ships with known "
+        f"defects must say so where a user reads it, not in a ledger they "
+        f"cannot see. Add a '### Known open' block stating each limitation "
+        f"as what a user can observe."
+    )
+
+
+def test_a_tagged_release_cannot_ship_without_a_known_limitations_section() -> None:
+    """THE GATE: at a tag, that version's notes must carry the block.
+
+    Conditional on a tag for the same reason
+    `test_the_citation_record_matches_the_release_it_describes` is, and
+    with the same anchor: `_released_version` reads the REPOSITORY, not the
+    installed distribution, because a stale editable install made that
+    sibling skip at a tagged commit (`FND-046`).
+
+    `[0.2.0]` is asserted unconditionally underneath, as a positive
+    control. Without it a predicate matching nothing at all would leave
+    this test green on every development tree and green at a tag whose
+    notes it silently failed to find.
+    """
+    changelog = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    shipped = release_section(changelog, "0.2.0")
+    assert shipped is not None, "CHANGELOG.md has no ## [0.2.0] section"
+    assert notes_disclose_known_limitations(shipped), (
+        "the released 0.2.0 notes no longer satisfy the rule this gate "
+        "applies. Either the section was edited or the rule stopped "
+        "matching what this repository writes; the second would leave the "
+        "gate green on notes it cannot read."
+    )
+
+    packaged = _released_version()
+    if packaged is None:
+        tag, distance = _describe()
+        pytest.skip(
+            f"HEAD is {distance} commits past v{tag}, a development tree, so "
+            f"there is no released version whose notes this could read. The "
+            f"RULE is exercised on every run by "
+            f"test_the_known_limitations_rule_accepts_and_refuses, and the "
+            f"working notes by test_the_unreleased_notes_disclose_known_"
+            f"limitations; only this application is deferred to the tag."
+        )
+    section = release_section(changelog, packaged)
+    assert section is not None, (
+        f"this tree is tagged v{packaged} and CHANGELOG.md has no "
+        f"## [{packaged}] section. RELEASING.md step 1 requires one."
+    )
+    lines = known_limitation_lines(section)
+    assert notes_disclose_known_limitations(section), (
+        f"the [{packaged}] release notes carry {len(lines)} line(s) under a "
+        f"known-limitations heading and need at least "
+        f"{_MINIMUM_LIMITATION_LINES}. A release that ships with known "
+        f"defects and does not say so is the disclosure half of v0.2.0's "
+        f"own decision going missing. Add a '### Known open' block."
+    )
+
+
 @pytest.mark.fast  # 0.06 s, and a BOM is written by an ordinary edit
 def test_no_tracked_file_carries_a_byte_order_mark() -> None:
     """No tracked file may start with `EF BB BF`, anywhere in the tree.

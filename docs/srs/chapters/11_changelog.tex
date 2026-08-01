@@ -12,6 +12,32 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.11, 2026-08-02, A Stated Gap Replaces a Partial Guard}
+
+A MINOR revision adding no requirement and withdrawing none, NARROWING
+REQ-41. Design decision DD-52 lands in the same window and is recorded in
+\code{docs/DECISIONS.md}.
+
+\paragraph{Changed (REQ-41, the \code{concat} refusal is withdrawn and the
+gap is stated).} Author's decided call of 2026-08-02. REQ-41 stated that a
+derivation discarded by \code{concat} is refused at the concat itself.
+That refusal keyed on uncertainty being PRESENT at concat time, so the
+sequence derive, concat, then declare walked past it and reached
+$u = 0.36055513$ where $0.1$ is correct, which is the same number the
+refusal was specified to prevent. What \code{concat} discards is the
+RECORD, and the record is what a later declaration needs, so no test
+performed at concat time can be complete. A guard covering one ordering of
+three acts teaches that the class is handled; the requirement now states
+the gap instead, names the two workflows that are correct, and leaves the
+wider trade, refusing every discarding \code{concat} irrespective of
+uncertainty, as an open product decision.
+
+The other three lineage refusals of REQ-41 are unchanged in force and in
+wording: \code{compute} over shared ancestry, \code{translate\_moments}
+stacked on an earlier transfer, and a random-component reduction over an
+interpolated dimension, together with the fourth absent-evidence case.
+\code{UncertaintyLineageError} remains public surface.
+
 \section*{Document 0.2.10, 2026-08-01, The Dependency Table Is Checked, Not Maintained}
 
 A PATCH revision adding no requirement and withdrawing none, correcting

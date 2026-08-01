@@ -10,6 +10,25 @@
 \textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Summary}\\
 \midrule
 \midrule
+0.2.11 & 2026-08-02 & Geovana Neves &
+A stated gap replaces a partial guard. A MINOR revision adding no
+requirement and withdrawing none, NARROWING REQ-41: the refusal of a
+\code{concat} that discards a derivation is withdrawn, and the gap it
+covered incompletely is stated in the requirement instead. The refusal
+keyed on uncertainty being present at concat time, so derive, concat,
+then declare reached $u = 0.36055513$ where $0.1$ is correct, with the
+mechanism in place; what \code{concat} discards is the RECORD a later
+declaration needs, so no concat-time test can be complete, and a guard
+covering one ordering of three acts teaches that the class is handled.
+The wider alternative, refusing every discarding \code{concat}
+irrespective of uncertainty, would refuse ordinary data concatenation and
+is left as an open product decision. The requirement now names the two
+workflows that are correct. REQ-41's other three refusals and the fourth
+absent-evidence case are unchanged, and
+\code{UncertaintyLineageError} remains public surface. Design decision
+DD-52 lands in the same window, recording the author's two JSON export
+calls and the rejected \code{split\_by} alternative, all three of which
+had entered as normative sentences with no decision behind them.\\[4pt]
 0.2.10 & 2026-08-01 & Geovana Neves &
 REQ-83's dependency table is checked against \code{pyproject.toml}
 instead of maintained beside it. A PATCH revision adding no requirement

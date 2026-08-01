@@ -283,6 +283,28 @@ _COMMIT_TIER_GUARD_TESTS = (
     # no build and so has no reason to wait for the push.
     "tests/test_release_integrity.py::TestIncident0854Guards"
     "::test_guard_1_the_versioned_tree_carries_no_forbidden_identifier",
+    # The three below are the known-limitations gate (ITA-2D), and all
+    # three measured under 0.005 s: they are pure string work over one
+    # already-read file, with no subprocess and no build. They live in a
+    # `slow` module and would otherwise inherit that marker, which is what
+    # this list exists to make deliberate in the other direction too.
+    #
+    # They are in the COMMIT tier rather than only at the push because the
+    # thing they guard is written by hand in prose. A release note is
+    # edited in the same commits as the code it describes, so the moment
+    # the disclosure stops matching is a commit, and finding out at the
+    # push means finding out after the edit is cold.
+    #
+    # 0.00 s. The rule itself, seven cases in both directions. This is the
+    # only one of the three that would still mean something on a tree whose
+    # CHANGELOG was replaced wholesale.
+    "tests/test_release_integrity.py::test_the_known_limitations_rule_accepts_and_refuses",
+    # 0.00 s. The section bound, which the case list above cannot reach.
+    "tests/test_release_integrity.py"
+    "::test_a_section_cannot_borrow_the_next_release_s_limitations",
+    # 0.00 s. The working notes, so the tag is never the first time anyone
+    # is asked for the disclosure.
+    "tests/test_release_integrity.py::test_the_unreleased_notes_disclose_known_limitations",
 )
 
 

@@ -27,6 +27,199 @@ explains it.
 names `release.yml` with environment `pypi`. A publisher naming
 `release_gate.yml` cannot work and is not a fallback.
 
+### Known open
+
+**This release ships with known limitations, deliberately and on the
+record.** v0.2.0 disclosed its known defects here and pinned each one with
+a strict-xfail test; that ledger,
+`tests/test_chk1_open_defects.py`, now runs `38 passed, 2 xfailed`, so all
+but two of them are closed. What follows is those two, plus the classes
+the independent review and this cycle's own review rounds found and no
+lane has closed. Disclosure is the half that makes shipping with a known
+gap legitimate, and a section stating it is now REQUIRED before a version
+tag can pass the release gate.
+
+These are stated as **classes of thing you can observe**, not as internal
+defect ids, because an id tells you what a fix would be and a class tells
+you what happens to you. Every one of them was reproduced against the
+code this release ships; the numbers below came from running it.
+
+The two classes that produce a **wrong number with no signal** are first,
+because they are the ones to read.
+
+**1. A shared origin that `concat` discarded is not seen, and the result
+is silently overstated.** `compute` refuses when it can see that two
+quantities came from a common root (see class 3), and that net has a hole
+at `concat`: the joined frame carries the History of its FIRST input
+alone, so a derivation recorded in any other input is gone, and the
+refusal has nothing left to fire on. Measured, with `p = 3*x` and
+`q = 2*x` derived in the second input and `u(x) = 0.1` declared:
+`compute("r = p - q")` on the joined frame returns
+`u(r) = 0.36055513` where `0.1` is correct on those rows. The number is
+the same whether you declare before or after the `concat`.
+**What to do now:** concatenate the INPUTS of a derivation and derive once
+on the joined frame, rather than joining frames that are already derived;
+or declare the pair you need with `set_correlation`, which the engine then
+propagates. Deriving each input identically is safe, and is the ordinary
+workflow of processing several runs the same way.
+**Why there is no partial guard, stated because one was here and is gone.**
+This release removed a `concat`-time refusal that covered only the case
+where uncertainty was already present when the frames were joined. It did
+not cover `derive, concat, then declare`, which reaches the measurement
+above unchanged, so its real effect was to teach readers that the class
+was covered. Refusing every `concat` that discards a derivation,
+regardless of uncertainty, would refuse ordinary data concatenation. The
+trade between those is an open author decision, and until it is taken the
+gap is declared here rather than half-covered in code.
+
+**2. A relative uncertainty spec resolved against a non-finite value
+yields a non-finite uncertainty.** `set_uncertainty` refuses a DECLARED
+magnitude that is not finite, but `"5%"` is resolved against the data, so
+on a variable carrying `NaN` it produces `NaN`. Measured: `y = [nan, 2.0]`
+with `"5%"` gives `u(y) = [nan 0.1]`, and that `NaN` then propagates into
+everything derived from `y`. The structural fix belongs in `UncFrame` and
+is blocked on `OQ-40`, because that array carries `NaN` deliberately for
+cells `compute(where=)` and `fill` did not touch, so the two meanings have
+to be separated first. Pinned by a strict-xfail test.
+**What to do now:** declare an absolute magnitude on any variable that
+carries `NaN`, or fill before declaring.
+
+**3. Five operations refuse uncertainty, and a sixth family refuses a
+shared origin.** Both are deliberate and both raise rather than returning
+a number. The first group is unchanged in force from v0.2.0; the second is
+new in this release.
+`db.smooth`, `db.diff` (and `db.d[dim]`), `db.fitmodel`, `db.fitvalue` and
+`db.fill(method="polyfit")` raise when the frame carries an UncFrame,
+because their uncertainty rule is not frozen (`REQ-98`; `OQ-18`, `OQ-24`
+and `OQ-42` are what would lift them). Separately,
+`compute` on quantities of common origin, `translate_moments`
+stacked on an earlier transfer, and a random-component reduction over a
+dimension an earlier `interpolate` produced all raise
+`UncertaintyLineageError` rather than returning a number computed from a
+false independence assumption; the message names the single expression
+that is already correct. A fourth case joins them: a History entry the
+engine cannot interpret leaves every origin unknown, so a multi-carrier
+`compute` is refused even for quantities that were never derived.
+**What to do now:** run the five before assigning uncertainty, or use
+`fill(method="linear")` or `fill(method="nearest")`; for the refusals,
+write the single expression the message names, or declare the pair with
+`set_correlation`, which settles it either way including a declared zero.
+Measured: with `p = 3*x`, `q = 2*x` and `u(x) = 0.1`, `compute("r = p - q")`
+raises, and after `set_correlation({("p","q"): 1.0})` it returns
+`u(r) = 0.1`, which is correct.
+**The limit of that advice:** there is still no `drop_uncertainty`
+(`OQ-46`), so once a frame carries an UncFrame the only way back is to
+re-run from `itc.load`, and applying a processor assigns its
+`[uncertainties]` section itself.
+
+**4. Units are labels, not contracts.** Nothing converts and nothing
+refuses a mismatch, in three places, and in each the result carries a unit
+string that is not what its number means.
+`db.combine` sums a variable in `N` with one in `lbf` and labels the
+result `N` (pinned by a strict-xfail test). `itc.concat` joins a frame
+whose `along` dimension is in `deg` to one in `rad`, and a variable in `N`
+to one in `lbf`, taking both labels from the first input; note that
+`concat` DOES refuse a mismatch on the other, non-`along` dimensions, so
+the coverage is partial in a way the requirement's wording does not
+signal. `db.fitmodel` followed by `db.fitvalue` drops the source
+dimension's unit entirely: measured `deg` in, `None` on the coefficient
+dimension and `None` again on the dimension `fitvalue` restores.
+**What to do now:** convert to a common unit yourself before combining or
+concatenating, with `utils.units.convert`, and re-apply the unit with
+`set_metadata` after a `fitmodel`/`fitvalue` round trip.
+
+**5. Structure can survive an operation that invalidated it.** Three
+shapes, all reproduced.
+After `integrate` consumes a component, the AxisRegistry still declares
+the vector group over the components that are gone: measured
+`vars = ['FX']` with `force = ('FX','FY','FZ')` still registered, and a
+later `db.rotate` on that frame is ACCEPTED rather than refused.
+**There is no way out of this one on the frame you have**, which is why
+it is stated in full: `declare_vector` refuses a second declaration of an
+existing name (`VectorGroupError`, "a group of that name is already
+declared"), it refuses a group that is not a triplet, and there is no
+public `drop_vector`. All three were measured.
+`concat` accepts two inputs that define the SAME axis name with different
+rotation matrices and keeps the first input's, so reversing the input
+order changes the surviving matrix; both orders were accepted and the
+matrices measured differ.
+`Dimension` accepts coordinate arrays that cannot describe a grid: empty,
+duplicated (`[1, 1]`), and non-finite (`[0, inf]`) were all constructed
+without complaint.
+**What to do now:** declare vector groups AFTER the reductions that
+consume components rather than before, since the declaration cannot be
+withdrawn or amended afterward; bring inputs into one axis definition
+before concatenating; and check coordinate arrays at ingestion.
+
+**6. Two filters on one dimension: the later replaces the earlier.**
+`db.select({"x>": 0, "x<": 3})` over coordinates `[-1, 1, 4]` returns
+`[-1, 1]`, which is the second filter alone, where the intersection is
+`[1]`. `REQ-20` defines the filter key form and says nothing about two
+keys naming one dimension, so this is unspecified rather than contradicted
+and it is stated here rather than left to be discovered.
+**What to do now:** chain the calls, `db.select({"x>": 0}).select({"x<": 3})`.
+
+**7. A name you can load may be a name you cannot reference.** Ingestion
+accepts identifiers the expression parser cannot use, and there is no
+public `rename` to get out. Measured: `itc.load(names=["alpha", "force-x"])`
+is accepted, and `compute("y = force-x * 2.0")` then raises
+`VariableNotFoundError` for `'force'`, because the parser reads the hyphen
+as subtraction.
+**What to do now:** rename the columns in the source, or pass `names=`
+with parser-legal identifiers at load time.
+
+**8. The read-only array guarantee is about the array, not the object
+graph.** `REQ-102` promises that no owner reachable FROM a stored array
+can restore the write flag, and that holds. It does not cover
+reconstruction: `pickle` and `copy.deepcopy` rebuild a frozen dataclass
+from its `__dict__` without re-running the constructor, so a `Variable` or
+`Dimension` cloned that way holds a WRITEABLE array. Measured, mutated to
+`[99. 42.]` by both routes.
+**The bound, which is why this is a limitation and not a hole:** a whole
+`VarFrame` does not pickle at all today (`TypeError: cannot pickle
+'mappingproxy' object`), so no frame produced by this library's own APIs
+is reachable this way, and whoever performs the reconstruction is also the
+one holding the result.
+**What to do now:** treat `save`/`itc.open` as the supported way to move a
+frame between processes; it is also the only one that carries Provenance.
+
+**9. Three requirements the specification states and this release does not
+implement.** `REQ-88` (all operations vectorized, with no benchmark
+behind it), `REQ-89` (`db.summary()` reporting the footprint and a warning
+above 1 GB) and `REQ-90` (sparse-aware variants, opt-in via
+`db.use_sparse`). Measured: `db.use_sparse` does not exist. They are
+`stable` in the SRS and ungated, which means the document promises them
+without qualification; whether to implement or descope is an open author
+decision.
+
+**The `.itceq` uncertainty moment stays open.** The three limitations
+declared under `[0.2.0]` about when a declared uncertainty is applied
+relative to `[equations]` and `[corrections]` (`OQ-43`, `OQ-44`, `OQ-45`)
+are unchanged: a name written more than once takes its declaration after
+the FIRST write, a relative declaration on a name that is both carried and
+written resolves twice, and a declaration speaks for the systematic
+component only.
+
+**The wider population, and what this section does not cover.** The
+independent verification compilation returned 98 verdicts. The classes
+above are those a user can recognize from their own usage; the remainder
+are process, CI topology and documentation currency, which are real and
+tracked in the project's working ledger outside this repository. Two of
+the classes above are pinned by strict-xfail tests in
+`tests/test_chk1_open_defects.py`, so they cannot be forgotten silently;
+the rest are held by this section alone, and that asymmetry is stated
+rather than smoothed over. Open design questions live in
+`docs/OPEN_QUESTIONS.md`, which ships in the source distribution.
+
+**What is NOT in this list.** No limitation above is a case where this
+release is worse than v0.2.0. Classes 1 and 3 describe machinery that is
+new in this release and that refuses in cases v0.2.0 answered with a wrong
+number.
+
+**How to report one.** Open an issue on the repository. A finding that
+comes with the `.itceq` or the array that produces it, and what you
+expected instead, is one that can be reproduced and therefore fixed.
+
 ### Added
 
 * `UncertaintyLineageError`, a new `UncertaintyError` leaf, raised when
@@ -196,21 +389,21 @@ names `release.yml` with environment `pypi`. A publisher naming
   documented `q = 0.5*rho*V**2` then `CL = FZ/(q*S)` workflow still
   propagates.
 
-* **`itc.concat` refuses to join a derivation record it cannot keep.**
-  It builds the result from its FIRST input, so that input's History is
-  asserted over every input's rows. Measured both directions: a
-  derivation only in a later input is discarded, and `r = p - q` on the
-  joined frame gave `u = 0.3606` where `0.1` is correct on those rows;
-  a derivation only in the FIRST input is over-asserted, and the
-  suggestion `z = (2*x) - 2*x` returned `[0, 0]` where the truth is
-  `[0, 97]`. It now requires the inputs to AGREE, and refuses a
-  disagreement, an absence in some inputs, or an input whose record it
-  cannot read at all. Inputs that derive a variable identically are
-  unaffected, which is the ordinary case of processing several runs the
-  same way; so is any concat whose variables carry no uncertainty.
+* **`itc.concat` does NOT refuse a derivation record it cannot keep, and
+  the gap is declared instead.** A refusal for this case was written
+  during this release cycle and WITHDRAWN before the release, by the
+  author's decision of 2026-08-02, so no published version ever carried
+  it and there is nothing to migrate. It refused only where uncertainty
+  was already present when the frames were joined; the sequence derive,
+  concat, then declare reached `u = 0.36055513` where `0.1` is correct
+  with the mechanism in place, because what `concat` discards is the
+  RECORD a later declaration needs. A guard covering one ordering of
+  three acts teaches that the class is handled, which is worse than a
+  stated gap. The class is now class 1 under Known open above, and in
+  REQ-41.
 
   Lineage with sensitivities, which would propagate these compositions
-  rather than refuse them, is v0.3.0 work.
+  rather than refuse or lose them, is v0.3.0 work.
 * **An `.itceq` processor whose corrections read what they correct now
   refuses** rather than returning an understated uncertainty, since it
   is an ordinary sequence of `compute` calls and inherits the same

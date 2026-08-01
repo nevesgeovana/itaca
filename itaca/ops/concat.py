@@ -23,11 +23,9 @@ from itaca.core.errors import (
     DimensionNotFoundError,
     OperatingModeMixError,
     UncertaintyError,
-    UncertaintyLineageError,
 )
 from itaca.core.varframe import VarFrame
 from itaca.ops._content import content_of, rebuild, recoord
-from itaca.uncertainty._lineage import derivations, describe_unreadable
 
 
 def _validate_inputs(frames: Sequence[VarFrame], along: str) -> None:
@@ -176,99 +174,6 @@ def _validate_inputs(frames: Sequence[VarFrame], along: str) -> None:
         )
 
 
-def _refuse_discarded_lineage(frames: Sequence[VarFrame]) -> None:
-    """Refuse a concat whose result would misdescribe its own inputs.
-
-    ARCH-5, ARCH-8, ARCH-13, ARCH-14 and VV-16, which are one problem
-    found five ways across three review rounds. The joined frame carries
-    the History of ``frames[0]`` ALONE, and that record is then asserted
-    over every input's rows. Two ways it can be false, and both were
-    measured:
-
-    * A derivation exists in another input and not in the first, so it is
-      DISCARDED. With ``p`` and ``q`` roots in the first input and
-      derived from a common ``x`` in the second,
-      ``compute("r = p - q")`` on the joined frame returned
-      ``u = 0.3606`` where ``0.1`` is correct on the second's rows.
-    * A derivation exists in the FIRST input and not in another, so it is
-      OVER-asserted. With ``y = 2*x`` in the first and ``y`` a loaded
-      root in the second, the refusal offered ``z = (2*x) - 2*x`` as
-      "already correct"; it returns ``[0, 0]`` where the truth is
-      ``[0, 97]``.
-
-    So the test is AGREEMENT across every input, not a scan of the tail.
-    A variable derived identically everywhere is described correctly by
-    any one input's record, which keeps the ordinary workflow of
-    processing several runs the same way and concatenating them working
-    (ARCH-14). Disagreement, or absence in some inputs, is refused.
-
-    An input whose record cannot be read at all is refused too, whatever
-    the others say: without that, one concat laundered the absent-
-    evidence refusal REQ-41 states, and a frame that refused
-    ``compute("z = x + y")`` on its own returned ``u = 0.2236`` after
-    being passed through concat as a second input (ARCH-13, QA round
-    four).
-
-    Only variables carrying uncertainty are considered, since a
-    derivation with no uncertainty has no covariance to lose.
-    """
-    readings = [
-        derivations(frame.history, frame.axes.vector_groups) for frame in frames
-    ]
-    carriers: list[set[str]] = []
-    for frame in frames:
-        if frame.uncertainty is None:
-            carriers.append(set())
-        else:
-            carriers.append(
-                set(frame.uncertainty.systematic) | set(frame.uncertainty.random)
-            )
-    for position, (reading, carried) in enumerate(
-        zip(readings, carriers, strict=True), start=1
-    ):
-        if reading.unreadable and carried:
-            raise UncertaintyLineageError(
-                f"input {position} of {len(frames)}, whose History records "
-                f"{describe_unreadable(frames[position - 1].history)}",
-                "concat keeps the History of the FIRST input only, so an "
-                "input whose record cannot be read would be joined into a "
-                "frame that looks fully described; a later compute would "
-                "then read the result as having a known, clean origin",
-                "derive on the joined frame instead of joining derived "
-                "frames, or declare the pairs you need with "
-                "db.set_correlation before combining (SEAT-UNC, REQ-24, "
-                "REQ-41)",
-            )
-    interesting: set[str] = set()
-    for reading, carried in zip(readings, carriers, strict=True):
-        interesting |= set(reading.derived) & carried
-    for name in sorted(interesting):
-        seen = {
-            (
-                readings[index].derived[name].roots,
-                readings[index].derived[name].expanded,
-            )
-            if name in readings[index].derived
-            else None
-            for index in range(len(frames))
-        }
-        if len(seen) > 1:
-            raise UncertaintyLineageError(
-                f"variable '{name}', derived differently across the inputs",
-                "concat keeps the History of the FIRST input only, so one "
-                "input's derivation of this variable would be recorded for "
-                "every row, including rows where it was derived another way "
-                "or not derived at all",
-                "concatenate the INPUTS of the derivation and derive once on "
-                "the joined frame, which is also cheaper and gives one "
-                "record that is true of every row; or drop the uncertainty "
-                "from this variable if it is not wanted downstream. Carrying "
-                "several inputs' derivation records into one joined History "
-                "needs lineage that survives a merge and is v0.3.0 work "
-                "(SEAT-UNC, REQ-24, REQ-41)",
-            )
-
-
 def concat(
     frames: Sequence[VarFrame],
     *,
@@ -335,7 +240,18 @@ def concat(
             "pass the frames to concatenate (REQ-24)",
         )
     _validate_inputs(frames, along)
-    _refuse_discarded_lineage(frames)
+    # A lineage refusal stood here and was REMOVED by the author's decision
+    # of 2026-08-02. It refused a concat whose result would misdescribe its
+    # own inputs, and it keyed on uncertainty present AT CONCAT TIME, so
+    # `derive, concat, then declare` walked past it and still reached
+    # u = 0.36055513 where 0.1 is correct (ARCH-15, ITC-20260731-1730).
+    # A partial guard teaches that the class is covered, and that
+    # measurement is the proof it is not; refusing regardless of
+    # uncertainty would refuse ordinary data concatenation, which is the
+    # trade she took rather than delegated. The class is now DECLARED in
+    # CHANGELOG.md under Known open and in REQ-41, not half-covered.
+    # Do not reinstate a guard here without her decision (DD-52 records
+    # what the record is for; the open item is ARCH-15).
     first = frames[0]
     content = content_of(first)
     axis = list(content.dims).index(along)

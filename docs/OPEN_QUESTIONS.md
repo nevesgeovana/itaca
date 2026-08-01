@@ -1752,3 +1752,59 @@ what blocks that is two closed pre-rule-8 ledgers that the new required
 `property=` field refuses and that were deliberately not retrofitted
 (`ITC-20260802-1715`). Whether the cap becomes a PUSH gate, and at which
 moment, is still the product owner's call and is untouched here.
+
+## OQ-55: Should `concat` refuse to discard a derivation record, irrespective of uncertainty?
+
+**Status:** open (product owner, with the numerical analyst)
+
+**Raised:** 2026-08-02, lane ITA-2D, on withdrawing the partial guard.
+
+`concat` builds its result from its FIRST input, so a derivation recorded
+in any other input is discarded. The uncertainty engine reads ancestry out
+of History, so after the join it has nothing to read and its refusals do
+not fire: `compute("r = p - q")` over two quantities derived from a common
+root in a discarded input returns `u = 0.36055513` where `0.1` is correct.
+
+**What was tried, and why it is gone.** A refusal at the concat itself was
+specified in REQ-41 and implemented in `ITA-2B`, and it is withdrawn by
+the author's decision of 2026-08-02 (DD-52, ARCH-15,
+`ITC-20260731-1730`). It keyed on uncertainty being PRESENT at concat
+time, and the measurement above was taken WITH it in place, by declaring
+after the join rather than before. That is not a hole in the
+implementation of the idea; it is the idea's limit. What `concat`
+discards is the RECORD, and the record is what a later declaration needs,
+so no test performed at concat time can be complete, and the guard's
+coverage was decided by when the user happened to declare, which is not a
+property of their data.
+
+**The question, and it is a trade rather than a defect.** The complete
+version of the rule is to refuse EVERY `concat` that discards a
+derivation, whether or not any uncertainty exists yet. That is decidable
+at concat time, because it asks about the History and not about the
+UncFrame. It would also refuse ordinary data concatenation: joining runs
+where one of them happened to be derived, with nobody intending to
+propagate anything, is the common wind-tunnel shape.
+
+Three answers, and none of them is obviously right:
+
+1. **Refuse always.** Complete and loud. Costs the ordinary workflow, and
+   the way out, deriving on the joined frame, is not always available
+   when the derivation is what the runs have in common.
+2. **Accept always and declare, which is what ships.** Nothing is refused,
+   the gap is stated in REQ-41 and in the release notes, and a user who
+   reads neither gets a wrong number with no signal.
+3. **Carry the record instead of choosing.** Lineage that survives a merge
+   makes the question disappear rather than answering it. It is v0.3.0
+   work and it is the reason this entry is not urgent, only open.
+
+A fourth shape exists and is worth naming so it is not mistaken for
+option 1: refusing at the LATER `compute`, by marking the joined frame's
+provenance unreadable. That was implemented once during `ITA-2B` and
+reverted, because it poisoned every frame any `concat` had ever produced,
+including two inputs of plain roots with no derivation anywhere.
+
+**Who decides:** the product owner, on whether a correct-but-broad refusal
+is worth the ordinary workflow it costs; the numerical analyst, on whether
+any narrower predicate is actually complete.
+
+**SRS:** REQ-24, REQ-41. **Records:** DD-52, `ITC-20260731-1730`.

@@ -1010,11 +1010,34 @@ conservative direction and it is stated here rather than left to the
 code, because it is wider than the three cases above and a reader of
 those three would not predict it.
 
-\code{concat} is deliberately NOT one of these. It keeps the History of
-its first input alone, so a derivation in any other input is discarded;
-that is refused at the concat itself, where the evidence still exists
-and the message can name the input, rather than by poisoning every
-frame a concat produced (REQ-24).
+\textbf{\code{concat} is a KNOWN GAP in this net, and it is stated
+rather than refused.} \code{concat} keeps the History of its first input
+alone (REQ-24), so a derivation recorded in any other input is
+discarded and this engine has nothing left to read. The refusals above
+therefore do not fire on the joined frame, and a later
+\code{compute} over two such quantities returns a number computed from
+the false independence assumption: measured $u = 0.36055513$ where
+$0.1$ is correct.
+
+A refusal at the concat itself was specified and implemented, and it is
+WITHDRAWN. It keyed on uncertainty being present at concat time, so the
+sequence derive, concat, then declare reached the same measurement with
+the mechanism in place; what \code{concat} discards is the RECORD, and
+the record is what a later declaration needs. A guard covering one
+ordering of the same three acts teaches that the class is handled, and
+that is worse than a stated gap. Refusing every \code{concat} that
+discards a derivation, irrespective of uncertainty, would refuse
+ordinary data concatenation, so the choice between those is a product
+decision and it is open. Until it is taken, this requirement states the
+gap, the release notes state it where a user reads them, and no
+mechanism claims it.
+
+The two workflows that are correct are named here because a gap without
+a way around it is only half the statement: concatenate the INPUTS of a
+derivation and derive once on the joined frame, or declare the pair with
+\code{set\_correlation}, which this engine then propagates. Deriving
+every input identically is also safe, and is the ordinary REQ-24
+workflow of processing several runs the same way.
 \end{reqbox}
 
 \begin{reqbox}{REQ-42}{\stable}

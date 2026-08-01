@@ -2344,3 +2344,137 @@ of the four corrections above are counts. `CLAUDE.md` was edited in the
 same round to stop carrying the citation number and point at
 `ITC-20260802-1705` instead; DD entries should do the same, and the next
 one that carries a measurement carries its command line with it.
+
+---
+
+## DD-52: The two JSON export calls and the rejected split_by alternative, recorded late
+
+**Date:** 2026-08-02
+**Status:** confirmed
+**Context:** ITA-2D, the last lane before the 0.2.1 tag.
+**Requirements:** REQ-70, REQ-15, REQ-24, REQ-41
+**Findings:** FND-062, FND-085, FND-059, ARCH-15
+
+This entry exists because three decisions reached the code without one.
+`ITA-2E` implemented two calls the author made in a sitting, and wrote
+them straight into `REQ-70` as normative sentences: no DD, no OQ, no
+decision id behind either. The `split_by` rejected alternative sits in
+the same position, recorded only in a working plan entry outside this
+repository. So the library carries the behavior and not the reason, which
+is precisely the split this file exists to prevent, and the SRS itself
+marks both sentences "Author's decided call" while pointing at nothing.
+
+Either the decision is written down or the requirement is downgraded from
+requiring to describing. Downgrading would be legitimate if the sentences
+were never requirements; they are inside a `reqbox` under `\stable`, they
+state what the library must do, and they are what the code implements. So
+this is the record, written after the fact and saying so.
+
+A fourth decision joins them, taken in this lane rather than inherited:
+the withdrawal of the `concat` lineage refusal.
+
+### 1. JSON writes NaN as null and the infinities as strings
+
+`FND-085`. The export converted `NaN`, `+inf` and `-inf` all to `null`,
+erasing a distinction the library maintains everywhere else: a point never
+measured against a computation that diverged. The two call for opposite
+responses from a reader, and one token cannot carry both.
+
+JSON has no non-finite literal (RFC 8259), so there is no faithful
+encoding and every option is a trade:
+
+* **Bare `NaN` / `Infinity` tokens**, which Python's own `json` module
+  emits by default. Rejected: the result is not JSON, and a strict parser
+  refuses the file. An export nobody else can read is not an export.
+* **All three as `null`**, the pre-fix behavior. Rejected: it is the
+  erasure the finding is about.
+* **All three as strings.** Rejected for `NaN` specifically, because
+  `null` is what absent MEANS in JSON and a reader already knows it; a
+  `"NaN"` string would be a private convention where a standard one
+  exists.
+* **`NaN` as `null`, the infinities as `"Infinity"` and `"-Infinity"`**,
+  which is what ships. Strict JSON, the absent case reads natively, and
+  the diverged case is visibly not a number rather than quietly missing.
+
+The cost, stated because a reader will meet it: the values array becomes
+mixed-type, so a consumer doing `np.asarray(payload["values"])` on a frame
+carrying an infinity gets an object or string array instead of a float
+one. That is a loud failure rather than a silent wrong number, which is
+the direction this project takes everywhere else, and the strings chosen
+are the two `float()` already parses.
+
+### 2. A JSON export carrying uncertainty carries the COMBINED value
+
+`FND-062`. The export carried the systematic and random components and
+not the combined standard uncertainty the API computes, so a consumer who
+needs the single number reimplements the composition.
+
+The reason this is not merely a convenience: the plausible wrong guess is
+the one that ignores declared correlation. A consumer who writes
+`sqrt(sys**2 + rand**2)` gets the right answer only when nothing is
+correlated, and gets no signal at all when something is. The library knows
+the correlation structure and the file did not carry the result of it.
+
+Rejected alternative: export the correlation matrix and let the consumer
+compose. It is strictly more information and it moves the same error one
+step later, because composing it correctly is the part that was going
+wrong. The combined value ships WITH the sentence naming the rule that
+produced it (REQ-99), for the same reason: a number a consumer cannot
+interpret is a number they will recompute.
+
+### 3. split_by refuses a colliding filename rather than encoding it away
+
+`FND-059`. The filename stem `str(value).replace(".", "p")` collides for
+distinct textual coordinates: `a.b` and `apb` both become `apb`, so one
+slice overwrote the other and two runs went in while one file came out.
+
+The rejected alternative was **injective percent-encoding of the stem**,
+which makes collisions impossible by construction rather than detected. It
+was refused on cost to existing users: it renames every output anyone
+already has, `s_1p5.csv` becoming `s_1_2E5.csv`, for a defect that only
+bites on textual coordinates, which are rare in this domain. Up-front
+detection across all slices, before anything is written, closes "silently
+overwrite" without touching a single existing filename.
+
+This is recorded rather than left in the plan entry because the rejected
+option is the better ENGINEERING answer and the accepted one is the better
+PRODUCT answer, and a later reader who sees only the code will re-derive
+the first and not know the second was considered. If the author later
+prefers injective naming, the encoder is the smaller change of the two.
+
+### 4. The concat lineage refusal is withdrawn, and the gap is stated
+
+`ARCH-15`, and this one is the author's decision of 2026-08-02 taken in
+this lane. REQ-41 stated that a derivation discarded by `concat` is
+refused at the concat itself. That refusal keyed on uncertainty being
+PRESENT at concat time, and the sequence derive, concat, then declare
+reached `u = 0.36055513` where `0.1` is correct WITH the mechanism in
+place. Measured both ways in this lane, before and after the removal.
+
+The limit is structural rather than an implementation miss: what `concat`
+discards is the RECORD, and the record is what a later declaration needs,
+so no test performed at concat time can be complete. The guard's coverage
+was therefore decided by WHEN the user declared, which is not a property
+of their data, and a guard covering one ordering of three acts teaches
+that the class is handled. That is worse than a stated gap, because a
+reader who trusts it stops looking.
+
+The complete rule, refusing every `concat` that discards a derivation
+irrespective of uncertainty, is decidable at concat time and would refuse
+ordinary data concatenation. That trade is a product decision, it is not
+taken here, and it is `OQ-55`. Until it is taken the class is declared in
+REQ-41 and in the release notes under Known open, and no mechanism claims
+it. Removing the guard was measured not to change any other behavior: the
+three other lineage refusals are untouched and
+`UncertaintyLineageError` remains public surface for them.
+
+### The rule this entry demonstrates
+
+A decision that reaches normative text without a record is a decision that
+will be re-taken by whoever next reads the code, because the alternatives
+and their costs are exactly what the code does not carry. Three of the
+four above were reconstructed from a review brief and a plan entry rather
+than from anything in this repository. DD-51 asked the next entry carrying
+a measurement to carry its command line with it; the measurements in
+decision 4 came from `probe4.py` in this lane's session scratchpad, and
+the invocation is recorded with them in `ITC-20260802-2100`.

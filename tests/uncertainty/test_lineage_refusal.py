@@ -517,108 +517,24 @@ class TestCrossVariableOperations:
             turned.compute("c = FX - FZ")
 
 
-class TestConcatDiscardedLineage:
-    """ARCH-5 and ARCH-8: concat keeps only the first input's History."""
-
-    @staticmethod
-    def _roots(t: float) -> VarFrame:
-        arr = np.column_stack([np.array([1.0]), np.array([2.0]), np.array([t])])
-        frame = itc.load(arr, names=["x", "y", "t"]).pivot(dims=["t"])
-        return frame.set_uncertainty({"x": 0.1, "y": 0.2})
-
-    def test_an_ordinary_concat_of_roots_is_untouched(self) -> None:
-        # ARCH-8. The first attempt treated concat as unreadable, which
-        # refused EVERY multi-carrier compute on any concatenated frame,
-        # including two inputs of plain roots with no derivation
-        # anywhere. That is REQ-24 mainline usage.
-        joined = itc.concat([self._roots(1.0), self._roots(2.0)], along="t")
-        result = joined.compute("z = x + y")
-        assert result.uncertainty.systematic["z"] == pytest.approx(np.hypot(0.1, 0.2))
-
-    def test_a_discarded_derivation_is_refused_at_the_concat(self) -> None:
-        # ARCH-5. The second input derived p and q from a shared x, and
-        # concat keeps only the first input's History, so that shared
-        # origin would vanish: measured u = 0.3606 where 0.1 is correct
-        # on the second input's rows. Refused where the loss happens.
-        def frame(t: float, derive: bool) -> VarFrame:
-            arr = np.column_stack(
-                [
-                    np.array([1.0]),
-                    np.array([2.0]),
-                    np.array([1.0]),
-                    np.array([t]),
-                ]
-            )
-            built = itc.load(arr, names=["x", "p", "q", "t"]).pivot(dims=["t"])
-            if not derive:
-                return built.set_uncertainty({"p": 0.3, "q": 0.2, "x": 0.1})
-            built = built.set_uncertainty({"x": 0.1})
-            return built.compute("p = 3*x").compute("q = 2*x")
-
-        with pytest.raises(UncertaintyLineageError) as caught:
-            itc.concat([frame(8.0, False), frame(9.0, True)], along="t")
-        message = str(caught.value)
-        assert "derived differently across the inputs" in message
-        assert "'p'" in message or "'q'" in message
-
-    def test_the_first_inputs_derivation_is_not_asserted_over_the_others(
-        self,
-    ) -> None:
-        # VV-16. The mirror of the case above, and the one a tail-only
-        # scan missed: the derivation is in the FIRST input, so it is not
-        # discarded, it is OVER-asserted. Measured before this fix, the
-        # refusal offered z = (2*x) - 2*x as "already correct"; it
-        # returns [0, 0] where the truth is [0, 97].
-        def frame(t: float, derive: bool) -> VarFrame:
-            arr = np.column_stack([np.array([1.0]), np.array([99.0]), np.array([t])])
-            built = itc.load(arr, names=["x", "y", "t"]).pivot(dims=["t"])
-            built = built.set_uncertainty({"x": 0.1})
-            if not derive:
-                return built.set_uncertainty({"y": 0.5})
-            return built.compute("y = 2*x")
-
-        with pytest.raises(UncertaintyLineageError):
-            itc.concat([frame(8.0, True), frame(9.0, False)], along="t")
-
-    def test_identically_derived_inputs_are_allowed(self) -> None:
-        # ARCH-14. Processing several runs the same way and
-        # concatenating them is the ordinary REQ-24 workflow. Every
-        # input derives p identically, so the first input's record is
-        # true of every row and there is nothing to refuse.
-        def frame(t: float) -> VarFrame:
-            arr = np.column_stack([np.array([1.0]), np.array([0.0]), np.array([t])])
-            built = itc.load(arr, names=["x", "p", "t"]).pivot(dims=["t"])
-            return built.set_uncertainty({"x": 0.1}).compute("p = 3*x")
-
-        joined = itc.concat([frame(8.0), frame(9.0)], along="t")
-        assert joined.uncertainty.systematic["p"] == pytest.approx(0.3)
-
-    def test_an_unreadable_input_is_refused_at_the_concat(self) -> None:
-        # ARCH-13 and QA4-2. A frame that refuses compute on its own was
-        # laundered by being passed through concat as a second input:
-        # measured u = 0.2236 on the joined frame where the same compute
-        # refuses on the input alone. concat consulted only the derived
-        # map and never the unreadable set.
-        def roots(t: float) -> VarFrame:
-            arr = np.column_stack([np.array([1.0]), np.array([2.0]), np.array([t])])
-            built = itc.load(arr, names=["x", "y", "t"]).pivot(dims=["t"])
-            return built.set_uncertainty({"x": 0.1, "y": 0.2})
-
-        opaque = roots(2.0).combine(roots(2.0), op="mean")
-        with pytest.raises(UncertaintyLineageError) as caught:
-            itc.concat([roots(1.0), opaque], along="t")
-        assert "cannot be read" in str(caught.value)
-
-    def test_a_discarded_derivation_without_uncertainty_is_allowed(self) -> None:
-        # Nothing to lose: with no uncertainty on the derived variables
-        # there is no covariance the joined frame could get wrong.
-        def frame(t: float) -> VarFrame:
-            arr = np.column_stack([np.array([1.0]), np.array([0.0]), np.array([t])])
-            built = itc.load(arr, names=["x", "p", "t"]).pivot(dims=["t"])
-            return built.compute("p = 3*x")
-
-        joined = itc.concat([frame(8.0), frame(9.0)], along="t")
-        assert joined.uncertainty is None
+# `TestConcatDiscardedLineage` stood here, six tests, and was REMOVED by
+# the author's decision of 2026-08-02 together with the guard it covered.
+# The tests were: an ordinary concat of roots is untouched (ARCH-8), a
+# discarded derivation is refused at the concat (ARCH-5), the first
+# input's derivation is not asserted over the others (VV-16), identically
+# derived inputs are allowed (ARCH-14), an unreadable input is refused
+# (ARCH-13), and a discarded derivation without uncertainty is allowed.
+#
+# They are named rather than deleted silently because four of the six pin
+# a REGRESSION of a fix, not the fix itself: each records a way an earlier
+# attempt at this guard was wrong. If a `concat` refusal is ever designed
+# again, this list is where its case set starts. What removing them costs
+# is written in CHANGELOG.md under Known open, class 1, with the number:
+# `derive, concat, then declare` reaches u = 0.36055513 where 0.1 is
+# correct, and it did so WITH the guard in place, which is why the guard
+# went (ARCH-15, ITC-20260731-1730, DD-52).
+#
+# The three other lineage refusals are untouched and are covered above.
 
 
 class TestNonDifferentiablePoint:
