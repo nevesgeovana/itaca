@@ -1,0 +1,232 @@
+"""The pre-push receipt: what it must refuse, and that it can still fail.
+
+Usage example (TDD anchor)::
+
+    done = subprocess.run(
+        [sys.executable, str(_RECEIPT), "status", "--label", "pytest-full",
+         "--", "pytest"],
+        capture_output=True,
+        text=True,
+        env=child_env(),
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+
+The pre-push tier runs the full suite with coverage plus `mypy --strict`.
+Measured on this repository on 2026-08-01: 12.1 minutes for the suite
+alone, 12.5 to 13 for the whole hook, against about 16 seconds for the
+commit tier, and CI then runs the same suite on three legs. The receipt
+(kit 0.2.15) stops it re-running on content that already passed it.
+
+THE REASON IS NOT THE DUPLICATION, it is the fragility. In two lanes the
+push step failed five separate ways and none was about the code. A step
+that expensive and that fragile gets routed around eventually, and the
+way it gets routed around is `--no-verify`. That is the outcome the
+artifact exists to prevent, which is why it adds no environment variable
+that skips it and why this repository added none either.
+
+WHAT IS ASSERTED HERE, and what deliberately is not. The mechanism's
+whole acceptance criterion is that EVERY unknown state runs the suite:
+absent, empty, truncated, malformed, key-mismatched, expired, clock moved
+backwards, any exception inside the mechanism. Proving that is the
+companion's job, on real git repositories, and it is invoked below rather
+than trusted. What this module adds is the half a companion cannot see:
+that the receipt is wired to THIS repository's own pre-push tier and
+answers about it.
+
+The three-answer check the adoption brief requires (RUN, then SKIP after
+a green run, then RUN again after one file changes) was measured by hand
+in lane ITA-11 and is NOT reproduced as a test. It cannot be: the SKIP
+leg needs a real green run of the full 12-minute suite to write the
+receipt, and a test that wrote a receipt itself would be asserting its
+own fixture. The measurement is recorded in the lane's plan entry with
+its output. What runs here is the part that stays true afterwards.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+import yaml
+from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
+
+_ROOT = Path(__file__).resolve().parents[1]
+_KIT = _ROOT / ".claude" / "kit"
+_RECEIPT = _KIT / "prepush_receipt.py"
+_RECEIPT_MUTATIONS = _KIT / "prepush_receipt_mutations.py"
+_RECEIPT_PATH = _ROOT / ".claude" / ".prepush_receipt.json"
+_PRE_COMMIT = _ROOT / ".pre-commit-config.yaml"
+_GITIGNORE = _ROOT / ".gitignore"
+
+
+def _run(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, *args],
+        capture_output=True,
+        text=True,
+        env=child_env(),
+        cwd=str(_ROOT),
+    )
+
+
+def test_the_vendored_receipt_is_present() -> None:
+    """A checker loaded by path fails loudly if it is missing."""
+    for artifact in (_RECEIPT, _RECEIPT_MUTATIONS):
+        assert artifact.is_file(), f"vendored kit artifact missing at {artifact}"
+
+
+def test_the_receipt_is_wired_to_this_repository_s_blocking_tier() -> None:
+    """The artifact must WRAP the pre-push suite, not merely sit beside it.
+
+    A vendored mechanism nothing invokes is the shape this repository
+    already names for `ITACA-006`, one level up. The sibling test in
+    `tests/test_tooling_config.py` asserts the wrapped command is still
+    the whole suite with coverage; this asserts the wrapper is there at
+    all and is the vendored copy rather than some other path.
+    """
+    config = yaml.safe_load(_PRE_COMMIT.read_text(encoding="utf-8"))
+    entries = {
+        hook["id"]: hook["entry"]
+        for repo in config["repos"]
+        if repo.get("repo") == "local"
+        for hook in repo["hooks"]
+    }
+    entry = entries["pytest-full"]
+    assert ".claude/kit/prepush_receipt.py" in entry, (
+        f"the blocking tier runs {entry!r}, which does not go through the "
+        f"vendored pre-push receipt. Wrap it as `python "
+        f".claude/kit/prepush_receipt.py guard --label pytest-full -- "
+        f"pytest`, or the suite runs a second time on content that already "
+        f"passed it."
+    )
+    assert "--label pytest-full" in entry, (
+        f"the blocking tier runs {entry!r} with no --label, or with one this "
+        f"test does not recognize. The label is part of the receipt key and "
+        f"is what keeps two wrapped commands from authorizing each other."
+    )
+
+
+def test_the_receipt_file_can_never_be_committed() -> None:
+    """`.gitignore` must cover it, and git must agree that it does.
+
+    Not needed for the key, which excludes the path by exact name. Needed
+    because two independent walks in this repository read tracked plus
+    untracked-but-not-ignored paths, the shipped-surface scan and the
+    house-style scan, and both would otherwise open a local state file
+    that records this machine's HEAD and command line.
+
+    Asserted through `git check-ignore` rather than by reading the
+    `.gitignore` text, because the text is a mention and git's answer is
+    the carrier. A pattern that is present but shadowed by a later
+    negation would satisfy the mention and not the behavior.
+    """
+    assert ".claude/.prepush_receipt.json" in _GITIGNORE.read_text(encoding="utf-8"), (
+        "the receipt path is not named in .gitignore"
+    )
+    done = subprocess.run(
+        ["git", "check-ignore", "-q", ".claude/.prepush_receipt.json"],
+        capture_output=True,
+        text=True,
+        cwd=str(_ROOT),
+    )
+    assert done.returncode == 0, (
+        f"git does not ignore .claude/.prepush_receipt.json (check-ignore "
+        f"exit {done.returncode}). The receipt is local session state, like "
+        f"the role-review attestation beside it, and it must never enter the "
+        f"repository or the walks that read untracked files.\n"
+        f"{done.stdout}{done.stderr}"
+    )
+
+
+def test_status_answers_without_writing_anything() -> None:
+    """`status` reports the verdict and must leave no receipt behind.
+
+    This is the subcommand the operator uses to ask whether the next push
+    will be fast, and it is how the adoption's three-answer measurement
+    was taken. If it wrote a receipt, that measurement would be creating
+    the state it reports on.
+    """
+    before = _RECEIPT_PATH.read_bytes() if _RECEIPT_PATH.is_file() else None
+    done = _run(str(_RECEIPT), "status", "--label", "pytest-full", "--", "pytest")
+    assert done.returncode == 0, done.stdout + done.stderr
+    verdict = done.stdout
+    assert "SKIP" in verdict or "WOULD RUN" in verdict, (
+        f"status printed neither a SKIP nor a WOULD RUN verdict, so it "
+        f"answered nothing.\n{verdict}{done.stderr}"
+    )
+    after = _RECEIPT_PATH.read_bytes() if _RECEIPT_PATH.is_file() else None
+    assert after == before, (
+        "`status` changed the receipt file. It must never write: an operator "
+        "asking whether the next push is fast would otherwise be authorizing "
+        "the skip they were asking about."
+    )
+
+
+def test_a_receipt_that_exists_records_what_it_claims_and_no_more() -> None:
+    """If a receipt is present, it is a pass record with a usable timestamp.
+
+    Skipped when there is none, which is the ordinary state on a fresh
+    clone and in CI. This does not re-derive the key; it checks that the
+    file's own claims are the ones the mechanism reads, so a receipt
+    hand-written into a shape this repository would misread is caught
+    here rather than at a push.
+    """
+    if not _RECEIPT_PATH.is_file():
+        pytest.skip("no receipt on this tree; nothing to read")
+    record = json.loads(_RECEIPT_PATH.read_text(encoding="utf-8"))
+    assert isinstance(record, dict), "the receipt is not a JSON object"
+    assert record.get("outcome") == "pass", (
+        f"the receipt records outcome {record.get('outcome')!r}. Only a pass "
+        f"is ever written; a failing run deletes the receipt instead."
+    )
+    assert record.get("exit_status") == 0, (
+        f"the receipt records exit status {record.get('exit_status')!r} "
+        f"beside a pass, which no run of the mechanism can produce."
+    )
+    assert isinstance(record.get("written_at"), (int, float)), (
+        "the receipt has no usable timestamp, so its age cannot be read and "
+        "the four-hour ttl cannot apply."
+    )
+    assert isinstance(record.get("key"), str) and record["key"], (
+        "the receipt carries no key, so it authorizes nothing and would be "
+        "refused at every push while looking like a valid record."
+    )
+
+
+@pytest.mark.slow
+def test_the_receipt_can_still_fail() -> None:
+    """The mutation companion proves every unknown state still RUNS.
+
+    MEASURED 54.7 s: it builds real git repositories in a temp directory,
+    one per case and one per case per mutant, rather than reconstructing
+    them. The marker moves WHERE it runs and never WHETHER; the pre-push
+    tier and CI both run it and both block.
+
+    Its cases are the specification's refusals: absent, empty, truncated,
+    malformed, non-object, one uncommitted edit, one untracked file, one
+    deleted file, a mutated environment fingerprint, a mutated self hash,
+    a different argv, expired, negative age, a hand-written plausible
+    receipt, and a receipt recording a non-zero exit. Every one must RUN.
+    Two SKIP controls exist because a mechanism that never skips is not
+    the mechanism, and a companion with no control would pass against a
+    file that always runs the suite.
+    """
+    done = _run(str(_RECEIPT_MUTATIONS))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "all 15 mutants are denied" in done.stdout, (
+        f"the receipt mutation companion did not report all 15 mutants "
+        f"denied. Two opposite remedies: if a re-vendor changed the count, "
+        f"move it here and in tests/test_kit_drift.py's manifest note "
+        f"together; if it did not, a mutant SURVIVED, which means a defence "
+        f"can be deleted and the mechanism still skips. Output:\n{done.stdout}"
+    )
+    assert "All 24 cases hold" in done.stdout, (
+        f"the receipt mutation companion did not report 24 cases. The "
+        f"mutants can be denied by a shrunken case list, so this count is "
+        f"what catches a re-vendor that quietly dropped cases. If the kit "
+        f"really changed it, move the pin; do not delete it. "
+        f"Output:\n{done.stdout}"
+    )

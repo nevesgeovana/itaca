@@ -78,9 +78,31 @@ repos:
       # per push rather than once per commit. Everything the `slow` marker
       # moved out of the commit tier lands here, which is what makes the
       # marker a statement about WHERE a test runs and never about whether.
+      #
+      # WRAPPED IN THE PRE-PUSH RECEIPT (kit 0.2.15). The suite still runs
+      # and still blocks; what the wrapper removes is running it a second
+      # time on content that already passed it. It computes a key over the
+      # working tree by content, the interpreter and every visible
+      # distribution, and the command itself, and skips only on an exact
+      # match under four hours. EVERY unknown state RUNS: absent, empty,
+      # malformed or expired receipt, a changed file, a changed dependency,
+      # a different command. A failing run DELETES the receipt, so a tree
+      # that passed and then failed carries no authority.
+      #
+      # It cannot be turned off, deliberately: there is no environment
+      # variable that skips it, because the whole point is that
+      # `--no-verify` never becomes the cheaper path. `--label` is what
+      # keeps two wrapped commands from authorizing each other.
+      #
+      # `mypy-full` below is NOT wrapped, decided in lane ITA-11: mypy here
+      # is seconds rather than minutes, so the receipt buys almost nothing,
+      # and ITC-20260730-2355 already registers that this hook is the
+      # byte-identical command a second time. Giving that duplicate a
+      # mechanism of its own would make the registered item harder to act
+      # on, not easier.
       - id: pytest-full
         name: pytest (FULL suite with coverage; blocks the push)
-        entry: pytest
+        entry: python .claude/kit/prepush_receipt.py guard --label pytest-full -- pytest
         language: system
         always_run: true
         pass_filenames: false

@@ -51,6 +51,12 @@ _private/
 
 # Role-review push-gate attestation (local session state, never versioned)
 .claude/.role_review_attestation.json
+# Pre-push receipt (kit 0.2.15), beside the attestation and for the same
+# reason. NOT needed for the receipt's key, which excludes this path by
+# exact name; needed so the file does not enter the shipped-surface and
+# house-style walks, both of which read tracked plus untracked-not-ignored
+# paths and would otherwise scan a local state file.
+.claude/.prepush_receipt.json
 # Machine-local permission list, and a path list nobody else can use:
 # it also made the house-style walk's verdict depend on one
 # developer's global git ignore rather than on this repository.

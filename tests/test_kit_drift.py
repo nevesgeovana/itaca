@@ -253,8 +253,57 @@ MANIFEST: dict[str, Pin] = {
     # coordination level; the body itself is the 0.2.9 guard and hashes
     # as pinned here. The recompute-not-copy rule is the same one the
     # 0.2.7 entries below already record.
+    #
+    # 0.2.15 adds ATTEST-SCOPE and moves NO allow or deny decision. A pass
+    # may carry its own commit scope as `name@<range>`, and the record
+    # gains `pass_scope` and `uncovered`. The BARE form is unchanged, so a
+    # consumer whose skills still write a flat `<passes>` list is not
+    # broken by this re-vendor, and this lane attested in exactly that bare
+    # form. The gate reads `commits` and `refs` and has never read
+    # `passes`, which is why a new field beside `passes` cannot change what
+    # the gate allows: `tests/test_push_gate.py` and
+    # `tests/test_review_gate.py` are unchanged in verdict across this row.
+    #
+    # It comes from lane ITA-2G declaring against itself, in PROSE, that
+    # two of its commits carried no lens at all, because the record could
+    # not express that. Adopting the scoped form in the `role-review` and
+    # `handoff` skills is OPTIONAL in the adoption brief and is registered
+    # rather than done here (`ITC-20260801-2200`), so this row vendors a
+    # capability this repository does not yet exercise.
+    # The declared value agreed with the master body on recomputation.
     "write_attestation.py": Pin(
-        "9d62d8a32c7aba156deade505a05759e26e9d7c72f87bf0ac5632f4ce17afa28", "0.2.9"
+        "6c70a673f88d0eebffcdbc048e90db7e1f064ec6af0e49d0b75b517435f982ec", "0.2.15"
+    ),
+    # 0.2.15, NEW: the pre-push receipt, and the one row of this batch with
+    # real consumer configuration. The pre-push tier re-ran a full suite it
+    # had already run green minutes earlier; measured here that suite is
+    # 12.1 minutes and the whole hook 12.5 to 13, and CI then runs it three
+    # more times. The cost that matters is not the duplication, it is that
+    # a step that expensive gets routed around with `--no-verify`
+    # eventually, which is the outcome this artifact exists to prevent.
+    #
+    # EVERY UNKNOWN STATE RUNS THE SUITE. Absent, empty, truncated,
+    # malformed, key-mismatched, expired, clock moved backwards, and any
+    # exception raised inside the mechanism: all of them RUN. There is
+    # deliberately no path in which a defect in this file skips a suite, so
+    # a defect here costs time and never safety. Note the asymmetry with
+    # `COORD_INCIDENT_LEDGER`, which is deliberate and is stated in the
+    # artifact body as well as here: there an ABSENT configuration DENIES a
+    # push, here an ABSENT receipt means DO THE WORK. Both are the
+    # fail-CLOSED direction for their own guard and they point opposite
+    # ways; making them consistent would break one.
+    #
+    # itaca wraps `pytest-full` and NOT `mypy-full`, decided in this lane:
+    # mypy on this repository is seconds rather than minutes, and
+    # `ITC-20260730-2355` already registers that `mypy-full` is the
+    # byte-identical command a second time, so giving the duplicate a
+    # mechanism of its own would make that item harder to act on.
+    # Both declared values agreed with the master bodies on recomputation.
+    "prepush_receipt.py": Pin(
+        "411e78073d2cece7a12ec17d2afec6f0bd91f6e9bda9ccdf8a26441975b2ead7", "0.2.15"
+    ),
+    "prepush_receipt_mutations.py": Pin(
+        "f258f90b3aeea8b0c66737139ad2a5f7e837d8743a77dd784486758ddff94967", "0.2.15"
     ),
     # 0.2.14 for the two workflow bodies and 0.2.13 for the checker pair,
     # which is one adoption and four rows: kit 0.2.12 moved the publish job
@@ -528,6 +577,11 @@ COMMITTED: list[tuple[str, str]] = [
     ),
     ("review-policy.md", ".claude/kit/review-policy.md"),
     ("review_runner.py", ".claude/kit/review_runner.py"),
+    ("prepush_receipt.py", ".claude/kit/prepush_receipt.py"),
+    (
+        "prepush_receipt_mutations.py",
+        ".claude/kit/prepush_receipt_mutations.py",
+    ),
     ("check_review_rounds.py", ".claude/kit/check_review_rounds.py"),
     (
         "check_review_rounds_mutations.py",

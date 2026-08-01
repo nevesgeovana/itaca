@@ -281,7 +281,39 @@ def test_the_push_tier_runs_the_whole_suite_and_blocks() -> None:
         f"the full-suite hook declares stages {stages.get('pytest-full')!r}; "
         f"it must be pre-push, or it is back on every commit."
     )
-    full = entries["pytest-full"]
+    declared = entries["pytest-full"]
+    # Kit 0.2.15 lets this entry be WRAPPED in the pre-push receipt, which
+    # skips a command already passed on an identical tree and environment.
+    # Everything below is a claim about WHAT ACTUALLY RUNS, so it reads the
+    # wrapped command and not the wrapper. Without this split the three
+    # assertions would be satisfied by any wrapper whose own argv happens
+    # to avoid the strings they look for, including a wrapper that runs
+    # something else entirely, so the guard would pass while nothing ran.
+    wrapper, separator, wrapped = declared.partition(" -- ")
+    full = wrapped if separator else declared
+    assert full.split()[:1] == ["pytest"], (
+        f"the pre-push hook's effective command is {full!r}, which does not "
+        f"start with pytest. The entry may be wrapped (the receipt takes the "
+        f"real command after ` -- `), but what runs must still be the suite."
+    )
+    if separator:
+        assert wrapper.split()[:1] == ["python"] and "guard" in wrapper.split(), (
+            f"the pre-push hook is wrapped by {wrapper!r}, which is not the "
+            f"kit receipt's `guard` subcommand. Only `prepush_receipt.py "
+            f"guard` may stand in front of the suite here: it runs the "
+            f"command unless an exact-match receipt exists, and every unknown "
+            f"state runs. Any other wrapper is an unreviewed gate."
+        )
+        assert "prepush_receipt.py" in wrapper, (
+            f"the pre-push hook is wrapped by {wrapper!r}, which is not the "
+            f"vendored receipt. The receipt is drift-pinned in "
+            f"tests/test_kit_drift.py; an unpinned wrapper is not."
+        )
+        assert "--label" in wrapper.split(), (
+            f"the wrapper {wrapper!r} carries no --label. The label is part "
+            f"of the receipt key, and it is what stops two wrapped commands "
+            f"from authorizing each other's skip."
+        )
     assert "not slow" not in full and "-m" not in full.split(), (
         f"the pre-push hook runs {full!r}, which SELECTS. It must run the "
         f"whole suite: it is the only local gate that sees the slow tests."
