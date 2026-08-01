@@ -37,6 +37,7 @@ import pytest
 import itaca as itc
 from itaca.core.coords import Cartesian, Polar
 from itaca.core.errors import AxesError, DataError, ITACAError
+from itaca.uncertainty.expression import _CONSTANTS as EXPRESSION_CONSTANTS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -79,16 +80,74 @@ def test_chk1_001_builtin_constant_does_not_shadow_a_measured_channel() -> None:
     )
 
 
-@pytest.mark.parametrize("name", ["pi", "e"])
+def test_chk1_001_the_constant_set_is_one_fact_not_two() -> None:
+    """`pproc` reads the expression engine's constants; it does not restate them.
+
+    Measured before the fix: `itaca/pproc/equations/parser.py` declared
+    `_EXPRESSION_CONSTANTS = frozenset({"pi", "e"})`, a hand-written
+    second copy of `itaca/uncertainty/expression.py::_CONSTANTS`. The
+    two agreed, so nothing was wrong today and everything was wrong
+    tomorrow: a constant added to the engine would not enter the
+    parser's dependency subtraction nor its shadow refusal, and the
+    channel it shadowed would go quiet in the one package whose whole
+    job is reading a workflow from a file.
+
+    `itaca/uncertainty/_lineage.py` already derived its copy, so the
+    parser was the one restatement of three. This is REQ-82's discovery
+    discipline applied to a value instead of to a package: the derived
+    form covers a name added later by default, and the enumerated form
+    stops covering it at exactly the moment it is least reviewed.
+
+    Both halves are asserted, because either alone is satisfiable
+    without the other. Equality alone passes on two literals that
+    happen to agree, which is the defect; the AST alone would pass on a
+    derivation from the wrong source.
+    """
+    import ast
+    from pathlib import Path
+
+    from itaca.pproc.equations import parser
+
+    engine = frozenset(EXPRESSION_CONSTANTS)
+    assert engine == parser._EXPRESSION_CONSTANTS
+
+    source = Path(parser.__file__).read_text(encoding="utf-8")
+    for node in ast.parse(source).body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if "_EXPRESSION_CONSTANTS" not in [
+            target.id for target in node.targets if isinstance(target, ast.Name)
+        ]:
+            continue
+        literals = [
+            child
+            for child in ast.walk(node.value)
+            if isinstance(child, ast.Constant) and isinstance(child.value, str)
+        ]
+        assert not literals, (
+            f"{parser.__file__} enumerates the expression constants as "
+            f"{[literal.value for literal in literals]} instead of deriving "
+            f"them from itaca.uncertainty.expression._CONSTANTS. The two "
+            f"agree today and that is the whole problem: a constant added to "
+            f"the engine would silently stop being subtracted here."
+        )
+
+
+@pytest.mark.parametrize("name", sorted(EXPRESSION_CONSTANTS))
 def test_chk1_001_the_rule_covers_every_builtin_constant(name: str) -> None:
-    """Neither constant is exempt, and this is why the case is parametrized.
+    """No constant is exempt, and this is why the case is parametrized.
 
     The rule is about a MEASURED channel becoming unreadable, which is
     true of any name the expression language also supplies. A narrowing
-    to one of the two would leave the other silently returning the
+    to one of them would leave the others silently returning the
     constant while the surrounding comment still stated the general rule,
     so the guard needs a guard: this test fails the moment the condition
-    stops covering both names, whatever the reason.
+    stops covering every name, whatever the reason.
+
+    The names are DISCOVERED from the engine rather than listed here,
+    so a constant added later arrives with this case already covering
+    it. A list would have to be extended by whoever adds the constant,
+    which is the person least likely to be thinking about shadowing.
     """
     db = itc.load(np.array([[2.0, 3.0]]), names=[name, "other"])
     with pytest.raises(ITACAError) as raised:

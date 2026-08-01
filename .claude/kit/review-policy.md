@@ -1,8 +1,8 @@
 <!--
 ITACA / pyflightstream shared process kit
-kit-version: 0.2.7
+kit-version: 0.2.11
 artifact: review-policy.md
-body-sha256: d3845ed17ef14d013ee2ffc8350f61bf0c0f585f63fc93c19e172d0a8afbd561
+body-sha256: 87da7054a05fe0393bd81aa78c2616d6c275d50f39249da2e77beb8319e75063
 canonical-source: BUILT for the kit (0.2.7) from the author's product-owner decision REVIEW-TIERS, answered 2026-07-29, which asked to become a kit promotion so that it binds every repository rather than the one that raised it. The three moments were renamed from TIER 1/2/3 to GATE/PUSH/RELEASE the same day, because both libraries already use tier 1/2/3 for TEST tiers and this artifact's first level contains all three of them; the file was renamed with them, for what the artifact IS rather than for the labels it currently uses. It also carries guard 3 of INC-20260729-0854-shared, the probe-closure rule, promoted from one checkpoint's decision into a rule for every checkpoint.
 note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 END KIT PROVENANCE (body verbatim below)
@@ -160,6 +160,15 @@ COST. Two executions instead of one, on what is already the most expensive
 check in a release plan. Accepted deliberately: a checkpoint that cannot tell a
 working fix from a broken probe is the same defect it exists to catch, one
 level up.
+
+INERTNESS (added 0.2.11, BRF-061 item 16). A reproduction that cannot show it
+exercised the claimed path is not evidence. Every probe, reproduction or guard
+demonstration must carry, beside its verdict, what proves the probe touched
+the code it claims to test: the failure string from the pre-fix run, the pass
+summary with counts, or the observable side effect it caused and reverted.
+Measured on 98 verdicts in one verification pass, and the rule earned its
+place before it was written: an itaca checkpoint caught evidence labeled
+fitvalue that actually exercised fitmodel, green and irrelevant.
 
 THE MECHANISM. `check_probe_closure.py`, beside this file, reads a checkpoint's
 probe ledger and refuses a closure that skipped step 1, a ledger whose two bases

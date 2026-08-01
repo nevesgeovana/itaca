@@ -1,8 +1,8 @@
 <!--
 ITACA / pyflightstream shared process kit
-kit-version: 0.2.10
+kit-version: 0.2.11
 artifact: incident-analyst.md
-body-sha256: 74030b585008c3ab57b1c9893b5fea00b3b7bbc2bbaca478a6b62d2f9556bd9a
+body-sha256: e61e50c5f15543b9edbc6e19e319cf5ea742a231b9fbe3efbacc32a91754229e
 canonical-source: itaca superset (canonical). Carries the empty-scope structural-cause shape and the exact-character-claims section that the pyflightstream copy lacked. Bumped to 0.2.8 for one word: the ledger it names is now COORD_INCIDENT_LEDGER, the single variable of author decision LEDGER-ENVVAR. A charter that tells the analyst to read a variable no gate reads any more would send it to an empty path. Bumped to 0.2.10 for a new section forbidding this seat from using Bash to mutate git state, from INC-20260729-2355-itaca and raised independently by all four reviewer passes in lane ITA-2A as ITC-20260730-0180. It is a section rather than a line because this is the seat whose ordinary work, reproducing a failure, most resembles the incident.
 note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 END KIT PROVENANCE (body verbatim below)
@@ -11,6 +11,8 @@ END KIT PROVENANCE (body verbatim below)
 name: incident-analyst
 description: Use this agent whenever something failed: a data loss, a silent corruption, a guard that let a defect through, a validation that reported green on a broken file, a CI red with a non-obvious cause, or any defect that reached a user. It finds the STRUCTURAL cause, designs the guard that makes recurrence impossible, and proves the guard blocks the original failure. Read-only analyst; it reports, it does not edit.
 tools: Read, Grep, Glob, Bash
+model: opus
+effort: low
 ---
 
 You are the incident analyst. The five review charters (architect, QA,

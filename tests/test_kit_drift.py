@@ -26,6 +26,21 @@ days. The env-located shared tools are checked only when their variable
 is set (see below), so in a clone that never configured them they are not
 drift-guarded in ordinary CI.
 
+THAT LIMIT IS NOT THEORETICAL, and lane ITA-4 measured how far it can
+go. Comparing every pin below against the kit README's manifest table
+found three rows behind: ``review-policy.md`` at 0.2.7 against 0.2.11,
+``incident-analyst.md`` at 0.2.10 against 0.2.11, and
+``check_plan_kit_mutations.py`` at 0.2.3 against 0.2.10. This suite was
+green throughout, exactly as the paragraph above says it would be, and
+the third row was the one that mattered: the DEPLOYED plan checker had
+been upgraded to 0.2.10 while the mutation companion that proves it can
+still fail was left at 0.2.3. Nothing here could see that, because both
+halves were internally consistent. All three are adopted as of
+2026-08-01 and every pin below now equals the canonical table. The
+currency check itself is registered rather than added, because a live
+read needs a locator for the kit master and the locator family is
+charter material (``ITC-20260801-0900``).
+
 The fixture is the manifest (kit ``README.md``), inlined here so the test
 needs no cross-repo filesystem access and cannot deadlock a push. A MIXED
 manifest (per-file body hashes and versions, not one kit-wide hash) is
@@ -66,29 +81,49 @@ expected and correct, and the pins below are per file:
   the label is already cited by name in plan entry
   ``ITC-20260728-2010`` and a label whose contents change after it is
   cited makes the citation say something it no longer means.
-- 0.2.10: ``incident-analyst.md``, carrying TWO changes at once. 0.2.8
-  renamed the ledger variable the charter names to
-  ``COORD_INCIDENT_LEDGER`` (author decision LEDGER-ENVVAR), and 0.2.10
+- 0.2.11: ``review-policy.md``, adding the INERTNESS rule (BRF-061 item
+  16). A reproduction that cannot show it exercised the claimed path is
+  not evidence, so a probe carries what proves it touched the code it
+  names, beside its verdict.
+- 0.2.11: ``incident-analyst.md``, carrying THREE changes across three
+  kit versions. 0.2.8 renamed the ledger variable the charter names to
+  ``COORD_INCIDENT_LEDGER`` (author decision LEDGER-ENVVAR), 0.2.10
   added the section forbidding that seat from using Bash to mutate git
-  state. Three artifacts move together for this one entry: the stamped
-  of-record copy, the runtime charter tied to it by
-  ``test_the_runtime_agent_body_matches_the_of_record_copy``, and this
-  pin.
+  state, and 0.2.11 adds the two frontmatter keys ``model: opus`` and
+  ``effort: low`` so the seat's model and effort come from its charter
+  rather than from whoever spawns it. Three artifacts move together for
+  this one entry: the stamped of-record copy, the runtime charter tied
+  to it by ``test_the_runtime_agent_body_matches_the_of_record_copy``,
+  and this pin.
 - 0.2.2: both side-effect-guard artifacts.
-- 0.2.10 and 0.2.3: the kit plan checker and its mutation companion. This
-  was the KNOWN LAG and it is closed. The two moved together with the
-  DEPLOYED copies they name, which is what the rule below requires: the
-  deployed pair sits outside this repository, under the directory
-  ``ITACA_PLAN_VALIDATOR`` names, and moving the pins alone would have
-  reddened this suite for a change made nowhere. The checker's 0.2.10 body
-  is the fix for ``ITC-20260727-1612``: an empty plan directory now exits
-  2 with ``CANNOT VERIFY`` instead of printing ``no entries`` and exiting
-  zero. Measured at the deployed path after re-vendoring: empty exits 2,
-  a missing directory still exits 1, the real ledger validates with a
-  nonzero entry count and 0 bad, and the companion reports ``0 check(s)
-  could not fail``. The counts themselves are not recorded here: the
-  ledger is outside this repository and grows, so a number written down
-  reads as an expectation and drifts the same day.
+- 0.2.10: the kit plan checker AND its mutation companion, which reached
+  it separately and a week apart. The two are deployed OUTSIDE this
+  repository, under the directory ``ITACA_PLAN_VALIDATOR`` names, so
+  each pin moves only with the deployed copy it names; that is the rule
+  below, and it is why the checker's pin could sit at 0.2.10 while the
+  companion's sat at 0.2.3.
+
+  The reason it sat there was not the one this file used to give. The
+  text here said "per-file versions, as the kit ships them", which
+  asserted that the KIT still shipped a 0.2.3 companion, and lane ITA-4
+  measured that false: the kit ships both at 0.2.10. What was true is
+  worse. The deployed checker had been upgraded and the artifact that
+  proves it can still fail had not, so for that window the guard on the
+  guard was seven versions behind, and no test in this file could see it
+  because each half was self-consistent with its own pin.
+
+  The checker's 0.2.10 body is the fix for ``ITC-20260727-1612``: an
+  empty plan directory now exits 2 with ``CANNOT VERIFY`` instead of
+  printing ``no entries`` and exiting zero. Measured at the deployed
+  path: empty exits 2, a missing directory still exits 1, and the real
+  ledger validates with a nonzero entry count and 0 bad. Measured again
+  on 2026-08-01 after deploying the 0.2.10 companion: it reports ``0
+  check(s) could not fail``, and its case list now includes "an empty
+  plan directory refuses with CANNOT VERIFY", which is precisely the
+  case ``ITC-20260730-0205`` recorded as ABSENT from the companion while
+  the checker's own fix was already shipped. The counts themselves are
+  not recorded here: the ledger is outside this repository and grows, so
+  a number written down reads as an expectation and drifts the same day.
 - 0.1.0: ``check_incidents.py``, unchanged.
 
 The rule that decides both of those, stated once so the asymmetry is not
@@ -263,8 +298,14 @@ MANIFEST: dict[str, Pin] = {
     "check_probe_closure_mutations.py": Pin(
         "59f3f3c120d7b834bae78b047b2e76d638952a4fb749783b78caba9214767b9c", "0.2.7"
     ),
+    # 0.2.11 adds one paragraph, the INERTNESS rule (BRF-061 item 16): a
+    # reproduction that cannot show it exercised the claimed path is not
+    # evidence, so every probe carries what proves it touched the code it
+    # names, beside its verdict. Adopted here rather than merely pinned,
+    # because it is the rule this lane's own RED measurements are held to.
+    # The declared value agreed with the master body on recomputation.
     "review-policy.md": Pin(
-        "d3845ed17ef14d013ee2ffc8350f61bf0c0f585f63fc93c19e172d0a8afbd561", "0.2.7"
+        "87da7054a05fe0393bd81aa78c2616d6c275d50f39249da2e77beb8319e75063", "0.2.11"
     ),
     # 0.2.13. Two rules became six, and the sixth is the one the rehearsal
     # paid for: GitHub EVALUATES the `description` of a `workflow_call` input,
@@ -303,8 +344,13 @@ MANIFEST: dict[str, Pin] = {
     # is what caught it here. Cross-check that the recomputation is right and
     # not the mismatch: the same function reproduces the 0.2.4 pin exactly
     # from the body this commit replaces.
+    # 0.2.11 adds two frontmatter keys and nothing else: `model: opus` and
+    # `effort: low`, so the seat's model and reasoning effort are declared
+    # by its charter rather than inherited from whoever spawns it. The
+    # 0.2.11 body's declared value AGREED with the master body on
+    # recomputation, which the three entries above could not say.
     "incident-analyst.md": Pin(
-        "74030b585008c3ab57b1c9893b5fea00b3b7bbc2bbaca478a6b62d2f9556bd9a", "0.2.10"
+        "e61e50c5f15543b9edbc6e19e319cf5ea742a231b9fbe3efbacc32a91754229e", "0.2.11"
     ),
     # 0.2.11, and it is an ADOPTION rather than a lagging pin moving: this
     # repository had never vendored this artifact at all, which
@@ -331,17 +377,31 @@ MANIFEST: dict[str, Pin] = {
     "snap.sh": Pin(
         "0835e6ae1bd43d05e213a88552bcd94a1b91ebec946f9dabb5411d7595b265d1", "0.2.5"
     ),
-    # The KNOWN LAG is over. Both deployed copies were re-vendored in the
-    # same commit that moved these two pins, which is what the rule in the
-    # module docstring requires of a pin naming an artifact deployed OUTSIDE
-    # this repository. Per-file versions, as the kit ships them: the checker
-    # is at 0.2.10 and its companion at 0.2.3, and both declared values
-    # agreed with their own bodies on recomputation.
+    # Both at 0.2.10, and the companion only reached it now. The comment
+    # here used to say "per-file versions, as the kit ships them: the
+    # checker is at 0.2.10 and its companion at 0.2.3", which asserted a
+    # fact about the KIT and was measured false: the kit ships both at
+    # 0.2.10 and has since 0.2.11's manifest at the latest. The 0.2.3 pin
+    # was correct under the deployed-copy rule and wrong about its reason.
+    # What was actually true is worse than a stale version number: the
+    # DEPLOYED checker was upgraded to 0.2.10 and its mutation companion
+    # was left at 0.2.3, so for the whole of that window the artifact
+    # proving this checker can still fail was seven versions behind the
+    # checker. That is the guard-guarding-the-guard going stale, which is
+    # the failure class the incident rule exists for, and no test could
+    # see it because both halves were self-consistent.
+    #
+    # Measured on adoption: the deployed companion now hashes to the
+    # canonical value, and it runs 0 check(s) could not fail. Its case
+    # list gained "an empty plan directory refuses with CANNOT VERIFY",
+    # which is the case `ITC-20260730-0205` recorded as absent from the
+    # companion while the checker's own empty-walk fix was already
+    # shipped, so this adoption closes that gap as well.
     "check_plan_kit.py": Pin(
         "a6eca8d542e6189b6b14cde0d4eb92e3f2850f8a21b3dd26a8fc30c06829c39c", "0.2.10"
     ),
     "check_plan_kit_mutations.py": Pin(
-        "410db0d4003dcb085b87eba4af35686d490aa2974d67606ea509ba25bcf6fe8b", "0.2.3"
+        "19e0082627371279642723f35d7f78af0e59577eda3ff751cc658332dc8151ad", "0.2.10"
     ),
 }
 

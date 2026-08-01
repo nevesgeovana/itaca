@@ -304,10 +304,23 @@ def test_the_gated_reviewers_pin_their_model_and_effort() -> None:
     accident more easily than prose is, and nothing else would notice.
 
     BOTH DIRECTIONS ARE PINNED, and the second is the load-bearing one:
-    `incident-analyst` must NOT carry the pin locally, because it is a
-    kit-derived body whose runtime copy must match its stamped of-record
-    copy byte for byte. A well-meant "you missed one" edit reddens the
-    drift test with a confusing message; this one says why first.
+    `incident-analyst` is a kit-derived body whose runtime copy must
+    match its stamped of-record copy byte for byte, so its pin may only
+    ARRIVE BY RE-VENDOR and never by a local edit. This guard used to
+    say that by requiring the field to be ABSENT, which was right while
+    the kit master carried no pin. Kit 0.2.11 added `model: opus` and
+    `effort: low` to that master and itaca adopted it on 2026-08-01, so
+    the absence rule would now refuse the very thing it told the reader
+    to do.
+
+    The requirement it becomes is the same one, stated against the
+    source instead of against the value: the runtime charter carries the
+    pin AND the stamped of-record copy carries the identical pin. A hand
+    edit cannot satisfy both. Touch the runtime alone and
+    `test_the_runtime_agent_body_matches_the_of_record_copy` fails;
+    touch both and the of-record body hash stops matching the kit
+    manifest. So "by re-vendor, not by hand" is still what is enforced,
+    and it no longer depends on the master staying silent forever.
 
     NOT PINNED HERE: the effort VALUE as a permanent choice. The author's
     falsifiable safeguard is that if findings per review drop after the
@@ -333,13 +346,23 @@ def test_the_gated_reviewers_pin_their_model_and_effort() -> None:
                 f"If she moved the value, move it in this guard too."
             )
     kit_charter = (agents / f"{_KIT_DERIVED_CHARTER}.md").read_text(encoding="utf-8")
-    for key in ("model", "effort"):
-        assert _charter_field(kit_charter, key) is None, (
-            f"{_KIT_DERIVED_CHARTER}.md carries a {key}: field. That charter "
-            f"is a kit-derived body and its runtime copy must match the "
-            f"stamped of-record copy under .claude/kit byte for byte, so a "
-            f"hand-added field here reddens tests/test_kit_drift.py. Its pin "
-            f"belongs in the kit master and arrives by re-vendor."
+    of_record = (_ROOT / ".claude" / "kit" / f"{_KIT_DERIVED_CHARTER}.md").read_text(
+        encoding="utf-8"
+    )
+    for key, want in (("model", "opus"), ("effort", "low")):
+        runtime_value = _charter_field(kit_charter, key)
+        assert runtime_value == want, (
+            f"{_KIT_DERIVED_CHARTER}.md declares {key}: {runtime_value!r}, not "
+            f"{want!r}. Kit 0.2.11 carries this pin in the master; if it is "
+            f"missing here the re-vendor was partial, and the fix is to "
+            f"re-vendor from the kit rather than to add the field by hand."
+        )
+        assert _charter_field(of_record, key) == want, (
+            f"the runtime {_KIT_DERIVED_CHARTER}.md declares {key}: "
+            f"{runtime_value!r} and the stamped of-record copy under "
+            f".claude/kit does not. That is a HAND EDIT to a kit-derived "
+            f"body: the pin must arrive by re-vendor, so that the of-record "
+            f"copy's hash still matches the kit manifest."
         )
 
 

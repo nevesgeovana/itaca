@@ -61,6 +61,7 @@ from types import MappingProxyType
 from typing import Any, NoReturn
 
 from itaca.core.errors import DataError, ItceqCycleError, ItceqParseError
+from itaca.uncertainty.expression import _CONSTANTS as _ENGINE_CONSTANTS
 from itaca.uncertainty.expression import validate_expression_syntax
 
 __all__ = ["Equation", "ItceqSpec", "parse_itceq"]
@@ -68,8 +69,22 @@ __all__ = ["Equation", "ItceqSpec", "parse_itceq"]
 SECTIONS = ("meta", "constants", "uncertainties", "equations", "corrections")
 """The five sections of SRS Section 4.6, in evaluation order."""
 
-_EXPRESSION_CONSTANTS = frozenset({"pi", "e"})
-"""Names the expression engine supplies as literals (REQ-44)."""
+_EXPRESSION_CONSTANTS = frozenset(_ENGINE_CONSTANTS)
+"""Names the expression engine supplies as literals (REQ-44).
+
+DERIVED from the engine, never restated. This used to be a hand-written
+``frozenset({"pi", "e"})``, a second copy of the same fact one package
+over, and the copies agreed, which is what made it dangerous rather than
+broken: a constant added to the engine would not have entered this
+module's dependency subtraction nor its shadow refusal, so the measured
+channel it shadowed would go quiet in the one package whose whole job is
+reading a workflow from a file. ``itaca/uncertainty/_lineage.py`` already
+derived its copy; this was the last restatement.
+
+The same discipline REQ-82 states for packages, applied to a value: the
+derived form covers a name added later by default, and the enumerated
+form stops covering it at exactly the moment it is least reviewed.
+"""
 
 _NAMESPACE = "np"
 """The one attribute namespace expressions may call into (REQ-44)."""
