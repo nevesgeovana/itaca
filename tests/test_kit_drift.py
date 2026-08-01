@@ -334,12 +334,33 @@ MANIFEST: dict[str, Pin] = {
     # `ITC-20260730-2355` already registers that `mypy-full` is the
     # byte-identical command a second time, so giving the duplicate a
     # mechanism of its own would make that item harder to act on.
+    #
+    # 0.2.16 makes the receipt authorise only the tree the suite actually ran
+    # against. Two defects, measured as one design because their invariants
+    # were the same sentence: the key stored was RECOMPUTED after the child
+    # exited (`ITC-20260801-2320`), and a receipt was written for a run whose
+    # own verdict was still pending, because pre-commit declares "files were
+    # modified by this hook" AFTER the exit status the wrapper reads
+    # (`ITC-20260802-0620`). A guarded command that MODIFIES the working tree
+    # now writes no receipt at all and says so.
+    #
+    # LATENT HERE and recorded as such: this repository's full suite leaves
+    # the tree clean, so nothing should behave differently today. The day a
+    # test starts writing into the tree, the push gets slower and prints the
+    # reason instead of silently skipping a suite over content it never
+    # measured.
+    #
+    # EVERY EXISTING RECEIPT IS INVALIDATED by this row, because component 4
+    # of the key is this body's own hash. The first push after it lands runs
+    # the full suite; that is the designed behavior and not a defect to
+    # diagnose. No configuration moves: the wrapper's invocation, the receipt
+    # path and the gitignore row are unchanged.
     # Both declared values agreed with the master bodies on recomputation.
     "prepush_receipt.py": Pin(
-        "411e78073d2cece7a12ec17d2afec6f0bd91f6e9bda9ccdf8a26441975b2ead7", "0.2.15"
+        "e44bde8efa27e0bed50db5e10903871936d688c55d833f4c707f29e3ec67aa94", "0.2.16"
     ),
     "prepush_receipt_mutations.py": Pin(
-        "f258f90b3aeea8b0c66737139ad2a5f7e837d8743a77dd784486758ddff94967", "0.2.15"
+        "228d9e359c55a0d14f2e890b7130d405d279a63273b5d6710b429844af58f633", "0.2.16"
     ),
     # 0.2.14 for the two workflow bodies and 0.2.13 for the checker pair,
     # which is one adoption and four rows: kit 0.2.12 moved the publish job
@@ -416,9 +437,17 @@ MANIFEST: dict[str, Pin] = {
     # itaca's `develop` skill POINTS at the design-before-edit section
     # rather than restating it, which is that skill's own convention and
     # the whole reason the rule went into the shared policy.
+    #
+    # 0.2.16 adds three things and moves no existing rule in meaning. The
+    # PROPERTY SENTENCE sits INSIDE design before edit, which is why the
+    # `develop` skill's pointer carries it without being edited: a fix
+    # recorded in a round ledger states, in one sentence written BEFORE the
+    # edit, the invariant it establishes. Beside it, the round ledger's
+    # locator convention goes into the recursion cap, and a new section CITE
+    # AN ID WITH ITS TITLE arrives with `check_citations.py`.
     # The declared value agreed with the master body on recomputation.
     "review-policy.md": Pin(
-        "b29bc2155efd78775d6ff172aa3c34abb5c25d949f9cbc817687e2ecd7548e6c", "0.2.15"
+        "e0617a4f6f4a70de5dfe55a66e38efc2faaf1e312a4e543c7f6a21e10f1bbf6f", "0.2.16"
     ),
     # 0.2.15, NEW: the two-round cap, mechanised. The policy has stated the
     # cap since 0.2.7 and nothing enforced it, and the naive mechanism
@@ -437,13 +466,98 @@ MANIFEST: dict[str, Pin] = {
     # so. This lane recorded its round ledger in that format as the first
     # consumer use of it; a lane that finds the format wrong corrects it by
     # kit promotion, never by hand-editing this copy.
+    #
+    # 0.2.16 adds RULE 8 and a LOCATOR, and rule 8 REDDENS EXISTING LEDGERS
+    # deliberately: a `fixed` row must carry `property=`, one sentence
+    # stating the invariant the fix establishes. Measured here against the
+    # real root before anything was decided, `--root <root> --all` reported
+    # 2 ledgers checked and 2 refused, 22 and 24 violations, EVERY ONE of
+    # them rule 8. Both are lane ITA-11's and both were written before the
+    # field existed.
+    #
+    # THEY ARE NOT RETROFITTED, which is this repository's call and is
+    # recorded here because it decides what tier 1 can run. The policy says
+    # writing the sentence after the fix is not the mechanism, and the whole
+    # value of the field is at the moment of writing; inventing forty-five
+    # invariants for fixes another lane made would produce a record that
+    # reads as evidence and is not. So they stay as closed historical
+    # records, `--all` is NOT wired, and `tests/test_review_rounds.py` runs
+    # the LANE form against a ledger written under rule 8 from its first
+    # line. Wiring `--all` needs those two resolved and is registered.
+    #
+    # The locator adds NO environment variable, on the precedent
+    # `prepush_receipt.py` set: `--root <dir> --lane <id>` resolves
+    # `<root>/<lane>_rounds.ledger`, and what an absent root means at a gate
+    # is each repository's charter call. itaca's is written in CLAUDE.md and
+    # is a SKIP that must be announced, never a denial.
     # Both declared values agreed with the master bodies on recomputation.
     "check_review_rounds.py": Pin(
-        "6d57387bdf9206b7811b40ce5a277d5bb4e050d3875e8ec7e3a9d0f1c9abb929", "0.2.15"
+        "b09fdec02dc0674a540bb5429c6343a8d4b7747fc286232dcb54f9b6e4508c4e", "0.2.16"
     ),
     "check_review_rounds_mutations.py": Pin(
-        "368c985b7bee0c2a72919dc0feda7c3e454b8f0b26fd1d47c1f04e1143e20f07", "0.2.15"
+        "9da4b72e42fa1369d5c55c114a6096336001a1f905dbea5d69f6627501d81e26", "0.2.16"
     ),
+    # 0.2.16, NEW: the spawn guard that judges a spawn by the CALL.
+    # `ITC-20260802-0200` is written against THIS repository's own
+    # `test_no_spawn_site_bypasses_child_env`, which decided the question by
+    # reading a fixed window of lines after each `subprocess.run(`, and lane
+    # ITA-11 round two met both of that shape's failure directions in one
+    # commit: a neighbour's `env=` sixteen lines away excused two real
+    # offenders, and a correct call whose argv was written one element per
+    # line was reported as an offender seventeen lines from its own opening.
+    #
+    # The window guard is RETIRED in the same commit that vendors this, and
+    # that is the decision the adoption brief hands to this repository rather
+    # than taking: two guards claiming the same coverage teach a reader to
+    # trust neither, and the one being retired has both failure directions
+    # reachable while this one has neither. What the retirement must not lose
+    # is the ACCOUNTING, so the replacement asserts a floor on the checker's
+    # own checked-count line; `tests/test_spawn_env.py` carries both.
+    #
+    # MEASURED on first run over `tests/`: 79 modules, 32 spawn calls, 8
+    # unguarded, 0 unverifiable. All eight were `git` spawns, which the
+    # retired guard never looked at because it only ever considered
+    # `sys.executable`. They were fixed in the same commit rather than
+    # registered, because a wired checker that is red wires nothing.
+    # Both declared values agreed with the master bodies on recomputation.
+    "check_spawn_env.py": Pin(
+        "b5db024d0e110f379bc9c019ed2ef117e14a952b95895593d81a2e394a3c7619", "0.2.16"
+    ),
+    "check_spawn_env_mutations.py": Pin(
+        "133ffcab519c483d598aa6ab9cb67feeb22546b4b2a85aaa0f063851646d713b", "0.2.16"
+    ),
+    # `check_citations.py` and its companion are rows 4 and 5 of the kit
+    # 0.2.16 adoption and are DELIBERATELY ABSENT from this manifest. They
+    # are the one pair lane ITA-12 could not vendor, and the reason is
+    # recorded here rather than in a lane document, because the next lane to
+    # read this file is the one that will try again.
+    #
+    # The master's body carries an EM DASH and an EN DASH, both inside the
+    # character class of a `.lstrip(" :-.**")` at line 262 of its body, where
+    # they strip a dash separator out of a heading. That is functional and
+    # harmless everywhere except here: CLAUDE.md states "Never use em dashes
+    # or en dashes anywhere, in any file. No exceptions", and
+    # `tests/test_house_style.py` walks every vendored body for exactly that.
+    # Vendoring the pair turns that walk RED on a file this repository is
+    # forbidden to hand-edit, so the two guards would contradict each other
+    # and one of them would have to be weakened.
+    #
+    # AN EXEMPTION WAS CONSIDERED AND REFUSED. This repository has already
+    # decided this question in the opposite direction: `release.yml.template`
+    # is a vendored kit body that reached the tree exempt from the dash walk
+    # BY ACCIDENT, and the walk was widened to reach it rather than the
+    # exemption being kept, with CLAUDE.md's "No exceptions" cited in the
+    # comment that did it. The kit has honoured that before too, at 0.2.15,
+    # when four British spellings inside bodies this walk scans were changed
+    # for it. So the defect is routed to the coordination level, and the two
+    # rows are vendored by the lane that adopts the fixed master. The
+    # `--mode` decision the adoption brief asks for is taken anyway and is
+    # written in CLAUDE.md, so the next lane vendors and wires rather than
+    # deciding.
+    #
+    # MEASURED, so the scope is not guessed: of the eleven 0.2.16 masters,
+    # `check_citations.py` is the ONLY one carrying either character, and its
+    # own companion is clean.
     # 0.2.15, NEW: the version-control skill. It carries the push sequence
     # as a template and adds NO mechanism, which is why it is the lowest
     # blast radius row in the whole batch. It exists because the push step
@@ -562,9 +676,27 @@ MANIFEST: dict[str, Pin] = {
     # That last one is why `close` MUST be run with the OLD body before
     # this pin moves: a worktree opened under the old root is not found
     # under the new one. ITA-11 ran it and measured no worktrees to close.
+    # ITA-12 ran it again for the same reason and measured the same thing,
+    # with `git worktree list` reporting the main checkout alone, so no
+    # state was carried across this body change either.
+    #
+    # 0.2.16 fixes `ITC-20260802-0010`, and the finding's own correction is
+    # what shapes the repair. The fallback is not the boundary: `git worktree
+    # remove --force` takes a busy tree on its own, so the real limit is the
+    # COLLECTION. Two halves therefore. The rmtree fallback is GATED on git's
+    # own registration, so a directory git still lists as a worktree is never
+    # taken and stays a reported failure with exit 1; and the findings file
+    # is RE-READ immediately before its sidecar would be removed, with the
+    # newer bytes collected and the SIDECAR KEPT when they differ.
+    #
+    # WHAT THAT DOES NOT DO, and the `role-review` skill's sentence is held
+    # to it: a successful forced removal still pulls the cwd out from under a
+    # running lens, and nothing portable can detect that. The operator rule
+    # "do not close until every lens has reported" is NOT retired; it is
+    # reduced from protecting findings to protecting a working directory.
     # The declared value agreed with the master body on recomputation.
     "review_runner.py": Pin(
-        "dd8b9793c5c5b5e7d01365a1ff5ac889b1ca39722b576ad3159320a7aa8aec97", "0.2.15"
+        "bedd5c3957850d4ddb236efec4ade6f6e9f81412df9ab612eb8247aeeab12474", "0.2.16"
     ),
     "check_side_effect_guard.py": Pin(
         "ba9007941dcc44887e31d70dc74be8efe409f51a249d2b79398e66c276e9810c", "0.2.2"
@@ -649,6 +781,11 @@ COMMITTED: list[tuple[str, str]] = [
     (
         "check_review_rounds_mutations.py",
         ".claude/kit/check_review_rounds_mutations.py",
+    ),
+    ("check_spawn_env.py", ".claude/kit/check_spawn_env.py"),
+    (
+        "check_spawn_env_mutations.py",
+        ".claude/kit/check_spawn_env_mutations.py",
     ),
     # The one committed copy outside `.claude/hooks` and `.claude/kit`. A
     # skill BODY is deployed where its loader looks for it, so this row is

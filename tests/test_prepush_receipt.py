@@ -153,6 +153,7 @@ def test_the_receipt_file_can_never_be_committed() -> None:
         capture_output=True,
         text=True,
         cwd=str(_ROOT),
+        env=child_env(),
     )
     assert done.returncode == 0, (
         f"git does not ignore .claude/.prepush_receipt.json (check-ignore "
@@ -390,18 +391,27 @@ def test_the_receipt_can_still_fail() -> None:
     Two SKIP controls exist because a mechanism that never skips is not
     the mechanism, and a companion with no control would pass against a
     file that always runs the suite.
+
+    Kit 0.2.16 adds three cases and two mutants to that list, for the fix
+    that makes a receipt authorize only the tree the suite actually ran
+    against: a guarded command that CREATES an untracked file must leave
+    no receipt, the same for one that MODIFIES a tracked file, and the
+    control that touches nothing must still SKIP. The compound mutant
+    restores both 0.2.15 lines at once, because once the tree-modification
+    check holds it returns before the write is reached and a mutant
+    deleting only the pre-run key survives every case.
     """
     done = _run(str(_RECEIPT_MUTATIONS))
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "all 15 mutants are denied" in done.stdout, (
-        f"the receipt mutation companion did not report all 15 mutants "
+    assert "all 17 mutants are denied" in done.stdout, (
+        f"the receipt mutation companion did not report all 17 mutants "
         f"denied. Two opposite remedies: if a re-vendor changed the count, "
         f"move it here and in tests/test_kit_drift.py's manifest note "
         f"together; if it did not, a mutant SURVIVED, which means a defense "
         f"can be deleted and the mechanism still skips. Output:\n{done.stdout}"
     )
-    assert "All 24 cases hold" in done.stdout, (
-        f"the receipt mutation companion did not report 24 cases. The "
+    assert "All 27 cases hold" in done.stdout, (
+        f"the receipt mutation companion did not report 27 cases. The "
         f"mutants can be denied by a shrunken case list, so this count is "
         f"what catches a re-vendor that quietly dropped cases. If the kit "
         f"really changed it, move the pin; do not delete it. "

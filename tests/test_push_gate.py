@@ -74,7 +74,12 @@ PUSH = "git" + " push"
 def git(repo: Path, *args: str) -> str:
     """Run git in ``repo`` and return stripped stdout."""
     done = subprocess.run(
-        ["git", *args], cwd=repo, capture_output=True, text=True, check=True
+        ["git", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+        env=child_env(),
     )
     return done.stdout.strip()
 
@@ -214,7 +219,9 @@ def add_commit(repo: Path, name: str) -> str:
 def repo(tmp_path: Path) -> Path:
     """A repository with one pushed commit and a local bare remote."""
     remote = tmp_path / "remote.git"
-    subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+    subprocess.run(
+        ["git", "init", "--bare", "-q", str(remote)], check=True, env=child_env()
+    )
     work = tmp_path / "work"
     work.mkdir()
     git(work, "init", "-q")
@@ -827,60 +834,26 @@ def test_a_child_process_does_not_start_coverage() -> None:
     assert done.stdout.strip() == "False", done.stdout
 
 
-@pytest.mark.fast  # 0.01 s: a static scan of test sources, no subprocess
-def test_no_spawn_site_bypasses_child_env() -> None:
-    """Every Python subprocess in the suite must go through the helper.
-
-    Two sites existed when the CI failure was diagnosed and only one
-    was found by reading the traceback. The other combined cleanly by
-    accident, because its cwd happened to be the repository root.
-    """
-    root = Path(__file__).resolve().parent
-    offenders: list[str] = []
-    scanned = 0
-    interpreter_spawns = 0
-    for path in sorted(root.rglob("test_*.py")):
-        lines = path.read_text(encoding="utf-8").splitlines()
-        scanned += 1
-        for index, line in enumerate(lines):
-            if "subprocess.run(" not in line and "subprocess.Popen(" not in line:
-                continue
-            # The call spans several lines, so the interpreter and the
-            # env argument are usually not on the line that opens it.
-            # A first version required both on one line and therefore
-            # missed the only real offender in the suite.
-            window = "\n".join(lines[index : index + 14])
-            if "sys.executable" not in window:
-                continue
-            interpreter_spawns += 1
-            if "env=" not in window:
-                offenders.append(f"{path.name}:{index + 1}")
-    # READ THE ACCOUNTING, not only the verdict. `assert not offenders` alone
-    # is satisfied by a walk that opened nothing and by a spawn idiom this
-    # scan stopped recognizing, and both read exactly like compliance. The
-    # sibling guard promoted beside this one already carries a floor
-    # (`test_release_integrity.py`, `assert checked >= 100`), and this one
-    # did not; a reviewer measured the asymmetry in the commit that moved
-    # both into the commit tier. Floors are set well under the current
-    # counts, so they catch collapse rather than drift.
-    assert scanned >= 20, (
-        f"the spawn-site scan opened only {scanned} test module(s), which is "
-        f"far below this suite's size. The walk is finding nothing, so a "
-        f"green verdict here means nothing; fix the walk before reading it."
-    )
-    assert interpreter_spawns >= 10, (
-        f"the scan recognized only {interpreter_spawns} interpreter spawn "
-        f"site(s). This suite spawns Python from many modules, so a count "
-        f"this low means the idiom moved and the scan no longer sees it, not "
-        f"that the sites went away. The verdict below would then be vacuous."
-    )
-    assert not offenders, (
-        f"spawn sites with no explicit env: {offenders}. Every spawn of "
-        f"sys.executable must pass env=child_env(), which strips COV_CORE_*; "
-        f"without it the child starts coverage and the run can abort AFTER "
-        f"every test has passed. Put env= on the call itself, within a few "
-        f"lines of subprocess.run(, rather than widening this window."
-    )
+# `test_no_spawn_site_bypasses_child_env` STOOD HERE and is RETIRED at kit
+# 0.2.16, in favour of `tests/test_spawn_env.py`. It is named rather than
+# deleted silently, because a guard that disappears from a file reads as a
+# guard that was never needed.
+#
+# It decided whether a spawn site passed an explicit environment by reading
+# a fixed window of fourteen lines after each `subprocess.run(`, and
+# `ITC-20260802-0200` is written about exactly that. Lane ITA-11 round two
+# met BOTH of the shape's failure directions in one commit: a neighbour's
+# `env=` sixteen lines away excused two real offenders, and a correct call
+# whose argv was written one element per line was reported as an offender
+# seventeen lines from its own opening. The vendored checker judges the
+# CALL, parsed with `ast`, so neither direction is reachable.
+#
+# Two guards claiming the same coverage teach a reader to trust neither, so
+# it is retired rather than kept beside the checker. Its two accounting
+# floors were NOT dropped: they moved onto the checker's own checked-count
+# line, which is what tells a clean tree apart from a walk that opened
+# nothing. `test_a_child_process_does_not_start_coverage` above is the
+# BEHAVIORAL half and stays here; neither guard replaces it.
 
 
 def test_no_partial_coverage_file_survives_a_hook_run(repo: Path) -> None:

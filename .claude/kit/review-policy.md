@@ -1,14 +1,15 @@
 <!--
 ITACA / pyflightstream shared process kit
-kit-version: 0.2.15
+kit-version: 0.2.16
 artifact: review-policy.md
-body-sha256: b29bc2155efd78775d6ff172aa3c34abb5c25d949f9cbc817687e2ecd7548e6c
-canonical-source: BUILT for the kit (0.2.7) from the author's product-owner decision REVIEW-TIERS, answered 2026-07-29, which asked to become a kit promotion so that it binds every repository rather than the one that raised it. The three moments were renamed from TIER 1/2/3 to GATE/PUSH/RELEASE the same day, because both libraries already use tier 1/2/3 for TEST tiers and this artifact's first level contains all three of them; the file was renamed with them, for what the artifact IS rather than for the labels it currently uses. It also carries guard 3 of INC-20260729-0854-shared, the probe-closure rule, promoted from one checkpoint's decision into a rule for every checkpoint.
+body-sha256: e0617a4f6f4a70de5dfe55a66e38efc2faaf1e312a4e543c7f6a21e10f1bbf6f
+canonical-source: BUILT for the kit (0.2.7) from the author's product-owner decision REVIEW-TIERS, answered 2026-07-29, which asked to become a kit promotion so that it binds every repository rather than the one that raised it. The three moments were renamed from TIER 1/2/3 to GATE/PUSH/RELEASE the same day, because both libraries already use tier 1/2/3 for TEST tiers and this artifact's first level contains all three of them; the file was renamed with them, for what the artifact IS rather than for the labels it currently uses. It also carries guard 3 of INC-20260729-0854-shared, the probe-closure rule, promoted from one checkpoint's decision into a rule for every checkpoint. 0.2.16 adds the PROPERTY SENTENCE inside design before edit, the round ledger's LOCATOR paragraph inside the recursion cap, and the section CITE AN ID WITH ITS TITLE with check_citations.py beside this file. No existing rule moves in meaning. See coordination/DESIGN_HUB-12_kit_batch.md items 5, 7 and 8.
 0.2.15 adds two sections, DESIGN BEFORE EDIT and the round-two distinction inside the recursion cap, and adds check_review_rounds.py beside this file. Neither changes GATE, PUSH, RELEASE, the ordering rule or probe closure in meaning. See coordination/DESIGN_HUB-11_kit_batch.md items 3 and 4.
+0.2.16 adds the PROPERTY SENTENCE inside design before edit (the author's adoption of ITA-11's proposal, and the machine-checkable half of that rule), the round ledger's LOCATOR paragraph inside the recursion cap, and a new section CITE AN ID WITH ITS TITLE with check_citations.py beside this file. No existing rule moves in meaning: GATE, PUSH, RELEASE, the ordering rule, the round-two distinction and probe closure are untouched. See coordination/DESIGN_HUB-12_kit_batch.md items 5, 7 and 8.
 note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 END KIT PROVENANCE (body verbatim below)
 -->
-# The review policy: three moments, the ordering rule, design before edit, the recursion cap, and probe closure
+# The review policy: three moments, the ordering rule, design before edit, the recursion cap, citations, and probe closure
 
 Authority: the author's product-owner seat, `REVIEW-TIERS`, answered
 2026-07-29, recorded in the coordination logbook. She asked for it to become a
@@ -157,6 +158,81 @@ A repository states where the statement lives. It is expected to POINT at
 this section rather than restate it, because a rule restated in three places
 is a rule that will disagree with itself.
 
+### The property sentence, which is the machine-checkable half
+
+Added 0.2.16, HUB-12, the author's adoption of lane ITA-11's proposal.
+
+THE RULE. A fix recorded in a round ledger carries a `property=` field: ONE
+SENTENCE STATING THE INVARIANT THE FIX ESTABLISHES, written BEFORE the edit.
+`check_review_rounds.py` refuses a `fixed` row that lacks one.
+
+Design before edit asks for two statements, what the change does and what it
+cannot break, and nothing can check either. This is the half a machine can
+hold, and it is the half that carries the most: an invariant is what the fix
+must be true of, so writing it is the moment at which a fix that proves the
+wrong thing becomes visible.
+
+THE EVIDENCE, and it is the strongest any proposal here has had, because the
+lane that proposed it is the lane that demonstrated the failure four times,
+and in each of the four THE SENTENCE CONTAINS THE DEFECT INSIDE IT.
+
+- A guard repaired from substring to parsed proved the right PROGRAM runs and
+  not that it measures THIS tree, so a run pointed at another directory
+  entirely was accepted. The sentence, "the wrapper is the vendored receipt
+  gating THIS repository's tree under a label unique to the hook", contains
+  the defect.
+- A commit-tier marker whose whole purpose is to admit a test to a gate
+  admitted it to a gate that did not MEASURE it, found independently by all
+  three lenses. The sentence, "a test admitted by the fast marker is measured
+  by the budget of the tier it joined", is again the defect stated.
+- The repair of that repair matched a word instead of the condition one line
+  later, so an unmarked test whose parametrize id read `slow` was exempt.
+- A cost figure was asserted twice from methods that could not resolve it.
+
+WHAT IT CANNOT DO, in the same words the attestation uses about itself: it is
+a PRESENCE check. It proves a sentence exists, not that it is a good
+sentence. THE GAIN IS AT THE MOMENT OF WRITING, which is the only moment at
+which stating an invariant can change what gets built. A checker claiming
+more than that would be the defect the rule exists to catch, one level up.
+
+ONLY A `fixed` ROW NEEDS ONE. A registered finding has no fix and therefore
+no invariant; a withdrawn one already carries a required reason. Requiring
+one of all three would produce a field written to satisfy a checker.
+
+## Cite an id with its title
+
+Added 0.2.16, HUB-12, from `ITC-20260802-0340`, cite an id with its title so
+a wrong citation is visible. It sits here rather than in a repository because
+a review is where a wrong citation is currently caught, expensively.
+
+THE RULE. When prose cites an allocated id, it names the id AND a fragment of
+that id's own title:
+
+    OQ-53, whether the vendored kit is checked for CURRENCY
+
+THE DEFECT IT IS FOR, and the guard a reader reaches for first does not catch
+it. A lane cited an open question for a question that question does not ask.
+Three reviewer lenses caught it independently. "Every cited id must exist"
+would have PASSED, because the id exists: the error was a wrong-but-EXISTING
+citation, which is semantic. Carrying the title makes the mismatch visible
+while the sentence is being written, which is where it is cheapest.
+
+THIS LEVEL HAS ITS OWN, and it moved code rather than prose: a finding was
+classified here as a defect while a requirement chartered the behaviour, and
+two lanes implemented and reverted a fix before the authority chain stopped
+it.
+
+THE MECHANISM. `check_citations.py`, beside this file. It refuses a citation
+whose quoted title contradicts the id's own title, and an id allocated
+nowhere. WHETHER A TITLE IS MANDATORY IS EACH REPOSITORY'S CALL, made in its
+own charter and passed to the checker as `--mode`: the default is advisory,
+where a citation carrying no title is a note. A MISMATCH is refused in both
+modes, so a repository that stays advisory still gets the check this rule is
+about.
+
+WHAT IT CANNOT CATCH: prose that cites correctly and then concludes something
+the cited authority does not support. That is review's.
+
 ## The recursion cap, and what a round-two finding actually is
 
 A review of a GUARD FIX does not spawn another review of the guard. Two rounds
@@ -206,11 +282,27 @@ says who.
 
 THE MECHANISM. `check_review_rounds.py`, beside this file, reads a lane's
 round ledger and refuses a closure that registers a finding about a previous
-round's fix, an unauthorised third round, and a ledger that certifies
-nothing. Its format is documented in its own docstring and is PROPOSED rather
-than settled, on the same terms as the probe ledger below: it was written
-from three lanes' data and the next lane is entitled to correct it, by
-promotion.
+round's fix, an unauthorised third round, a ledger that certifies nothing,
+and a `fixed` row with no property sentence. Its format is documented in its
+own docstring and is PROPOSED rather than settled, on the same terms as the
+probe ledger below: it was written from three lanes' data and the next lane
+is entitled to correct it, by promotion.
+
+WHERE THE LEDGER LIVES, added 0.2.16 from `ITC-20260802-0120`, the round
+ledger has no locator so nothing can check it. The cap was stated from 0.2.7
+and mechanised at 0.2.15, and NOTHING applied the checker to a ledger: a
+skill instructed an operator to run it, which is an instruction rather than a
+mechanism, and both libraries hold that documentation is not a guard. The
+convention is now written down, and it is the one the first lane to write a
+ledger used unprompted:
+
+    <root>/<lane>_rounds.ledger
+
+The checker resolves it with `--root <dir> --lane <id>`, or checks every
+ledger under a root with `--root <dir> --all`, and a root holding none is a
+configuration error rather than a clean run. It reads NO environment
+variable: what an absent root means at a gate is each repository's charter
+call, not the kit's.
 
 ## Probe closure, and the checker beside this file
 

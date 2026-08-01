@@ -1,17 +1,63 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.15
+# kit-version: 0.2.16
 # artifact: check_review_rounds.py
-# body-sha256: 6d57387bdf9206b7811b40ce5a277d5bb4e050d3875e8ec7e3a9d0f1c9abb929
-# canonical-source: BUILT for the kit (0.2.15, HUB-11) as the mechanism for the recursion cap that review-policy.md has stated since 0.2.7 and nothing enforced. Its load-bearing rule comes from lane ITA-4, whose round-one FIXES were themselves defective: six guards did not guard, one false-fired, and it introduced a fresh defect in the same commit that guarded the old one, all of it seen only by round two. A flat two-rounds-then-register cap would have shipped every one of them. Records: coordination/DESIGN_HUB-11_kit_batch.md item 4.
+# body-sha256: b09fdec02dc0674a540bb5429c6343a8d4b7747fc286232dcb54f9b6e4508c4e
+# canonical-source: BUILT for the kit (0.2.15, HUB-11) as the mechanism for the recursion cap that review-policy.md has stated since 0.2.7 and nothing enforced. Its load-bearing rule comes from lane ITA-4, whose round-one FIXES were themselves defective: six guards did not guard, one false-fired, and it introduced a fresh defect in the same commit that guarded the old one, all of it seen only by round two. A flat two-rounds-then-register cap would have shipped every one of them. Records: coordination/DESIGN_HUB-11_kit_batch.md item 4. 0.2.16 adds RULE 8, a fixed row must carry a property= sentence stating the invariant the fix establishes (the author's adoption of ITA-11's proposal), and the LOCATOR: --root with --lane or --all resolving <root>/<lane>_rounds.ledger, plus --incremental for a mid-lane read (ITC-20260802-0120). No environment variable is added; that unset branch is the author's call. See coordination/DESIGN_HUB-12_kit_batch.md items 5 and 8.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # END KIT PROVENANCE (body verbatim below)
 #!/usr/bin/env python3
 """The two-round review cap, and what a round-two finding actually is.
 
 Usage:
-    python check_review_rounds.py --ledger <path>
+    python check_review_rounds.py --ledger <path>            [--incremental]
+    python check_review_rounds.py --root <dir> --lane <id>   [--incremental]
+    python check_review_rounds.py --root <dir> --all         [--incremental]
 
 Exit codes: 0 clean, 1 a violation, 2 configuration error.
+
+THE LOCATOR
+-----------
+
+Added 0.2.16, from ``ITC-20260802-0120``, the round ledger has no locator so
+nothing can check it. At 0.2.15 this checker was vendored, drift-pinned and
+mutation-proven, and NOTHING in any repository applied it to a ledger. A
+skill instructed an operator to run it, which is an instruction rather than a
+mechanism, and both libraries hold the rule that documentation is not a
+guard. So the two-round cap was installed and unmeasured.
+
+THE CONVENTION, and it is recorded rather than invented::
+
+    <root>/<lane>_rounds.ledger
+
+That is what the format's first consumer wrote, unprompted, before this
+resolver existed. A convention a lane reached for on its own is better
+evidence than one a checker asks for.
+
+WHAT THIS DELIBERATELY DOES NOT DO: it adds NO environment variable and
+reads none. The incident is explicit that a fourth member of the locator
+family means deciding what its UNSET branch does and writing the charter row
+for it, and that the decision is the author's. So the CALLER passes the root,
+exactly as ``prepush_receipt.py`` takes its repository from the caller, and
+each consumer's charter decides what an absent root means at its own gate.
+
+A ROOT THAT HOLDS NO LEDGER IS A CONFIG ERROR, exit 2, never a clean run.
+Same rule ``check_side_effect_guard.py`` applies to an empty skills tree: an
+audit that examined nothing is a misconfiguration wearing a green verdict.
+
+INCREMENTAL
+-----------
+
+Added 0.2.16, from the same incident's format feedback, measured by the first
+lane to write a ledger: THIS CHECKER VALIDATES A CLOSING RECORD. Written
+incrementally during a lane, ``rounds: 2`` with only round-one rows breaches
+rule 2 twice, correctly and by construction, so a mid-lane run looks like a
+broken checker to a reader who has not read the rules.
+
+``--incremental`` suspends RULE 2 AND NOTHING ELSE, reports what it suspended
+as notes, and says in its own verdict line that it is not a closing check.
+Rules 1 and 3 to 8 all still run, including the load-bearing rule 4 and the
+property rule 8. A mode that relaxed rule 4 would be the mechanism defeating
+itself.
 
 WHAT THIS IS FOR
 ----------------
@@ -50,16 +96,24 @@ one row per finding::
     rounds: 2
     # authority: only for a third round, and it names who authorised it
 
-    finding: FND-046 | round=1 | ground=new          | fixed
+    finding: FND-046 | round=1 | ground=new | fixed |
+        property=the parser rejects a delimiter it cannot resolve, and every
+        delimiter it accepts appears in the output verbatim
     finding: FND-054 | round=1 | ground=new          | registered
-    finding: FND-101 | round=2 | ground=about:FND-046 | fixed
+    finding: FND-101 | round=2 | ground=about:FND-046 | fixed |
+        property=a nested delimiter is resolved against the innermost open
+        block, not the first one
     finding: FND-102 | round=2 | ground=new          | registered
     finding: FND-103 | round=2 | ground=new          | withdrawn |
         reason=the reviewer read a stale copy of the file
 
 Grounds: ``new``, or ``about:<id>`` naming a finding from a STRICTLY earlier
 round that was ``fixed``. Dispositions: ``fixed``, ``registered``,
-``withdrawn``. A ``withdrawn`` row must carry a non-empty ``reason=``.
+``withdrawn``. A ``withdrawn`` row must carry a non-empty ``reason=``, and a
+``fixed`` row must carry a non-empty ``property=``.
+
+A row may be wrapped onto following INDENTED lines, which is how a property
+sentence fits without becoming unreadable.
 
 PROPOSED, NOT SETTLED. This format was written from three lanes' data
 (ITA-2B, ITA-2E, ITA-4). The next lane is entitled to correct it, and
@@ -87,6 +141,40 @@ THE RULES
 6. A finding id may appear once. A repeated id silently replaces a verdict.
 7. The ledger must carry at least one finding. An empty ledger certifying a
    review is the vacuous pass this class of guard exists to refuse.
+8. A ``fixed`` finding must carry a non-empty ``property=``: ONE SENTENCE
+   STATING THE INVARIANT THE FIX ESTABLISHES, written BEFORE the edit.
+
+RULE 8, AND WHAT IT CANNOT DO
+-----------------------------
+
+Added 0.2.16, the author's adoption of lane ITA-11's proposal. The evidence
+is unusually direct, because the lane that proposed it is the lane that
+demonstrated the failure, four times, and in each of the four THE INVARIANT
+WRITTEN AS A SENTENCE CONTAINS THE DEFECT INSIDE IT:
+
+- a guard repaired from substring to parsed proved the right PROGRAM runs
+  and not that it measures THIS tree, so ``--repo /tmp/elsewhere`` was
+  accepted. The sentence, "the wrapper is the vendored receipt gating THIS
+  repository's tree under a label unique to the hook", contains the defect;
+- a commit-tier marker whose whole purpose is to admit a test to a gate was
+  admitted to a gate that did not MEASURE it, found independently by all
+  three lenses. The sentence, "a test admitted by `fast` is measured by the
+  budget of the tier it joined", is again the defect stated;
+- the repair of that repair matched a word instead of the condition one line
+  later, so an unmarked test whose parametrize id was `slow` was exempt;
+- a cost figure was asserted twice from methods that could not resolve it.
+
+IT IS A PRESENCE CHECK, in exactly the words the attestation uses about
+itself: it proves a SENTENCE EXISTS, not that it is a good sentence. Nothing
+here reads the property, compares it to the diff, or knows when it was typed.
+THE GAIN IS AT THE MOMENT OF WRITING, which is the only moment at which
+stating an invariant can change what gets built. A checker claiming more than
+that would be the defect this rule exists to catch, one level up.
+
+ONLY ``fixed`` NEEDS ONE. A ``registered`` finding has no fix and therefore
+no invariant to state; a ``withdrawn`` one already carries a required
+``reason=``. Requiring a property of all three would produce a field written
+to satisfy a checker, which is how a record starts being worked around.
 
 WHAT THIS DOES NOT DO
 ---------------------
@@ -109,11 +197,17 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-USAGE = "usage: check_review_rounds.py --ledger <path>"
+USAGE = (
+    "usage: check_review_rounds.py --ledger <path> [--incremental]\n"
+    "       check_review_rounds.py --root <dir> --lane <id> [--incremental]\n"
+    "       check_review_rounds.py --root <dir> --all [--incremental]"
+)
 
 DISPOSITIONS = ("fixed", "registered", "withdrawn")
 SETTINGS = ("lane", "rounds", "authority")
 CAP = 2
+# THE ONE FILENAME CONVENTION. See THE LOCATOR in the module docstring.
+SUFFIX = "_rounds.ledger"
 
 
 class ConfigError(Exception):
@@ -128,6 +222,7 @@ class Finding:
     ground: str | None = None
     disposition: str | None = None
     reason: str = ""
+    property: str = ""
     raw: str = ""
 
 
@@ -181,6 +276,8 @@ def parse(path: Path) -> Ledger:
                     finding.ground = value
                 elif name == "reason":
                     finding.reason = value
+                elif name == "property":
+                    finding.property = value
                 else:
                     # An unknown field is refused rather than ignored. A
                     # ledger whose fields are silently dropped produces a
@@ -188,7 +285,8 @@ def parse(path: Path) -> Ledger:
                     # this level's own most repeated failure.
                     raise ConfigError(
                         f"line {number}: unknown field {name!r} on finding "
-                        f"{ident!r}; expected round, ground or reason"
+                        f"{ident!r}; expected round, ground, property or "
+                        "reason"
                     )
             elif part in DISPOSITIONS:
                 finding.disposition = part
@@ -198,9 +296,17 @@ def parse(path: Path) -> Ledger:
     return ledger
 
 
-def check(ledger: Ledger) -> list[str]:
-    """Every violation, in the order the rules are numbered."""
+def check(ledger: Ledger, incremental: bool = False) -> tuple[list[str],
+                                                             list[str]]:
+    """Every violation, in the order the rules are numbered.
+
+    Returns ``(violations, notes)``. Notes are never violations and never
+    change the exit status; they exist for ``--incremental``, where rule 2
+    is expected to be unsatisfiable and saying nothing would be worse than
+    saying so. See the INCREMENTAL section of the module docstring.
+    """
     v: list[str] = []
+    notes: list[str] = []
     lane = ledger.settings.get("lane", "")
     rounds_raw = ledger.settings.get("rounds", "")
     if not lane:
@@ -217,7 +323,7 @@ def check(ledger: Ledger) -> list[str]:
                  "nothing. A review with no findings is recorded as a finding "
                  "row with `ground=new` and `withdrawn`, or it is not "
                  "recorded here at all.")
-        return v
+        return v, notes
 
     seen: dict[str, Finding] = {}
     for f in ledger.findings:
@@ -246,24 +352,40 @@ def check(ledger: Ledger) -> list[str]:
         elif f.ground != "new" and not f.ground.startswith("about:"):
             v.append(f"line {f.line}: finding {f.ident} has ground "
                      f"{f.ground!r}; expected `new` or `about:<id>`.")
+        if f.disposition == "fixed" and not f.property.strip():
+            v.append(f"line {f.line}: finding {f.ident} is `fixed` with no "
+                     "`property=`. Write one sentence stating the INVARIANT "
+                     "the fix establishes, before making the edit. Add "
+                     "`property=<the invariant the fix must establish>`. "
+                     "Only `fixed` needs one: a `registered` finding has no "
+                     "fix and therefore no invariant, and a `withdrawn` one "
+                     "already carries `reason=`.")
         if f.disposition == "withdrawn" and not f.reason:
             v.append(f"line {f.line}: finding {f.ident} is `withdrawn` with "
                      "no `reason=`. A withdrawal is the one disposition this "
                      "checker cannot police, so it must at least be written "
                      "down. Add `reason=<why it was not real>`.")
 
+    # RULE 2 IS THE ONE `--incremental` SUSPENDS, and only this one. Both of
+    # its halves compare the DECLARED count against the rows present, which
+    # a ledger being written during a lane cannot satisfy: `rounds: 2` with
+    # only round-one rows breaches it twice, correctly and by construction.
+    # Measured by the format's first consumer. Under --incremental they
+    # become notes, so a mid-lane run reports what is still missing instead
+    # of looking like a broken checker.
+    rule_2 = notes if incremental else v
     highest = max((f.round or 0) for f in ledger.findings)
     if rounds >= 1 and highest != rounds:
-        v.append(f"rule 2: `rounds: {rounds}` but the highest round on any "
-                 f"finding is {highest}. The declared count and the rows "
-                 "disagree; correct whichever is wrong.")
+        rule_2.append(f"rule 2: `rounds: {rounds}` but the highest round on "
+                      f"any finding is {highest}. The declared count and the "
+                      "rows disagree; correct whichever is wrong.")
     if rounds >= 1:
         present = {f.round for f in ledger.findings}
         missing = [n for n in range(1, rounds + 1) if n not in present]
         if missing:
-            v.append(f"rule 2: round(s) {missing} carry no finding. A round "
-                     "that found nothing did not happen; lower `rounds` or "
-                     "record what it found.")
+            rule_2.append(f"rule 2: round(s) {missing} carry no finding. A "
+                          "round that found nothing did not happen; lower "
+                          "`rounds` or record what it found.")
     if rounds > CAP and not ledger.settings.get("authority"):
         v.append(f"rule 3: {rounds} rounds exceeds the cap of {CAP} and no "
                  "`authority` is named. The cap is two rounds; a third exists "
@@ -300,31 +422,110 @@ def check(ledger: Ledger) -> list[str]:
                      "this round: fix it here, with the failing measurement "
                      "before and the passing one after. Registering it is "
                      "exactly what shipped six guards that did not guard.")
-    return v
+    return v, notes
 
 
-def main(argv: list[str]) -> int:
-    if len(argv) != 3 or argv[1] != "--ledger":
-        print(USAGE, file=sys.stderr)
-        return 2
-    path = Path(argv[2])
-    try:
-        ledger = parse(path)
-        violations = check(ledger)
-    except ConfigError as exc:
-        # A CONFIG error is never reported as a clean ledger.
-        print(f"CONFIG: {exc}", file=sys.stderr)
-        return 2
+def ledger_name(lane: str) -> str:
+    """The one filename convention. See THE LOCATOR in the docstring."""
+    return f"{lane}{SUFFIX}"
+
+
+def resolve(root: Path, lane: str | None) -> list[Path]:
+    """Every ledger this invocation is asking about.
+
+    Raises ConfigError rather than returning an empty list, on the rule
+    ``check_side_effect_guard.py`` already applies to an empty skills tree:
+    an audit that examined nothing is a configuration error and never a
+    clean run.
+    """
+    if not root.is_dir():
+        raise ConfigError(f"{root} is not a directory. Pass --root the "
+                          "directory the lane's round ledgers live in.")
+    if lane is not None:
+        path = root / ledger_name(lane)
+        if not path.is_file():
+            raise ConfigError(
+                f"no ledger for lane {lane!r}: looked for {path}. The "
+                f"convention is <root>/<lane>{SUFFIX}; either the lane wrote "
+                "no ledger, or it wrote one under another name.")
+        return [path]
+    found = sorted(root.glob(f"*{SUFFIX}"))
+    if not found:
+        raise ConfigError(
+            f"{root} holds no *{SUFFIX} file. An audit that examined nothing "
+            "is a configuration error, not a clean run: either the root is "
+            "wrong, or no lane in it recorded a round ledger.")
+    return found
+
+
+def report(path: Path, incremental: bool) -> int:
+    """Check one ledger and print its verdict. 0 clean, 1 refused."""
+    ledger = parse(path)
+    violations, notes = check(ledger, incremental)
     lane = ledger.settings.get("lane", "(unnamed)")
     rounds = ledger.settings.get("rounds", "?")
     print(f"lane {lane}, {rounds} round(s), {len(ledger.findings)} finding(s)")
+    for item in notes:
+        print(f"  note (not a violation, --incremental): {item}")
     if violations:
         print(f"REFUSED: {len(violations)} violation(s)")
         for item in violations:
             print(f"  - {item}")
         return 1
-    print("VERIFIED: rules 1 to 7 all ran against this ledger.")
+    if incremental:
+        print("VERIFIED SO FAR: rules 1 and 3 to 8 ran against this ledger. "
+              "THIS IS NOT A CLOSING CHECK: rule 2 was suspended, so nothing "
+              "here says the lane's rounds are complete. Run without "
+              "--incremental to close.")
+        return 0
+    print("VERIFIED: rules 1 to 8 all ran against this ledger.")
     return 0
+
+
+def main(argv: list[str]) -> int:
+    args = argv[1:]
+    incremental = "--incremental" in args
+    args = [a for a in args if a != "--incremental"]
+
+    def value(flag: str) -> str | None:
+        return args[args.index(flag) + 1] if flag in args \
+            and args.index(flag) + 1 < len(args) else None
+
+    ledger_arg, root_arg, lane_arg = (value("--ledger"), value("--root"),
+                                      value("--lane"))
+    every = "--all" in args
+    try:
+        if ledger_arg is not None:
+            if root_arg or lane_arg or every:
+                raise ConfigError("--ledger names one file directly; do not "
+                                  "combine it with --root, --lane or --all.")
+            paths = [Path(ledger_arg)]
+        elif root_arg is not None:
+            if (lane_arg is None) == (not every):
+                raise ConfigError("--root takes either --lane <id> for one "
+                                  "lane or --all for every ledger under it, "
+                                  "and exactly one of the two.")
+            paths = resolve(Path(root_arg), lane_arg)
+        else:
+            print(USAGE, file=sys.stderr)
+            return 2
+    except ConfigError as exc:
+        print(f"CONFIG: {exc}", file=sys.stderr)
+        return 2
+
+    refused = 0
+    for path in paths:
+        if len(paths) > 1:
+            print(f"---- {path.name} ----")
+        try:
+            refused += report(path, incremental)
+        except ConfigError as exc:
+            # A CONFIG error is never reported as a clean ledger.
+            print(f"CONFIG: {exc}", file=sys.stderr)
+            return 2
+    if len(paths) > 1:
+        print(f"{len(paths)} ledger(s) checked, {refused} refused")
+    return 1 if refused else 0
 
 
 if __name__ == "__main__":

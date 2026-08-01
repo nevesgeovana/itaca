@@ -55,6 +55,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
 from management_root import (  # the single home of the resolution rule
     ManagementRootError,
     resolve_management_root,
@@ -112,6 +113,7 @@ def _tracked() -> list[str]:
         capture_output=True,
         text=True,
         check=True,
+        env=child_env(),
     )
     return done.stdout.splitlines()
 
@@ -286,6 +288,7 @@ def test_private_stays_gitignored_by_the_committed_gitignore() -> None:
         cwd=_REPO,
         capture_output=True,
         text=True,
+        env=child_env(),
     )
     assert done.returncode == 0, (
         "_private/ is no longer git-ignored, so the fallback session-document "

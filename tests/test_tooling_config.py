@@ -206,6 +206,12 @@ _COMMIT_TIER_CONTRACT_MODULES = (
     "tests/test_tooling_config.py",
     "tests/test_review_gate.py",
     "tests/test_side_effect_guard.py",
+    # Added with kit 0.2.16. The spawn walk over `tests` and `itaca` costs
+    # 0.46 s, and this module is the REPLACEMENT for the retired window
+    # guard that used to be a declared commit-tier guard below. This row is
+    # what stops the replacement being marked slow later and quietly
+    # leaving the gate the retired one was promoted onto.
+    "tests/test_spawn_env.py",
 )
 
 # The list above is MODULE granularity, and that is not enough. A module
@@ -229,9 +235,10 @@ _COMMIT_TIER_CONTRACT_MODULES = (
 # tests/conftest.py; before that repair a `fast` test was exempt, which a
 # reviewer measured with a 3.5 s probe that passed silently.
 #
-# WHAT THE FOUR COST THE TIER, and the number is the SUM OF THEIR OWN
-# DURATIONS measured inside the tier, 0.01 + 0.08 + 0.05 + 0.50, about
-# 0.6 s against a p95 target of 30 s.
+# WHAT THEY COST THE TIER, and the number is the SUM OF THEIR OWN
+# DURATIONS measured inside the tier, 0.08 + 0.05 + 0.50, about 0.6 s
+# against a p95 target of 30 s. It was four entries and 0.01 s more until
+# kit 0.2.16 retired the first one; see the note on that entry below.
 #
 # It is not a before-and-after difference of tier wall time, and two
 # earlier attempts at that were both wrong. The first was a single sample
@@ -248,11 +255,15 @@ _COMMIT_TIER_CONTRACT_MODULES = (
 # this repository's hygiene, so it fails the criterion above. Cheapness is
 # a precondition here, never the reason.
 _COMMIT_TIER_GUARD_TESTS = (
-    # 0.01 s. Broken by ITA-11 and caught only in review. It refuses a
-    # spawn site that does not strip COV_CORE_*, which aborts CI after
-    # every test has passed.
-    "tests/test_push_gate.py::test_no_spawn_site_bypasses_child_env",
-    # 0.06 s. The helper that guard is about.
+    # `test_push_gate.py::test_no_spawn_site_bypasses_child_env` was the
+    # first entry here, at 0.01 s. It is RETIRED at kit 0.2.16 and its
+    # entry goes with it, because this list is exactly the set of tests
+    # carrying `@pytest.mark.fast` and the check below asserts that in both
+    # directions. Its replacement, `tests/test_spawn_env.py`, needs no
+    # marker: it has no module-level `slow`, so it is in the commit tier by
+    # default, and it is named in _COMMIT_TIER_CONTRACT_MODULES above so it
+    # cannot be moved off that tier without the move being deliberate.
+    # 0.06 s. The helper the retired guard was about.
     "tests/test_push_gate.py::test_a_child_process_does_not_start_coverage",
     # 0.06 s. A byte order mark is written by one PowerShell round trip and
     # is invisible in a diff viewer; this repository has done it twice.
@@ -878,14 +889,16 @@ def test_the_commit_tier_subset_is_actually_fast() -> None:
     # spawned pytest has aborted here AFTER every test passed; the whole
     # suite is under coverage when this test runs, and this is the one
     # test in the file that spawns pytest rather than a checker.
-    # The argument list is built FIRST so that `env=` sits within a few
-    # lines of `subprocess.run(`. That is not cosmetic:
-    # `test_push_gate.py::test_no_spawn_site_bypasses_child_env` scans a
+    # The argument list is built FIRST, and that used to be load-bearing
+    # rather than cosmetic: the retired
+    # `test_push_gate.py::test_no_spawn_site_bypasses_child_env` scanned a
     # 14-line window from each spawn site and reported this call as
     # bypassing the helper when the arguments were inlined, because
-    # `env=child_env()` fell outside the window. The guard was right to be
-    # tight and the call is what moved; widening its window to fit this
-    # code would have loosened the check that caught it.
+    # `env=child_env()` fell outside the window. That pressure is gone at
+    # kit 0.2.16: `check_spawn_env.py` judges the CALL, so an `env=` a
+    # hundred lines from its own opening parenthesis is still on its own
+    # call. The shape is kept because it reads better, not because a guard
+    # requires it.
     selection = _commit_tier_selection()
     argv = [
         sys.executable, "-m", "pytest",

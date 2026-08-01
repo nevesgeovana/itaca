@@ -17,10 +17,13 @@ from itaca.core.provenance import Provenance
 # branch data aborts the whole run in teardown, after every test has
 # passed. That turned CI red on all three legs of commit 48009bc.
 #
-# Every test that spawns a Python interpreter must use child_env(), and
-# `test_no_spawn_site_bypasses_child_env` in tests/test_push_gate.py
-# holds that invariant. Two sites existed when this was written; only
-# one had been found by looking at the failure.
+# Every test that spawns a subprocess must pass an explicit environment,
+# and `tests/test_spawn_env.py` holds that invariant by running the
+# vendored `check_spawn_env.py` over `tests` and `itaca`. Two sites
+# existed when this was written; only one had been found by looking at
+# the failure. The guard that used to hold it lived in
+# tests/test_push_gate.py and judged a spawn by a window of lines around
+# it; kit 0.2.16 replaced it with one that judges the CALL.
 COVERAGE_SUBPROCESS_VARS = (
     "COV_CORE_SOURCE",
     "COV_CORE_CONFIG",

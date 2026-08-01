@@ -38,6 +38,7 @@ from pathlib import Path
 import identifiers
 import pytest
 import yaml
+from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
 from gate_locator import ledger_env  # one reader of the gate's ledger variable
 
 DASHES = {chr(0x2014): "em dash", chr(0x2013): "en dash"}
@@ -118,6 +119,7 @@ def _repository_files() -> list[str] | None:
                 ["git", "ls-files", "-z", *extra],
                 capture_output=True,
                 cwd=str(_ROOT),
+                env=child_env(),
             )
         except OSError:
             return None

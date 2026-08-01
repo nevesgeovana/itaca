@@ -131,14 +131,28 @@ once to blame the removal fallback, and that correction was still wrong
 in the other direction, so here is the boundary itself: **what a lens
 writes BEFORE `close` collects survives, and what it writes AFTER does
 not.** Collection happens first, from the sidecar, so nothing already
-written can be lost. The sidecar is then deleted for every worktree whose
-removal SUCCEEDED, which is the ordinary path on every platform, so a
-lens still appending at that moment loses those appends. The removal
-fallback (`ITC-20260802-0010`, routed to the kit) widens the same window;
-it is not the whole of it.
+written can be lost.
 
-The operational consequence is one line: **do not run `close` until every
-lens has reported.** A
+Kit 0.2.16 narrows the second half of that boundary without moving it,
+which is why the sentence stands as written. `close` now RE-READS the
+findings file immediately before its sidecar would be removed: if the
+bytes differ from the ones collected, the newer bytes are collected in
+their place and the SIDECAR IS KEPT rather than deleted, with the fact
+reported. A lens that was demonstrably still writing keeps its file. And
+the rmtree fallback is gated on git's own registration, so a directory
+git still lists as a worktree is never taken and stays a reported
+failure. That is `ITC-20260802-0010`, close force-deletes a worktree a
+lens is still using, and it is fixed in the kit and vendored here rather
+than routed now.
+
+DO NOT READ THAT AS "CLOSING EARLY IS SAFE". A successful
+`git worktree remove --force` still pulls the current directory out from
+under a running lens, and nothing portable can detect it. What the fix
+protects is a lens's FINDINGS; what remains at risk is its working
+DIRECTORY, which is a smaller loss and still a loss.
+
+The operational consequence is unchanged and is one line: **do not run
+`close` until every lens has reported.** A
 crashed run deliberately leaves the trees on disk for inspection, and a
 later `close` still finds them, so never remove one by hand.
 
@@ -194,15 +208,36 @@ author. A clean pass is recorded as clean; silence is not a record.
 **The cap is two rounds, and it is CHECKED and not merely stated.** Write
 the lane's round ledger under the resolved management root, one line per
 finding, in the format `.claude/kit/check_review_rounds.py` reads, and run
-it before the review closes:
+it before the review closes. Kit 0.2.16 gives the file a written
+convention, `<root>/<lane>_rounds.ledger`, and a resolver for it, so pass
+the root and the lane rather than a path:
 
 ```
-python .claude/kit/check_review_rounds.py --ledger <resolved root>/<lane>_rounds.ledger
+python .claude/kit/check_review_rounds.py --root <resolved root> --lane <lane>
 ```
+
+A root holding no ledger for that lane exits 2 and prints the path it
+looked for, because "I could not find the thing I was asked to check" is a
+configuration error and never a pass. `--ledger <path>` still works and is
+unchanged.
+
+**Every `fixed` row carries `property=`, one sentence stating the
+INVARIANT the fix establishes, and it is written BEFORE the edit.** That
+is rule 8, added at kit 0.2.16, and the rule itself is the property
+sentence subsection of DESIGN BEFORE EDIT in `.claude/kit/review-policy.md`;
+read it there rather than here. Only `fixed` needs one: a registered
+finding has no fix and therefore no invariant, and a withdrawn one already
+carries `reason=`. The checker is a PRESENCE check and says so, in the
+same words the attestation uses about itself: it proves a sentence exists,
+never that it is a good sentence, and the whole gain is at the moment of
+writing.
 
 Read the output and not only the exit code: it prints the lane, the round
 count and the number of findings, so a ledger that certifies almost
 nothing is visible rather than merely non-zero.
+
+`--incremental` exists for a mid-lane read and suspends rule 2 only. It
+prints that it was not a closing check. Never use it to close a lane.
 
 The rule it enforces is the one a flat count gets wrong. A round-two
 finding **about a previous round's fix** is that fix not being done: it is
@@ -212,14 +247,21 @@ is why: six of its round-one fixes did not guard, and a flat
 two-rounds-then-register cap would have shipped every one of them
 documented as known.
 
-This is an INSTRUCTION, not a mechanism, and the difference is stated
-because this repository's own rule says documentation is not a guard.
-Whether it should become mechanical is `OQ-54`. What stands in the way is
-not a locator, since `ITACA_MANAGEMENT_ROOT` already names where the
-ledger lives: it is that a hook has no lane identity, and that a gate
-needs an answer for an absent root which that variable does not give.
-What the repository does guarantee is that the checker is present,
-executable and mutation-proven (`tests/test_review_rounds.py`).
+RUNNING IT HERE IS AN INSTRUCTION, and the difference from a mechanism is
+stated because this repository's own rule says documentation is not a
+guard. Since kit 0.2.16 it is no longer the only thing:
+`tests/test_review_rounds.py` runs the checker in tier 1 against the
+ledger of the lane it names, so a ledger that violates the cap reddens the
+suite rather than waiting for whoever remembers to run this command. The
+charter answers the gate question that variable does not: an unresolvable
+`ITACA_MANAGEMENT_ROOT` is a SKIP that must be announced, never a denial.
+
+What remains of `OQ-54` is the part a locator never was: a hook has no
+LANE IDENTITY, so the lane is a constant in that test rather than a
+discovery, and every ledger under the root is not checked because two
+pre-0.2.16 ledgers exist that rule 8 refuses and that are deliberately not
+retrofitted. The repository also guarantees, as before, that the checker
+is present, executable and mutation-proven.
 
 The ledger FORMAT is PROPOSED rather than settled. If a lane finds it
 wrong, that is a kit promotion, never an edit to the vendored copy.

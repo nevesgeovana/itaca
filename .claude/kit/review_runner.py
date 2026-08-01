@@ -1,8 +1,8 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.15
+# kit-version: 0.2.16
 # artifact: review_runner.py
-# body-sha256: dd8b9793c5c5b5e7d01365a1ff5ac889b1ca39722b576ad3159320a7aa8aec97
-# canonical-source: BUILT for the kit (0.2.11, HUB-9, BRF-061 item 15, author decision 7) from two recorded failures with one structural cause: a reviewer ran git restore in the live tree and destroyed a lane's edits, and two Bash-holding lenses shared one worktree and corrupted each other's measurements (ITC-20260730-0250). One detached worktree per lens, diff and paths only, findings collected at close, worktree removed; a reviewer never receives the live tree as cwd. The charters' restore-prohibition paragraphs shrink to a pointer at each repository's next re-vendor, now that the mechanism they asked for exists. 0.2.15 fixes two defects both measured by lanes: ITC-20260801-0130, close aborting on the first worktree it cannot remove, stranding the rest AND destroying their findings files; and ITC-20260801-1600, the three RR_ files sitting inside the worktree where a house-style walk scans them, reddening every Bash lens. It also fixes a third defect found by executing this promotion's own contract fixture rather than by reading: the shared temp root was keyed on the repository's directory NAME alone, so two checkouts with the same basename shared one root and one repository's close enumerated the other's worktrees. See coordination/DESIGN_HUB-11_kit_batch.md item 7.
+# body-sha256: bedd5c3957850d4ddb236efec4ade6f6e9f81412df9ab612eb8247aeeab12474
+# canonical-source: BUILT for the kit (0.2.11, HUB-9, BRF-061 item 15, author decision 7) from two recorded failures with one structural cause: a reviewer ran git restore in the live tree and destroyed a lane's edits, and two Bash-holding lenses shared one worktree and corrupted each other's measurements (ITC-20260730-0250). One detached worktree per lens, diff and paths only, findings collected at close, worktree removed; a reviewer never receives the live tree as cwd. The charters' restore-prohibition paragraphs shrink to a pointer at each repository's next re-vendor, now that the mechanism they asked for exists. 0.2.15 fixes two defects both measured by lanes: ITC-20260801-0130, close aborting on the first worktree it cannot remove, stranding the rest AND destroying their findings files; and ITC-20260801-1600, the three RR_ files sitting inside the worktree where a house-style walk scans them, reddening every Bash lens. It also fixes a third defect found by executing this promotion's own contract fixture rather than by reading: the shared temp root was keyed on the repository's directory NAME alone, so two checkouts with the same basename shared one root and one repository's close enumerated the other's worktrees. See coordination/DESIGN_HUB-11_kit_batch.md item 7. 0.2.16 fixes ITC-20260802-0010, close force-deletes a worktree a lens is still using: the rmtree fallback is gated on git no longer registering the path, and the sidecar is re-read immediately before removal so a finding written AFTER collection is collected and that sidecar is kept. See coordination/DESIGN_HUB-12_kit_batch.md item 4.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # END KIT PROVENANCE (body verbatim below)
 #!/usr/bin/env python3
@@ -85,6 +85,35 @@ one.
 The two fixes reinforce each other rather than overlapping: with the findings
 outside the worktree, a failed worktree removal cannot destroy them at all.
 
+THE FALLBACK IS GATED AND THE SIDECAR IS NEVER DISCARDED UNREAD, added at
+0.2.16 from ``ITC-20260802-0010``, close force-deletes a worktree a lens is
+still using. Two changes, because the incident has two halves and its own
+lane corrected itself twice before settling which was which.
+
+1. ``shutil.rmtree`` now runs ONLY when git no longer registers the path,
+   parsed from ``git worktree list --porcelain`` after the prune. Through
+   0.2.15 any removal failure reached it, justified by the HALF-REMOVED
+   state and keyed on nothing that tests for it: "removal failed and the
+   directory exists" is also exactly what a BUSY worktree looks like. A busy
+   worktree is now a reported failure with exit 1, which is what the retry
+   text already told the operator to do.
+2. Before a sidecar is removed, its ``RR_FINDINGS.md`` is re-read and
+   compared with what phase 1 collected. If it grew, the newer bytes are
+   collected in its place and THE SIDECAR IS KEPT. This is the half the
+   fallback gate does not reach and is the one the incident's second
+   correction identified as the real boundary: not the fallback, not the
+   platform, but the COLLECTION. What a lens writes before phase 1 survives;
+   what it wrote after used to go with the sidecar on the ORDINARY path, on
+   every platform, because a SUCCESSFUL removal deletes the sidecar too.
+
+WHAT NEITHER OF THEM DOES, stated so this file is not read for more than it
+holds: a successful ``worktree remove --force`` still pulls a running lens's
+working DIRECTORY out from under it, and nothing portable can detect that a
+process is inside. ``close`` is not a way to ask whether a lens has finished.
+The operator rule stands: run it once every lens has reported. What changed
+is that breaking that rule now costs a lens its cwd and no longer costs it
+its findings.
+
 Standalone, stdlib only, no third-party deps, like every kit checker.
 Exit 0 on success, 1 on a git failure (reported with the command), 2 for a
 CONFIG error (not a repository, unknown usage, no lenses). A ``close`` that
@@ -130,6 +159,37 @@ def _git_try(repo: Path, *args: str) -> tuple[bool, str]:
         return False, (r.stderr.strip() or r.stdout.strip()
                        or f"git exited {r.returncode}")
     return True, r.stdout
+
+
+def _registered_worktrees(repo: Path) -> set[str] | None:
+    """Every path git still holds a worktree registration for.
+
+    None when git could not be asked, which is NOT the same as "none are
+    registered" and must not be read as one. See ``cmd_close``: the
+    difference decides whether a directory may be deleted.
+    """
+    ok, out = _git_try(repo, "worktree", "list", "--porcelain")
+    if not ok:
+        return None
+    paths: set[str] = set()
+    for line in out.splitlines():
+        if not line.startswith("worktree "):
+            continue
+        raw = line[len("worktree "):].strip()
+        try:
+            paths.add(str(Path(raw).resolve()))
+        except OSError:
+            paths.add(raw)
+    return paths
+
+
+def _deliver(out: Path | None, lens: str, text: str) -> None:
+    """Hand one lens's findings to the caller, by file or by stdout."""
+    if out:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / f"findings-{lens}.md").write_text(text, encoding="utf-8")
+    else:
+        print(f"---- {lens} ----\n{text}")
 
 
 def _root(repo: Path) -> Path:
@@ -221,17 +281,14 @@ def cmd_close(repo: Path, out: Path | None) -> int:
         collected.append((wt, lens, text))
 
     for wt, lens, text in collected:
-        if out:
-            out.mkdir(parents=True, exist_ok=True)
-            (out / f"findings-{lens}.md").write_text(text, encoding="utf-8")
-        else:
-            print(f"---- {lens} ----\n{text}")
+        _deliver(out, lens, text)
 
     # PHASE 2: REMOVE, continuing past every failure. A lens still running
     # inside its worktree is the ordinary case.
     failures: list[tuple[Path, str]] = []
+    superseded: list[str] = []
     removed = 0
-    for wt, lens, _ in collected:
+    for wt, lens, text in collected:
         ok, message = _git_try(repo, "worktree", "remove", "--force", str(wt))
         if not ok:
             # THE RETRY MUST BE ABLE TO RECOVER, which is the second half of
@@ -242,27 +299,83 @@ def cmd_close(repo: Path, out: Path | None) -> int:
             # working tree` and the entry can never be cleared by this tool
             # at all. Prune first, then take the directory directly.
             #
+            # AND THE FALLBACK IS GATED, 0.2.16, from ITC-20260802-0010,
+            # close force-deletes a worktree a lens is still using. Through
+            # 0.2.15 ANY removal failure reached `shutil.rmtree`, justified
+            # by the half-removed state and keyed on nothing that checks for
+            # it: the condition it actually tested, "removal failed and the
+            # directory exists", is also exactly what a BUSY worktree looks
+            # like, which the code two lines down calls the ordinary case.
+            # So ask git. If it still holds the registration, the state is
+            # not the half-removed one and the directory is left alone; the
+            # busy case stays a reported failure with exit 1, which is what
+            # the retry text below already tells the operator to do.
+            #
             # Deleting a directory is the one destructive act in this file
-            # and it is bounded: the path came from this tool's own root,
-            # carries its own PREFIX, and git has just tried to delete it.
-            # Nothing outside that root is ever reachable from here.
+            # and it is bounded three ways now: the path came from this
+            # tool's own root, carries its own PREFIX, git has just tried to
+            # delete it, and git no longer registers it.
             _git_try(repo, "worktree", "prune")
             if not wt.exists():
                 ok = True
             else:
-                try:
-                    shutil.rmtree(wt)
-                    ok = True
-                except OSError as exc:
-                    message = (f"{message}; the directory could not be "
-                               f"removed either: {exc}")
+                registered = _registered_worktrees(repo)
+                if registered is None:
+                    message = (f"{message}; git could not be asked whether it "
+                               "still registers this worktree, so the "
+                               "directory was left alone")
+                elif str(wt.resolve()) in registered:
+                    message = (f"{message}; git still registers it as a "
+                               "worktree, so this is not the half-removed "
+                               "state and the directory was left alone")
+                else:
+                    try:
+                        shutil.rmtree(wt)
+                        ok = True
+                    except OSError as exc:
+                        message = (f"{message}; git no longer registers it, "
+                                   "so the directory was taken directly, and "
+                                   f"that failed too: {exc}")
         if not ok:
             failures.append((wt, message))
             continue
         removed += 1
-        # The sidecar goes only when its worktree went. If the removal
-        # failed, the findings stay on disk for a retry to find.
+        # THE SIDECAR IS NEVER DISCARDED UNREAD, 0.2.16, and this is the
+        # half of ITC-20260802-0010 that the fallback gate above does NOT
+        # address. The incident was corrected twice by its own lane, and the
+        # second correction is the one that matters: the real boundary is
+        # not the fallback and not the platform, it is the COLLECTION. What
+        # a lens writes BEFORE phase 1 survives; what it writes after used
+        # to be deleted with the sidecar, on the ORDINARY path, on every
+        # platform, because a successful removal deletes the sidecar too.
+        #
+        # So the findings file is re-read immediately before the sidecar
+        # goes. If it still says what phase 1 collected, nothing changes. If
+        # it says MORE, the newer bytes are delivered in place of the older
+        # and THE SIDECAR IS KEPT, because a lens that was demonstrably
+        # still writing a moment ago should not have its file removed by the
+        # step whose job is to collect it.
+        #
+        # What this cannot do is stated in the module docstring: it does not
+        # save the lens's working DIRECTORY, which a successful
+        # `worktree remove --force` takes out from under a running process.
         sidecar_dir = wt.parent / f"{wt.name}{SIDECAR}"
+        findings = sidecar_dir / "RR_FINDINGS.md"
+        if findings.is_file():
+            try:
+                latest = findings.read_text(encoding="utf-8")
+            except OSError as exc:
+                superseded.append(f"{lens}: its findings file could not be "
+                                  f"re-read before removal ({exc}), so the "
+                                  "sidecar was kept")
+                continue
+            if latest != text:
+                _deliver(out, lens, latest)
+                superseded.append(
+                    f"{lens}: wrote to its findings file AFTER it was "
+                    "collected. The newer content was collected in its "
+                    f"place and the sidecar was KEPT at {sidecar_dir}")
+                continue
         for child in sorted(sidecar_dir.glob("*")) if sidecar_dir.is_dir() \
                 else []:
             try:
@@ -277,6 +390,14 @@ def cmd_close(repo: Path, out: Path | None) -> int:
 
     print(f"collected {len(collected)} findings file(s); "
           f"removed {removed} of {len(collected)} review worktree(s)")
+    if superseded:
+        print(f"{len(superseded)} lens(es) wrote after collection; their "
+              "newer findings were collected and their sidecars kept:")
+        for item in superseded:
+            print(f"  {item}")
+        print("  A lens still writing when close ran is the cause. close is "
+              "not a way to ask whether a lens has finished; run it once "
+              "every lens has reported.")
     if failures:
         print(f"{len(failures)} worktree(s) could NOT be removed. Every "
               "findings file above was collected first, so nothing was lost; "

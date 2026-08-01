@@ -109,6 +109,7 @@ def _describe() -> tuple[str, int]:
         capture_output=True,
         text=True,
         cwd=str(_ROOT),
+        env=child_env(),
     )
     assert done.returncode == 0, (
         "git describe could not name a release tag, so there is nothing to "
@@ -392,6 +393,7 @@ def test_no_tracked_file_carries_a_byte_order_mark() -> None:
         text=True,
         cwd=str(_ROOT),
         check=False,
+        env=child_env(),
     )
     if listing.returncode != 0:  # pragma: no cover - not a checkout
         pytest.skip("not a git checkout; the tracked-file list is unavailable")

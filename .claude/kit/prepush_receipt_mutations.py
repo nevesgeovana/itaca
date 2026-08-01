@@ -1,8 +1,8 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.15
+# kit-version: 0.2.16
 # artifact: prepush_receipt_mutations.py
-# body-sha256: f258f90b3aeea8b0c66737139ad2a5f7e837d8743a77dd784486758ddff94967
-# canonical-source: BUILT for the kit (0.2.15, HUB-11) as the guard evidence for prepush_receipt.py, per the incident policy: a guard that makes recurrence impossible, and mutation evidence that it blocks the original failure. The specification's acceptance criterion is that every unknown state RUNS, so every case here asserts a verdict rather than an exit code, and the two SKIP controls exist because a mechanism that never skips is not the mechanism.
+# body-sha256: 228d9e359c55a0d14f2e890b7130d405d279a63273b5d6710b429844af58f633
+# canonical-source: BUILT for the kit (0.2.15, HUB-11) as the guard evidence for prepush_receipt.py, per the incident policy: a guard that makes recurrence impossible, and mutation evidence that it blocks the original failure. The specification's acceptance criterion is that every unknown state RUNS, so every case here asserts a verdict rather than an exit code, and the two SKIP controls exist because a mechanism that never skips is not the mechanism. 0.2.16 adds three cases that report the VERDICT and whether a receipt exists, because the verdict alone cannot tell a receipt that was refused from one written that happens not to match, plus one compound mutant restoring both 0.2.15 lines and SAYING it is compound.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # END KIT PROVENANCE (body verbatim below)
 #!/usr/bin/env python3
@@ -17,9 +17,16 @@ in a temporary directory, and asserts the VERDICT the operator would get:
 ``SKIP`` or ``WOULD RUN``. Nothing here reconstructs the digest or reasons
 about the code.
 
-TWO CASES MUST SKIP. A mechanism that never skips passes every safety case
-and is worth nothing, so ``control_skip`` and ``ignored_file_ignored`` are
-failures if they run. Every other case is a failure if it skips.
+SOME CASES MUST SKIP. A mechanism that never skips passes every safety case
+and is worth nothing, so ``control_skip``, ``ignored_file_ignored`` and
+``clean_run_still_writes_a_receipt`` are failures if they run. Every other
+case is a failure if it skips.
+
+THREE CASES REPORT TWO THINGS, added 0.2.16: the verdict AND whether a
+receipt exists on disk. The verdict alone cannot tell a receipt that was
+REFUSED from one that was written and happens not to match, and the
+0.2.16 fix is exactly about the difference. Their expected values are
+therefore strings like ``RUN, no receipt``.
 
 THE MUTANTS. Each removes exactly one defence from a copy of the module and
 names the case it must break. A mutant is DENIED when that case's verdict
@@ -27,6 +34,17 @@ flips. SCOPE, stated because it bounds the claim: a mutant runs only the
 cases it names, not all of them, so this file proves that each named defence
 is what produces that case's verdict, and does not prove that no other case
 would also have caught it.
+
+ONE MUTANT IS COMPOUND AND SAYS SO, added 0.2.16, because pretending
+otherwise would be the thing this kit keeps catching. ``ITC-20260801-2320``
+(the key recomputed after the run) and ``ITC-20260802-0620`` (a receipt
+written before pre-commit's verdict) have ONE repair and ONE observable
+between them: a run that moved the tree writes no receipt. Once that check
+holds, the key's SOURCE is no longer independently observable, because the
+check returns before the write is reached. A mutant deleting only the
+pre-run key would therefore survive every case here and prove nothing. The
+last mutant restores BOTH 0.2.15 lines instead, which reproduces exactly
+what the incident measured: ``SKIP, receipt written``.
 
 WHAT IT CANNOT PROVE. A perfectly forged receipt authorizes a skip, and the
 module's own docstring says so. ``handwritten_receipt`` demonstrates the
@@ -366,6 +384,70 @@ def case_failing_run_discards_the_receipt(module: Path, base: Path) -> str:
     return verdict(module, repo)
 
 
+def _guard_and_report(module: Path, repo: Path, command: list[str]) -> str:
+    """Run the guard, then report the verdict AND whether a receipt exists.
+
+    The two halves are reported together because 0.2.16's fix is about both:
+    the verdict alone cannot tell a receipt that was refused from a receipt
+    that was written and happens not to match.
+    """
+    r = _run([sys.executable, str(module), "guard", "--label", "suite",
+              "--repo", str(repo), "--", *command])
+    if r.returncode != 0:
+        return f"UNKNOWN(guard rc={r.returncode}: {(r.stdout + r.stderr)[:120]})"
+    wrote = (repo / RECEIPT).is_file()
+    return (f"{verdict(module, repo, command=command)}, "
+            f"{'receipt written' if wrote else 'no receipt'}")
+
+
+# The child writes into the tree and exits 0, which is what a pre-commit hook
+# that reformats a file does, and it is the shape of ITC-20260802-0620.
+CREATES = [sys.executable, "-c",
+           "open('created.txt', 'w', encoding='utf-8').write('x')"]
+REWRITES = [sys.executable, "-c",
+            "open('src/a.py', 'w', encoding='utf-8').write('VALUE = 99\\n')"]
+TOUCHES_NOTHING = [sys.executable, "-c", "pass"]
+
+
+def case_run_that_creates_a_file_writes_no_receipt(module: Path,
+                                                   base: Path) -> str:
+    """ITC-20260801-2320 and ITC-20260802-0620, which are one fix.
+
+    A guarded command that exits 0 and leaves an untracked, unignored file
+    behind used to leave a receipt keyed on the POST-run tree, so the next
+    check answered SKIP over content the suite never saw. It is also the
+    shape pre-commit FAILS after the exit status, with `files were modified
+    by this hook`, so the receipt made that failure intermittent.
+
+    Both halves are refused by one rule: a run that moved the tree writes
+    no receipt at all.
+    """
+    repo = make_repo(base)
+    return _guard_and_report(module, repo, CREATES)
+
+
+def case_run_that_rewrites_a_tracked_file_writes_no_receipt(
+        module: Path, base: Path) -> str:
+    """The same, through a TRACKED file rather than a new one.
+
+    Both reach the content digest, and they are separate cases because a
+    repair that only watched `ls-files --others` would pass the first.
+    """
+    repo = make_repo(base)
+    return _guard_and_report(module, repo, REWRITES)
+
+
+def case_clean_run_still_writes_a_receipt(module: Path, base: Path) -> str:
+    """THE CONTROL, and it is what stops the fix from being "never write".
+
+    A command that changes nothing must still leave a receipt and the next
+    check must still SKIP. Without this case, deleting the receipt writer
+    outright would pass every case above.
+    """
+    repo = make_repo(base)
+    return _guard_and_report(module, repo, TOUCHES_NOTHING)
+
+
 def case_not_a_repository(module: Path, base: Path) -> str:
     """Outside a repository the mechanism refuses rather than guessing."""
     loose = base / "loose"
@@ -401,6 +483,13 @@ CASES: list[tuple[str, object, str]] = [
     ("mechanism_moved", case_mechanism_moved, "RUN"),
     ("failing_run_discards_the_receipt",
      case_failing_run_discards_the_receipt, "RUN"),
+    ("run_that_creates_a_file_writes_no_receipt",
+     case_run_that_creates_a_file_writes_no_receipt, "RUN, no receipt"),
+    ("run_that_rewrites_a_tracked_file_writes_no_receipt",
+     case_run_that_rewrites_a_tracked_file_writes_no_receipt,
+     "RUN, no receipt"),
+    ("clean_run_still_writes_a_receipt",
+     case_clean_run_still_writes_a_receipt, "SKIP, receipt written"),
     ("not_a_repository", case_not_a_repository, "CONFIG"),
 ]
 
@@ -466,6 +555,24 @@ MUTANTS: list[tuple[str, str, str, str]] = [
      "        _discard(root)\n        return status",
      "        return status",
      "failing_run_discards_the_receipt"),
+    ("a run that modified the tree still writes a receipt",
+     "    if after != content:",
+     "    if False:",
+     "run_that_creates_a_file_writes_no_receipt"),
+    # THE 0.2.15 BODY RESTORED, and it is a compound mutant on purpose.
+    # Recomputing the key after the run is NOT independently observable once
+    # the tree-modification check holds, because that check returns before
+    # the write is reached, so a mutant deleting only the pre-run key would
+    # survive every case here and say nothing. Restoring BOTH lines
+    # reproduces exactly what ITC-20260801-2320 measured: a receipt keyed on
+    # the POST-run tree, which the tree it describes then matches, so the
+    # next check answers SKIP over content the suite never saw. Recorded as
+    # a compound rather than dressed up as a single-defence mutant.
+    ("the 0.2.15 pair restored: no tree check, and the key recomputed after "
+     "the run",
+     "    if after != content:",
+     "    key = compute_key(root, command, label)\n    if False:",
+     "run_that_creates_a_file_writes_no_receipt"),
 ]
 
 

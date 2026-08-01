@@ -1,8 +1,8 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.15
+# kit-version: 0.2.16
 # artifact: prepush_receipt.py
-# body-sha256: 411e78073d2cece7a12ec17d2afec6f0bd91f6e9bda9ccdf8a26441975b2ead7
-# canonical-source: BUILT for the kit (0.2.15, HUB-11) from the author's specification of 2026-08-01, after the push step failed five times in one evening for five unrelated reasons, none about the code. The pre-push tier re-ran a full suite it had already run green minutes earlier; measured on itaca that suite is 12.1 minutes and the whole hook 12.5 to 13, and CI then runs it three more times. Records: ITC-20260801-2330 (the measurements and the correction of a wrong diagnosis), ITC-20260801-0900 (the lane), coordination/DESIGN_HUB-11_kit_batch.md item 1.
+# body-sha256: e44bde8efa27e0bed50db5e10903871936d688c55d833f4c707f29e3ec67aa94
+# canonical-source: BUILT for the kit (0.2.15, HUB-11) from the author's specification of 2026-08-01, after the push step failed five times in one evening for five unrelated reasons, none about the code. The pre-push tier re-ran a full suite it had already run green minutes earlier; measured on itaca that suite is 12.1 minutes and the whole hook 12.5 to 13, and CI then runs it three more times. Records: ITC-20260801-2330 (the measurements and the correction of a wrong diagnosis), ITC-20260801-0900 (the lane), coordination/DESIGN_HUB-11_kit_batch.md item 1. 0.2.16 stores the key computed BEFORE the run instead of recomputing one after it (ITC-20260801-2320, against this body's own instruction), and writes NO receipt at all when the guarded command modified the working tree (ITC-20260802-0620: the receipt is written on exit 0, which is before pre-commit judges `files were modified by this hook`, so a receipt written by a failing push made the retry skip and turned a reproducible failure into an intermittent one). One fix, two records. See coordination/DESIGN_HUB-12_kit_batch.md items 2 and 3.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # END KIT PROVENANCE (body verbatim below)
 #!/usr/bin/env python3
@@ -94,13 +94,27 @@ THE KEY, which is the deliverable. Four components:
    this artifact cannot inherit authority that was granted under different
    rules.
 
-WHAT THE KEY DOES NOT COVER, stated rather than hidden: ambient environment
-variables. Including ``os.environ`` would over-invalidate on nearly every
-session, since it carries session identifiers and working directories, and
-the mechanism would then never skip anything. Excluding it means a suite
-whose result depends on an environment variable can be authorized by a run
-made under a different value. A repository in that position puts the variable
-and its value into ``--label``, which is part of the key.
+WHAT THE KEY DOES NOT COVER, stated rather than hidden.
+
+AMBIENT ENVIRONMENT VARIABLES. Including ``os.environ`` would
+over-invalidate on nearly every session, since it carries session
+identifiers and working directories, and the mechanism would then never skip
+anything. Excluding it means a suite whose result depends on an environment
+variable can be authorized by a run made under a different value. A
+repository in that position puts the variable and its value into
+``--label``, which is part of the key.
+
+THE INTERPRETER THE CHILD RESOLVES, added 0.2.16 from ``ITC-20260801-2320``.
+Component 2 describes the interpreter running THIS WRAPPER: ``sys.version``,
+``platform.platform()`` and the distributions ``importlib.metadata`` can see
+from here. The guarded command resolves its OWN interpreter, through PATH, a
+virtual environment, or a launcher, and that one may be a different Python
+with a different set of distributions. So a green run made with one
+environment on PATH can authorize a skip for a push made with another. It is
+NOT a new hole opened by anything here; it is the boundary of what a wrapper
+can observe about a child it has not run yet. A repository whose pre-push
+tier can resolve more than one interpreter puts the one it means into
+``--label``, exactly as for an environment variable.
 
 THE TIME TO LIVE IS 4 HOURS, and the number has a reason. Content-keying
 argues that a receipt never expires; reality argues otherwise in three shapes
@@ -119,9 +133,43 @@ failed on a flaky or environmental cause would still carry a matching key and
 the next push would skip a red suite.
 
 THE KEY STORED IS THE ONE COMPUTED BEFORE THE RUN, because that is the
-content that was tested. If the run itself creates an untracked, unignored
-file, the next check computes a different key and runs, which is the
-conservative direction.
+content that was tested. THIS WAS A CLAIM AND NOT A FACT UNTIL 0.2.16.
+``ITC-20260801-2320``, the receipt key is stored after the run: ``guard``
+computed a key in ``_decide``, discarded it, and recomputed one after the
+child exited, against this paragraph's own instruction. Measured on a real
+temporary repository by the reporting lane AND independently by an architect
+lens, each in its own scratch repository: a guarded command that exits 0 and
+writes one untracked, unignored file left a receipt keyed on the POST-run
+tree, and the next ``status`` answered SKIP over content the suite never saw.
+The key computed before the run is now the key stored.
+
+AND A RUN THAT MODIFIED THE TREE WRITES NO RECEIPT AT ALL, 0.2.16, from
+``ITC-20260802-0620``, the first push fails on `files were modified` and the
+receipt hides it. The two are one fix; they arrived as two records and they
+have one sentence between them.
+
+The receipt is written when the guarded command exits 0. A caller can judge
+that command AFTER its exit status and on a different criterion:
+pre-commit's ``files were modified by this hook`` FAILS a hook that exited 0
+but changed files. So the failing run wrote a receipt, the retry skipped the
+suite, and the push passed. One occurrence in three attempts, and the retry's
+success is what made it look intermittent; a faithful reproduction with the
+receipt removed did not reproduce. The mechanism was behaving exactly as
+specified and this was its emergent cost.
+
+The wrapper cannot see pre-commit's verdict. It does not need to: that
+verdict is computed from an observable the wrapper CAN see, which is whether
+the command changed the working tree. So the content digest is recomputed
+once after a green run, and if it differs from the pre-run one, NO RECEIPT IS
+WRITTEN and the reason is printed. The next run does the work again, and the
+failure stays reproducible.
+
+Keeping the pre-run key alone would already be safe, since a key describing a
+tree that no longer exists can never match a later one, so the next run would
+RUN. It would be safe silently, by accident, through a receipt that is dead
+on arrival. Refusing to write it makes the property observable, gives the
+operator the sentence that explains the slow retry, and costs one content
+digest, measured at 0.42 s against a 12.1-minute suite.
 
 CROSS-REPOSITORY. Nothing here assumes any repository's paths or its
 ``.venv``. The root is resolved with ``git rev-parse --show-toplevel`` from
@@ -228,11 +276,20 @@ def _environment_digest() -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def compute_key(root: Path, command: list[str], label: str) -> str:
+def compute_key(root: Path, command: list[str], label: str,
+                content: str | None = None) -> str:
+    """The key. ``content`` may be supplied when it was already computed.
+
+    The parameter exists at 0.2.16 so that the key stored after a run is
+    built from the content digest taken BEFORE it, rather than from a
+    second walk of a tree that may have changed underneath. See ``guard``.
+    """
+    if content is None:
+        content = _content_digest(root)
     payload = json.dumps(
         {
             "format": FORMAT,
-            "content": _content_digest(root),
+            "content": content,
             "environment": _environment_digest(),
             "command": command,
             "label": label,
@@ -283,23 +340,32 @@ def evaluate(path: Path, key: str, now: float) -> tuple[bool, str]:
     return True, f"receipt valid ({int(age)}s old)"
 
 
-def _decide(root: Path, command: list[str], label: str) -> tuple[bool, str]:
+def _decide(root: Path, command: list[str], label: str
+            ) -> tuple[bool, str, str | None, str | None]:
     """The whole decision, and any failure inside it means RUN.
 
     This is the acceptance criterion in one function: there is no exception
     path out of here that returns True.
+
+    Returns ``(skip, reason, key, content)``. The last two are the values
+    computed BEFORE the command runs, and they are returned rather than
+    discarded, which is ``ITC-20260801-2320``, the receipt key is stored
+    after the run. Either is None when it could not be computed, and a
+    None key means no receipt may be written afterwards.
     """
     path = root / RECEIPT
     try:
-        key = compute_key(root, command, label)
+        content = _content_digest(root)
+        key = compute_key(root, command, label, content)
     except Unavailable as exc:
-        return False, f"key unavailable: {exc}"
+        return False, f"key unavailable: {exc}", None, None
     except Exception as exc:  # noqa: BLE001 - deliberate: unknown means run
-        return False, f"key computation failed: {exc!r}"
+        return False, f"key computation failed: {exc!r}", None, None
     try:
-        return evaluate(path, key, time.time())
+        skip, reason = evaluate(path, key, time.time())
     except Exception as exc:  # noqa: BLE001 - deliberate: unknown means run
-        return False, f"receipt evaluation failed: {exc!r}"
+        return False, f"receipt evaluation failed: {exc!r}", key, content
+    return skip, reason, key, content
 
 
 def _write(root: Path, command: list[str], label: str, key: str) -> None:
@@ -341,7 +407,7 @@ def _root(where: Path) -> Path | None:
 
 
 def guard(root: Path, command: list[str], label: str, run: bool) -> int:
-    skip, reason = _decide(root, command, label)
+    skip, reason, key, content = _decide(root, command, label)
     if skip:
         print(f"prepush-receipt: SKIP, {reason}")
         print(f"prepush-receipt: not run: {' '.join(command)}")
@@ -355,11 +421,38 @@ def guard(root: Path, command: list[str], label: str, run: bool) -> int:
         # A tree that passed and then failed must not keep authority to skip.
         _discard(root)
         return status
+    if key is None:
+        # The key could not be computed before the run, so there is no
+        # honest key to store. Recomputing one now would describe a tree
+        # the suite was never measured against, which is the defect below.
+        print(f"prepush-receipt: passed, but no receipt written ({reason})",
+              file=sys.stderr)
+        return 0
+    # DID THE COMMAND MODIFY THE TREE. ITC-20260802-0620, the first push
+    # fails on `files were modified` and the receipt hides it. The receipt
+    # is written when the guarded command exits 0, and pre-commit's own
+    # verdict on a hook is decided AFTER that exit status, from exactly
+    # this observable: whether the hook changed files. So a run that
+    # modified the tree, exited 0, and was then FAILED by pre-commit used
+    # to leave a receipt, and the retry skipped the suite and passed. A
+    # reproducible failure became an intermittent one.
+    #
+    # This wrapper cannot see pre-commit's verdict and does not need to.
+    # It can see the thing that verdict is computed from, and when the
+    # tree moved it declines to authorise anything at all.
     try:
-        key = compute_key(root, command, label)
-    except Exception as exc:  # noqa: BLE001
+        after = _content_digest(root)
+    except Exception as exc:  # noqa: BLE001 - unknown means no receipt
         print(f"prepush-receipt: passed, but no receipt written ({exc!r})",
               file=sys.stderr)
+        return 0
+    if after != content:
+        print("prepush-receipt: the command MODIFIED the working tree, so no "
+              "receipt was written. The suite measured the tree as it was "
+              "BEFORE the run, and a caller that judges this command by what "
+              "it changed (pre-commit's `files were modified by this hook`) "
+              "has not judged it yet. The next run does the work again, "
+              "which keeps that failure reproducible.", file=sys.stderr)
         return 0
     try:
         _write(root, command, label, key)
