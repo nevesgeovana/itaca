@@ -1,13 +1,14 @@
 <!--
 ITACA / pyflightstream shared process kit
-kit-version: 0.2.11
+kit-version: 0.2.15
 artifact: review-policy.md
-body-sha256: 87da7054a05fe0393bd81aa78c2616d6c275d50f39249da2e77beb8319e75063
+body-sha256: b29bc2155efd78775d6ff172aa3c34abb5c25d949f9cbc817687e2ecd7548e6c
 canonical-source: BUILT for the kit (0.2.7) from the author's product-owner decision REVIEW-TIERS, answered 2026-07-29, which asked to become a kit promotion so that it binds every repository rather than the one that raised it. The three moments were renamed from TIER 1/2/3 to GATE/PUSH/RELEASE the same day, because both libraries already use tier 1/2/3 for TEST tiers and this artifact's first level contains all three of them; the file was renamed with them, for what the artifact IS rather than for the labels it currently uses. It also carries guard 3 of INC-20260729-0854-shared, the probe-closure rule, promoted from one checkpoint's decision into a rule for every checkpoint.
+0.2.15 adds two sections, DESIGN BEFORE EDIT and the round-two distinction inside the recursion cap, and adds check_review_rounds.py beside this file. Neither changes GATE, PUSH, RELEASE, the ordering rule or probe closure in meaning. See coordination/DESIGN_HUB-11_kit_batch.md items 3 and 4.
 note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 END KIT PROVENANCE (body verbatim below)
 -->
-# The review policy: three moments, the ordering rule, the recursion cap, and probe closure
+# The review policy: three moments, the ordering rule, design before edit, the recursion cap, and probe closure
 
 Authority: the author's product-owner seat, `REVIEW-TIERS`, answered
 2026-07-29, recorded in the coordination logbook. She asked for it to become a
@@ -119,7 +120,44 @@ well, where both kinds are in scope. Pedantry about how a comment is worded
 while the code itself is not yet tested is backwards, and a report that opens
 with the comment teaches the reader that the report is not about the code.
 
-## The recursion cap
+## Design before edit
+
+Added 0.2.15, HUB-11. It is a rule about the moment BEFORE an edit, which is
+why it sits between the ordering rule and the cap: it is what makes the cap
+affordable.
+
+THE RULE. Before editing in response to a finding, write down what the change
+does and WHAT IT CANNOT BREAK. Per finding, not per session. The second half
+is the load-bearing one, and it is written before the edit rather than after,
+because after the edit it is a justification and before it is a prediction
+that the next round can falsify.
+
+MEASURED, in a controlled comparison inside ONE session, which is why this is
+a rule and not a preference. In lane ITA-2E one half of the work was designed
+in writing first, with a per-finding statement of what the fix could not
+break, and it generated NO review round. The other half was a one-line
+allowlist edit made under review pressure, and it produced two rounds and
+1h40. Same session, same reviewers, same day.
+
+The corroboration is stronger than the measurement. The next lane, ITA-4,
+adopted the practice UNASKED, with nobody having proposed it to that lane.
+A practice a session reaches for on its own, having felt the cost, is better
+evidence than a practice a policy asks for.
+
+WHAT IT IS NOT. It is not a design document per lane, not an approval step,
+and not a gate. Nothing waits on it and nobody signs it. For a one-line fix
+it is one or two sentences beside the finding.
+
+THE COST, and it is real. It moves work earlier, into the moment when the
+finding is fresh and the temptation is to just fix it. Lanes that skipped it
+did not go faster; they paid the same time in a later round, at the higher
+price of a round.
+
+A repository states where the statement lives. It is expected to POINT at
+this section rather than restate it, because a rule restated in three places
+is a rule that will disagree with itself.
+
+## The recursion cap, and what a round-two finding actually is
 
 A review of a GUARD FIX does not spawn another review of the guard. Two rounds
 maximum.
@@ -129,6 +167,50 @@ that is not evidence that unbounded rounds are good: it is evidence that the
 FIRST round was scoped wrong, reviewing the fix instead of the artifact the fix
 was about. The cap forces the scoping error to surface as a cap breach rather
 than as three more rounds.
+
+### The distinction the cap cannot be built without
+
+Added 0.2.15, HUB-11, from a finding that arrived ONE DAY before the cap was
+mechanised, which is luck rather than design.
+
+The obvious mechanism for a two-round cap is "two rounds, then register
+whatever is left". That mechanism would have shipped lane ITA-4's defects.
+Measured, in that lane's own words: its round-one FIXES were themselves
+defective. Six guards it wrote did not guard, one false-fired on correct
+code, and it introduced a fresh defect in the same commit that added the
+guard against the old one, with the lane's central fix passing green on a
+tree that was never built. Only round two saw any of it. Had round two been
+register-only, all of it would have shipped, documented as known.
+
+So a flat count is not merely weaker than the rule; it is wrong in exactly
+the case the cap most often meets, because a round-two report is dominated by
+findings about round one's fixes.
+
+THE RULE, therefore:
+
+- A round-two finding ABOUT ROUND ONE'S FIX is **the fix not being done**. It
+  belongs to round two and is FIXED, not registered. It does not buy a third
+  round and it does not get deferred.
+- A round-two finding on **NEW GROUND** is what gets REGISTERED, as a plan
+  item, and the lane closes.
+
+A round-two fix is verified by its own evidence, not by a third review round:
+the failing measurement before it and the passing one after, per the
+INERTNESS rule above. That is what replaces the round the cap forbids.
+
+THE ESCALATION, which is precedent rather than invention. Lane ITA-2E reached
+the cap and did not open a third round: it stopped and asked the author, she
+authorised the fix, and it was recorded as AUTHORISED rather than counted as
+a round. A third round exists only with a named authority, and the record
+says who.
+
+THE MECHANISM. `check_review_rounds.py`, beside this file, reads a lane's
+round ledger and refuses a closure that registers a finding about a previous
+round's fix, an unauthorised third round, and a ledger that certifies
+nothing. Its format is documented in its own docstring and is PROPOSED rather
+than settled, on the same terms as the probe ledger below: it was written
+from three lanes' data and the next lane is entitled to correct it, by
+promotion.
 
 ## Probe closure, and the checker beside this file
 

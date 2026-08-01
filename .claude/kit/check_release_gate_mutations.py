@@ -1,10 +1,9 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.13
+# kit-version: 0.2.15
 # artifact: check_release_gate_mutations.py
-# body-sha256: 97442e34e77e239437e3e2234dd6c518d79be59ddbafc2b5a302a0538c0eaf77
-# canonical-source: BUILT for the kit (0.2.6), REWRITTEN at 0.2.12 by lane HUB-8 for the caller-side-publish topology: the mutation companion for check_release_gate.py, proving the release-gate checker still refuses the pre-fix release workflow both reviews measured, the kept-alongside second publisher, the 0.2.6-to-0.2.11 arrangement that PyPI cannot match, and each of the four riders FND-069, FND-051, FND-052 and FND-070.
+# body-sha256: c03575afa540d63c73a75209c8a1521950f53a6a57c0c66cc2f00a3f0f3c6d39
+# canonical-source: BUILT for the kit (0.2.6), REWRITTEN at 0.2.12 by lane HUB-8 for the caller-side-publish topology: the mutation companion for check_release_gate.py, proving the release-gate checker still refuses the pre-fix release workflow both reviews measured, the kept-alongside second publisher, the 0.2.6-to-0.2.11 arrangement that PyPI cannot match, and each of the four riders FND-069, FND-051, FND-052 and FND-070. 0.2.15 carries the rule 5 and 6 message cases, replaces four British spellings with American ones inside bodies itaca's house-style walk scans, including the load-bearing `licence` fixture job name whose rename moves a mutant's expected message with it (ITC-20260730-2320 item 3), and corrects the OLD_CALLER note that had aged (item 4).
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
-# 
 # END KIT PROVENANCE (body verbatim below)
 #!/usr/bin/env python3
 """Prove check_release_gate.py can still refuse, on real workflow fixtures.
@@ -13,7 +12,7 @@ Usage:
   python check_release_gate_mutations.py [--gate <path to release_gate.yml>]
 
 Every case writes actual workflow files into a temporary directory and runs
-the checker as a subprocess, so what is asserted is behaviour. Then each
+the checker as a subprocess, so what is asserted is behavior. Then each
 mutant reintroduces one way the checker can be weakened and must be REFUSED
 by at least one case.
 
@@ -31,12 +30,20 @@ a repository actually shipped it:
                     perfectly and cannot publish, because PyPI Trusted
                     Publishing matches the file containing the job while the
                     attestation carries the entry point. ITC-20260730-0270.
-  OLD_CALLER        its caller, passing `publish: true`. The pair is what both
-                    libraries hold today, so if these two ever stop being
-                    refused, this checker has stopped being able to tell an
-                    adopted repository from an unadopted one.
+  OLD_CALLER        its caller, passing `publish: true`. HISTORY as of
+                    2026-08-01 rather than the current state: itaca adopted
+                    the 0.2.13/0.2.14 release path in lane ITA-4 and no longer
+                    holds this pair, and pyflightstream never vendored
+                    `release_gate.yml` at all and holds the ORIGINAL PYFS-018
+                    shape instead. It is kept as a case for exactly that
+                    reason: if these two ever stop being refused, this checker
+                    has stopped being able to tell an adopted repository from
+                    an unadopted one. Corrected at kit 0.2.15,
+                    ITC-20260730-2320 item 4; the sentence it replaces claimed
+                    both libraries held it, which was true when written and
+                    had aged.
 
-DIVISION OF LABOUR, stated because a reader will look for the missing half.
+DIVISION OF LABOR, stated because a reader will look for the missing half.
 This file proves the CHECKER fails on bad input; it does not prove the
 repository's own workflows are good. That is the vendored tier-1 test's job,
 which runs `check_release_gate.py --workflows .github/workflows` against the
@@ -461,8 +468,8 @@ CASES: list[tuple[str, dict[str, str] | None, int, tuple[str, ...]]] = [
      0, ("no ungated release path found", "rule 1 (seal) over release_gate.yml")),
     ("a new job the seal does not need is REFUSED",
      {"release_gate.yml": gate(
-         extra="  licence:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: ./licence.sh\n")},
-     1, ("does not depend on licence",)),
+         extra="  license:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: ./license.sh\n")},
+     1, ("does not depend on license",)),
     ("a gate whose output comes from a job that gates nothing is REFUSED",
      {"release_gate.yml": gate(output_source="build")},
      1, ("comes from build, which does not depend on",)),
@@ -573,6 +580,30 @@ CASES: list[tuple[str, dict[str, str] | None, int, tuple[str, ...]]] = [
          breadth_tag="py${{ env.PYVER }}")}),
      1, ("cannot resolve",)),
 
+    # ---- kit 0.2.15, ITC-20260730-2320 item 1. Rules 5 and 6 are the two
+    # refusals a maintainer actually hits, and until 0.2.15 they were the only
+    # two that ended in history and an FND id rather than in a suggested fix,
+    # inside the guard that protects the release path. Both libraries hold a
+    # three-part error rule (object, operation, suggested fix), so a kit body
+    # that breaks it makes the repository unable to comply.
+    #
+    # These four cases put the needle on the FIX text itself. A case asserting
+    # only the violation would stay green if the remedy were deleted, which is
+    # the shape this kit has been bitten by twice.
+    ("rule 5's refusal names a fix and prints the covered set",
+     gated(**{"ci.yml": CI_WIDER}),
+     1, ("FIX: add this leg to the matrix of", "covered on the tag path:")),
+    ("rule 6's missing-tag refusal names a fix",
+     gated(**{"release.yml": caller().replace(
+         "      artifact-tag: py${{ matrix.python-version }}\n", "", 1)}),
+     1, ("FIX: add `artifact-tag:` to this call's `with:` block",)),
+    ("rule 6's collision refusal names a fix",
+     gated(**{"release.yml": caller(breadth_tag="dist")}),
+     1, ("FIX: make the `artifact-tag` of one of those two calls",)),
+    ("rule 6's unresolvable-tag refusal names a fix",
+     gated(**{"release.yml": caller(breadth_tag="py${{ env.PYVER }}")}),
+     1, ("FIX: build the tag from `matrix.` keys",)),
+
     # ---- configuration errors are never a clean tree.
     ("a missing directory is a CONFIG error, not a clean tree",
      None, 2, ("CONFIG ERROR",)),
@@ -621,7 +652,7 @@ def check(checker: Path) -> list[str]:
 
 
 # ---- mutants ---------------------------------------------------------------
-# Each removes ONE defence. A mutant that no case denies is a defence nothing
+# Each removes ONE defense. A mutant that no case denies is a defense nothing
 # proves, whatever the prose above it claims.
 def _action_only(src: str) -> str:
     """Detect the publish action and stop reading run steps."""
@@ -814,6 +845,38 @@ def _tag_optional(src: str) -> str:
     )
 
 
+def _rule5_fix_removed(src: str) -> str:
+    """Rule 5 refuses again with history and an FND id and no remedy.
+
+    The pre-0.2.15 shape, reduced: the leg alone, no covered set, no fix.
+    """
+    return src.replace(
+        'f"    FIX: add this leg to the matrix of "', 'f"    "', 1)
+
+
+def _rule5_covered_set_removed(src: str) -> str:
+    """Print the uncovered leg and nothing to compare it against."""
+    return src.replace('f"    covered on the tag path:\\n"', 'f""', 1)
+
+
+def _rule6_missing_tag_fix_removed(src: str) -> str:
+    return src.replace(
+        'f"    FIX: add `artifact-tag:` to this call\'s `with:` block. A "',
+        'f""', 1)
+
+
+def _rule6_collision_fix_removed(src: str) -> str:
+    return src.replace(
+        'f"    FIX: make the `artifact-tag` of one of those two calls "',
+        'f""', 1)
+
+
+def _rule6_unresolvable_fix_removed(src: str) -> str:
+    return src.replace(
+        'f"    FIX: build the tag from `matrix.` keys this call\'s own "',
+        'f""', 1)
+
+
 def _unknown_tag_ok(src: str) -> str:
     """Assume an unresolvable tag expression is distinct enough."""
     return src.replace("        if unknown:", "        if False:", 1)
@@ -875,6 +938,18 @@ MUTANTS = {
     "report an unreadable matrix as one empty leg": _unreadable_matrix_passes,
     "allow publishing through a local workflow that is not the gate": _indirect_publish_ok,
     "allow a publishing workflow that never calls the gate": _no_gate_call_ok,
+    # kit 0.2.15: one per suggested fix, so a remedy deleted from a refusal
+    # is a mutant that survives rather than a silent regression to the shape
+    # ITC-20260730-2320 item 1 reported.
+    "rule 5 refuses with no suggested fix": _rule5_fix_removed,
+    "rule 5 prints the uncovered leg with nothing to compare it against":
+        _rule5_covered_set_removed,
+    "rule 6 refuses a missing artifact-tag with no suggested fix":
+        _rule6_missing_tag_fix_removed,
+    "rule 6 refuses a collision with no suggested fix":
+        _rule6_collision_fix_removed,
+    "rule 6 refuses an unresolvable tag with no suggested fix":
+        _rule6_unresolvable_fix_removed,
 }
 
 

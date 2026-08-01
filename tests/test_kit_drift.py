@@ -312,26 +312,101 @@ MANIFEST: dict[str, Pin] = {
     "check_probe_closure_mutations.py": Pin(
         "59f3f3c120d7b834bae78b047b2e76d638952a4fb749783b78caba9214767b9c", "0.2.7"
     ),
-    # 0.2.11 adds one paragraph, the INERTNESS rule (BRF-061 item 16): a
+    # 0.2.11 added one paragraph, the INERTNESS rule (BRF-061 item 16): a
     # reproduction that cannot show it exercised the claimed path is not
     # evidence, so every probe carries what proves it touched the code it
-    # names, beside its verdict. Adopted here rather than merely pinned,
-    # because it is the rule this lane's own RED measurements are held to.
+    # names, beside its verdict.
+    #
+    # 0.2.15 adds two more sections and changes no existing rule. DESIGN
+    # BEFORE EDIT states, with its measurement, that an edit made under
+    # review pressure carries a written statement of what it changes and
+    # what it cannot break; ITA-2E proved it in a controlled comparison and
+    # ITA-4 adopted it unasked. The round-two distinction inside the
+    # recursion cap is the load-bearing one: a round-two finding ABOUT
+    # round one's fix is the fix not being done, so it is FIXED in round
+    # two rather than registered, and only NEW ground is registered. GATE,
+    # PUSH, RELEASE, the ordering rule and probe closure are untouched in
+    # meaning. `check_review_rounds.py` below is that rule's mechanism.
+    #
+    # itaca's `develop` skill POINTS at the design-before-edit section
+    # rather than restating it, which is that skill's own convention and
+    # the whole reason the rule went into the shared policy.
     # The declared value agreed with the master body on recomputation.
     "review-policy.md": Pin(
-        "87da7054a05fe0393bd81aa78c2616d6c275d50f39249da2e77beb8319e75063", "0.2.11"
+        "b29bc2155efd78775d6ff172aa3c34abb5c25d949f9cbc817687e2ecd7548e6c", "0.2.15"
     ),
-    # 0.2.13. Two rules became six, and the sixth is the one the rehearsal
-    # paid for: GitHub EVALUATES the `description` of a `workflow_call` input,
-    # so 0.2.12's worked example killed every run at startup with no job to
-    # attribute it to. Rule 1 now refuses expression syntax in any such
-    # description. Guard evidence at 40 cases and 28 mutants, all denied,
-    # measured here on adoption and not taken from the changelog.
+    # 0.2.15, NEW: the two-round cap, mechanised. The policy has stated the
+    # cap since 0.2.7 and nothing enforced it, and the naive mechanism
+    # ("two rounds, then register whatever is left") is WRONG in the exact
+    # case the cap is most likely to meet. Lane ITA-4 is the evidence: its
+    # round-one FIXES were themselves defective, six guards did not guard,
+    # one false-fired, and it introduced a fresh defect in the same commit
+    # that guarded the old one. Under a flat count all of that would have
+    # shipped, documented as known. So the checker refuses a ledger that
+    # REGISTERS a finding about a previous round's fix, refuses a third
+    # round with no named authority, and refuses a ledger that certifies
+    # nothing.
+    #
+    # The LEDGER FORMAT is PROPOSED and not settled, on the precedent
+    # `check_probe_closure.py` set, and the checker's own docstring says
+    # so. This lane recorded its round ledger in that format as the first
+    # consumer use of it; a lane that finds the format wrong corrects it by
+    # kit promotion, never by hand-editing this copy.
+    # Both declared values agreed with the master bodies on recomputation.
+    "check_review_rounds.py": Pin(
+        "6d57387bdf9206b7811b40ce5a277d5bb4e050d3875e8ec7e3a9d0f1c9abb929", "0.2.15"
+    ),
+    "check_review_rounds_mutations.py": Pin(
+        "368c985b7bee0c2a72919dc0feda7c3e454b8f0b26fd1d47c1f04e1143e20f07", "0.2.15"
+    ),
+    # 0.2.15, NEW: the version-control skill. It carries the push sequence
+    # as a template and adds NO mechanism, which is why it is the lowest
+    # blast radius row in the whole batch. It exists because the push step
+    # failed five distinct ways across two lanes and none of them was about
+    # the code: a redirection flag after `git push` in one command string,
+    # pytest and mypy off PATH, a PowerShell PATH assignment sent to a bash
+    # shell, and a background task killed twice.
+    #
+    # It is the one pinned copy that lives OUTSIDE the two ruff-excluded
+    # vendored directories, under `.claude/skills/`, so the directory sweep
+    # in `test_no_unpinned_artifact_hides_in_the_vendored_dirs` does not
+    # reach it. What drift-checks it is this pin plus its COMMITTED row,
+    # which assert positively that the path exists and hashes as declared,
+    # rather than asserting the absence of anything.
+    # The declared value agreed with the master body on recomputation.
+    "version-control.md": Pin(
+        "b8119d989a4b1acf9f3913e4f478a643f34ed1506ff4552c9518ffeb49594a0b", "0.2.15"
+    ),
+    # 0.2.13 turned two rules into six, and the sixth is the one the
+    # rehearsal paid for: GitHub EVALUATES the `description` of a
+    # `workflow_call` input, so 0.2.12's worked example killed every run at
+    # startup with no job to attribute it to. Rule 1 now refuses expression
+    # syntax in any such description.
+    #
+    # 0.2.15 is MESSAGES AND COMMENTS ONLY (`ITC-20260730-2320`). Rules 5
+    # and 6 gain a suggested fix and rule 5 prints the covered set beside
+    # the uncovered leg, which is the worst of the five defects that record
+    # carried: the three-part error rule both libraries hold, broken inside
+    # the guard that protects the release path, on the two refusals a
+    # maintainer actually hits. Beside it, `Rules 4's` became `Rule 4's`,
+    # four British spellings inside bodies that `tests/test_house_style.py`
+    # scans became American, and an OLD_CALLER comment that had aged was
+    # corrected.
+    #
+    # NO RULE'S VERDICT MOVES, and that claim is measured rather than
+    # trusted: every live check over this repository's own workflows gives
+    # the same verdict as it did at 0.2.13. Guard evidence moved from 40
+    # cases and 28 mutants to 44 and 33, all denied, measured here on
+    # adoption and not taken from the changelog. The one place a verdict
+    # COULD have moved is the `licence` fixture whose job name is asserted
+    # in a mutant's expected message, and the companion is what says
+    # whether the expectation moved with it.
+    # Both declared values agreed with the master bodies on recomputation.
     "check_release_gate.py": Pin(
-        "4e821fb150ef236c6ada877e72c17a9a1c397b10beec14d085021b835ae3d943", "0.2.13"
+        "465caa08e9ce041f3fc359b41701fffcb649ec223a194a533c8d89c8c593f6a2", "0.2.15"
     ),
     "check_release_gate_mutations.py": Pin(
-        "97442e34e77e239437e3e2234dd6c518d79be59ddbafc2b5a302a0538c0eaf77", "0.2.13"
+        "c03575afa540d63c73a75209c8a1521950f53a6a57c0c66cc2f00a3f0f3c6d39", "0.2.15"
     ),
     "check_version_identity.py": Pin(
         "d9fd719a92bc82cd8c81ab60888bcae4eeed320af89bced74b2602350afe68bd", "0.2.6"
@@ -453,6 +528,18 @@ COMMITTED: list[tuple[str, str]] = [
     ),
     ("review-policy.md", ".claude/kit/review-policy.md"),
     ("review_runner.py", ".claude/kit/review_runner.py"),
+    ("check_review_rounds.py", ".claude/kit/check_review_rounds.py"),
+    (
+        "check_review_rounds_mutations.py",
+        ".claude/kit/check_review_rounds_mutations.py",
+    ),
+    # The one committed copy outside `.claude/hooks` and `.claude/kit`. A
+    # skill BODY is deployed where its loader looks for it, so this row is
+    # what drift-checks it; the vendored-directory sweep below cannot see
+    # `.claude/skills` and must not be widened to it, because the skills
+    # this repository writes itself live there too and pinning them would
+    # be false.
+    ("version-control.md", ".claude/skills/version-control/SKILL.md"),
 ]
 
 

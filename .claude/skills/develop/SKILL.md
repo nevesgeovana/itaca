@@ -83,6 +83,13 @@ test id and the way it failed.
 Make that test pass and nothing more. Then refactor with the suite green.
 Scope beyond the item goes to the ledger, not into the diff.
 
+**Before an edit made under review pressure**, the rule is "Design before
+edit" in `.claude/kit/review-policy.md`. Read it there. It carries its own
+measurement and the reason a one-line fix is the dangerous one, and it is
+deliberately NOT repeated here: a rule restated in three places is a rule
+that will disagree with itself, which is the whole reason it went into the
+shared policy rather than into this skill.
+
 ## 5. Records in the same step, not as a closing pass
 
 Whatever the change touches writes its record **in the same step**, so a

@@ -1,10 +1,9 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.13
+# kit-version: 0.2.15
 # artifact: check_release_gate.py
-# body-sha256: 4e821fb150ef236c6ada877e72c17a9a1c397b10beec14d085021b835ae3d943
-# canonical-source: BUILT for the kit (0.2.6), REWRITTEN at 0.2.12 by lane HUB-8. The vendored release_gate.yml fixes the release path that USES it; this checker is what proves no other path exists. Without it a repository can vendor the gate, keep its old ungated release.yml, and stay green, which is the class this level registers most: a guard that reports nothing. At 0.2.12 the publishing job moved OUT of the gate, because PyPI Trusted Publishing cannot match a job inside a reusable workflow, so this file carries the whole of the property that co-location used to carry for free.
+# body-sha256: 465caa08e9ce041f3fc359b41701fffcb649ec223a194a533c8d89c8c593f6a2
+# canonical-source: BUILT for the kit (0.2.6), REWRITTEN at 0.2.12 by lane HUB-8. The vendored release_gate.yml fixes the release path that USES it; this checker is what proves no other path exists. Without it a repository can vendor the gate, keep its old ungated release.yml, and stay green, which is the class this level registers most: a guard that reports nothing. At 0.2.12 the publishing job moved OUT of the gate, because PyPI Trusted Publishing cannot match a job inside a reusable workflow, so this file carries the whole of the property that co-location used to carry for free. 0.2.15 gives rules 5 and 6 a suggested fix and makes rule 5 print the covered set beside the uncovered leg (ITC-20260730-2320 item 1), and corrects `Rules 4's` to `Rule 4's` (item 2). No rule's verdict moves.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
-# 
 # END KIT PROVENANCE (body verbatim below)
 #!/usr/bin/env python3
 """Refuse any path from a git ref to a package index that is not gated.
@@ -109,7 +108,7 @@ STATED RESIDUALS
   publishing. It is a real distribution channel and it is deliberately out of
   scope rather than overlooked; widening the vocabulary to ``gh release
   upload`` would flag the common case of attaching build logs.
-- Rules 4's pin and runner requirements are scoped to the gate file and to
+- Rule 4's pin and runner requirements are scoped to the gate file and to
   publishing jobs, not to every job in a publishing workflow. A repository's
   own gating job, such as a documentation build, can still use a tag-pinned
   action. That is a smaller surface than the artifact's supply chain and the
@@ -866,7 +865,12 @@ def _rule_artifact_names(fname: str, jname: str, job: dict, legs: list[dict],
             f"{fname}:{jname} calls the gate without an `artifact-tag`. The "
             f"gate requires one because the artifact name used to be the "
             f"literal `dist`, so every leg of a matrix uploaded under one name "
-            f"into a namespace that is per-run and immutable (FND-069)."
+            f"into a namespace that is per-run and immutable (FND-069).\n"
+            f"    FIX: add `artifact-tag:` to this call's `with:` block. A "
+            f"call with no matrix takes a constant, such as `release`. A call "
+            f"WITH a matrix must vary the tag per leg, by interpolating the "
+            f"same matrix keys the legs differ in; a constant tag under a "
+            f"matrix is refused below for the same reason."
         ]
     tag = tag.strip()
     for leg in legs:
@@ -876,7 +880,13 @@ def _rule_artifact_names(fname: str, jname: str, job: dict, legs: list[dict],
                 f"{fname}:{jname} has an `artifact-tag` this checker cannot "
                 f"resolve: {', '.join(sorted(set(unknown)))}. Distinctness "
                 f"cannot be proven from the file, and a collision only shows up "
-                f"as a failed upload halfway through a release."
+                f"as a failed upload halfway through a release.\n"
+                f"    FIX: build the tag from `matrix.` keys this call's own "
+                f"`strategy.matrix` declares, so every leg resolves here. A "
+                f"context this checker cannot enumerate, such as `github.` or "
+                f"`env.`, is a VIOLATION rather than a note, because a rule "
+                f"about a silent collision cannot be satisfied by a value "
+                f"nobody can read."
             )
             continue
         where = f"{jname}{' ' + leg_key(leg) if leg else ''}"
@@ -885,7 +895,13 @@ def _rule_artifact_names(fname: str, jname: str, job: dict, legs: list[dict],
                 f"{fname}: the artifact tag {resolved!r} is produced by both "
                 f"{seen[resolved]} and {where}. Artifacts share one namespace "
                 f"per RUN and upload-artifact v4 makes them immutable, so the "
-                f"second upload fails and the release stops half done. FND-069."
+                f"second upload fails and the release stops half done. "
+                f"FND-069.\n"
+                f"    FIX: make the `artifact-tag` of one of those two calls "
+                f"resolve differently on this leg, by interpolating a matrix "
+                f"key the two legs actually differ in. If they differ in "
+                f"nothing, one of them is a duplicate leg and the fix is to "
+                f"remove it rather than to rename its artifact."
             )
         else:
             seen[resolved] = where
@@ -897,7 +913,13 @@ def _rule_matrix_coverage(parsed: dict, gate_calls: dict, legs_by_call: dict,
     """Rule 5. The tag path exercises every leg any other path exercises."""
     if not publishing_files:
         return []
-    covered: set[str] = set()
+    # Covered legs are kept WITH the call that covers them, so the refusal can
+    # print what a maintainer has to compare against. Kit 0.2.15,
+    # ITC-20260730-2320 item 1: this message used to print the uncovered leg
+    # alone, as a JSON dump including the whole install command, so a pair
+    # differing by one character gave the reader one blob and nothing to hold
+    # it against.
+    covered: dict[str, str] = {}
     for pf in publishing_files:
         jobs = parsed[pf]
         for _, pj, _ in [d for d in direct if d[0] == pf]:
@@ -905,7 +927,11 @@ def _rule_matrix_coverage(parsed: dict, gate_calls: dict, legs_by_call: dict,
             for gj in gate_calls.get(pf, []):
                 if gj in reachable:
                     for leg in legs_by_call.get((pf, gj), []):
-                        covered.add(leg_key(leg))
+                        covered.setdefault(leg_key(leg), f"{pf}:{gj}")
+    where_to_add = sorted({site for site in covered.values()}) or [
+        f"the gate call inside {publishing_files[0]}'s publishing job needs "
+        f"closure"
+    ]
     out: list[str] = []
     for fname, names in gate_calls.items():
         if fname in publishing_files:
@@ -920,14 +946,25 @@ def _rule_matrix_coverage(parsed: dict, gate_calls: dict, legs_by_call: dict,
                     # look identical to covering it.
                     continue
                 if leg_key(leg) not in covered:
+                    listed = "\n      ".join(sorted(covered)) or \
+                        "(no leg at all is covered on the tag path)"
                     out.append(
-                        f"{fname}:{jname} exercises the gate on {leg_key(leg)} "
-                        f"and no gate call inside a publishing job's `needs` "
-                        f"closure does. That configuration is proven on this "
+                        f"{fname}:{jname} exercises the gate on this leg and "
+                        f"no gate call inside a publishing job's `needs` "
+                        f"closure does:\n"
+                        f"      {leg_key(leg)}\n"
+                        f"    covered on the tag path:\n"
+                        f"      {listed}\n"
+                        f"    FIX: add this leg to the matrix of "
+                        f"{', '.join(where_to_add)}, or drop it from "
+                        f"{fname}:{jname}. The two legs often differ by one "
+                        f"character, so compare the lines above rather than "
+                        f"reading them.\n"
+                        f"    WHY: that configuration is proven on this "
                         f"trigger and never on the commit being released, and "
-                        f"the two triggers are disjoint, so nothing runs it at "
-                        f"tag time. FND-070: the tag path ran one interpreter, "
-                        f"and it was not even one of CI's."
+                        f"the two triggers are disjoint, so nothing runs it "
+                        f"at tag time. FND-070: the tag path ran one "
+                        f"interpreter, and it was not even one of CI's."
                     )
     return out
 

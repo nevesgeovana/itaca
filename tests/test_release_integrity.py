@@ -160,7 +160,7 @@ def test_the_release_gate_checker_can_still_fail() -> None:
     run RED, not green.
 
     What the case pin actually catches is the loss of cases that are
-    redundant with respect to all 28 mutants, on one specific path: a
+    redundant with respect to all 33 mutants, on one specific path: a
     re-vendor where the body hash is updated mechanically and a shrunken
     case list goes unnoticed. Both counts are already implied by the
     body-sha256 pin in ``test_kit_drift.py``, which fails first on any byte
@@ -176,15 +176,15 @@ def test_the_release_gate_checker_can_still_fail() -> None:
     """
     done = _run(str(_RELEASE_GATE_MUTATIONS))
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "all 28 mutants denied" in done.stdout, (
-        f"the release-gate mutation companion did not report 'all 28 mutants "
+    assert "all 33 mutants denied" in done.stdout, (
+        f"the release-gate mutation companion did not report 'all 33 mutants "
         f"denied'. Two opposite remedies: if a re-vendor changed the count, "
         f"move it here and in tests/test_kit_drift.py's manifest note "
         f"together; if it did not, a mutant SURVIVED and the checker no "
         f"longer refuses what it claims to. Output:\n{done.stdout}"
     )
-    assert "40 cases on real workflow files" in done.stdout, (
-        f"the release-gate mutation companion did not report 40 cases. The "
+    assert "44 cases on real workflow files" in done.stdout, (
+        f"the release-gate mutation companion did not report 44 cases. The "
         f"mutants can all be denied by a shrunken case list, so this count is "
         f"what catches a re-vendor that quietly dropped cases. If the kit "
         f"really changed it, move the pin; do not delete it. "
