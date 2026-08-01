@@ -35,7 +35,6 @@ question only the archive can answer.
 
 from __future__ import annotations
 
-import importlib.metadata
 import re
 import subprocess
 import sys
@@ -83,6 +82,49 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
         env=child_env(),
         cwd=str(_ROOT),
     )
+
+
+def _describe() -> tuple[str, int]:
+    """The last release tag and the number of commits since it (FND-046).
+
+    Every version question in this module used to be answered by
+    `importlib.metadata.version("itaca")`. That is the version STAMPED
+    at the last `pip install -e .`, while every artifact built here
+    derives its version from the repository, so the two disagree on any
+    tree whose install predates HEAD, and the failing run's own build
+    rewrote the metadata it had just been measured against. The retry
+    then passed on an identical tree, which taught every session that
+    re-running is what one does with this module.
+
+    So the anchor is the repository, which is what the artifact is a
+    claim about. This deliberately does NOT reimplement
+    `release-branch-semver`: it reads only the part that goes stale, the
+    distance from the tag. A missing git is a FAILURE and never a skip;
+    `setuptools-scm` cannot build without it either, so a tree that
+    cannot answer this cannot have produced the artifact under test.
+    """
+    done = subprocess.run(
+        ["git", "describe", "--tags", "--long", "--match", "v*"],
+        capture_output=True,
+        text=True,
+        cwd=str(_ROOT),
+    )
+    assert done.returncode == 0, (
+        "git describe could not name a release tag, so there is nothing to "
+        "check the built artifact's version against. This is a failure and "
+        "not a skip: setuptools-scm derives the artifact's version from the "
+        f"same repository.\n{done.stdout}{done.stderr}"
+    )
+    described = done.stdout.strip()
+    match = re.fullmatch(r"v(?P<tag>.+)-(?P<distance>\d+)-g[0-9a-f]+", described)
+    assert match is not None, f"unparsable git describe output: {described!r}"
+    return match["tag"], int(match["distance"])
+
+
+def _released_version() -> str | None:
+    """The version of the release AT HEAD, or ``None`` on a development tree."""
+    tag, distance = _describe()
+    return tag if distance == 0 else None
 
 
 def test_the_vendored_release_checkers_are_present() -> None:
@@ -292,16 +334,21 @@ def test_the_citation_record_matches_the_release_it_describes() -> None:
         f"CITATION.cff is missing version or date-released: {sorted(fields)}"
     )
 
-    packaged = importlib.metadata.version("itaca")
-    if ".dev" in packaged or "+" in packaged:
+    # FND-046: the question is whether THIS TREE is a release, which the
+    # installed distribution cannot answer. A stale editable install
+    # carrying a `.dev` version made this skip at a tagged commit, so the
+    # guard went quiet at exactly the moment it exists for.
+    packaged = _released_version()
+    if packaged is None:
+        tag, distance = _describe()
         pytest.skip(
-            f"the installed version is {packaged}, a development build, so "
+            f"HEAD is {distance} commits past v{tag}, a development tree, so "
             f"there is no released version for CITATION.cff to match. This "
             f"check applies at a tag, which is when it matters."
         )
     assert fields["version"] == packaged, (
-        f"CITATION.cff says version {fields['version']} and the package "
-        f"reports {packaged}. Zenodo reads this file, and a minted DOI "
+        f"CITATION.cff says version {fields['version']} and this tree is "
+        f"tagged {packaged}. Zenodo reads this file, and a minted DOI "
         f"labeled with the wrong version does not come back."
     )
     changelog = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
@@ -577,14 +624,43 @@ class TestBuiltArtifactIdentity:
         repository's own mypy gate passed against the source tree.
         """
         wheel, sdist = artifacts
-        version = importlib.metadata.version("itaca")
+
+        # FND-046: the expected version is derived from the REPOSITORY,
+        # never from the installed distribution. ITACA-004 asks that the
+        # artifact be named for the code it holds, and the code it holds
+        # is this tree, not whatever `pip install -e .` last stamped.
+        # Reading the stamped value made this assertion fail once and
+        # then pass on an identical tree, because the failing run's own
+        # build rewrote `itaca.egg-info/PKG-INFO`.
+        tag, distance = _describe()
+        wheel_match = re.fullmatch(
+            r"itaca-(?P<version>.+?)-py3-none-any\.whl", wheel.name
+        )
+        assert wheel_match is not None, f"unparsable wheel name: {wheel.name}"
+        version = wheel_match["version"]
+
+        # ITACA-004: the artifact's version is the TREE's version. The
+        # distance is the part that goes stale, and it is checked rather
+        # than the whole scheme, so this does not become a second
+        # implementation of the version scheme, which is ITACA-004
+        # itself.
+        if distance == 0:
+            assert version == tag, (
+                f"HEAD carries the release tag v{tag} and the wheel is named "
+                f"{wheel.name}. A tagged commit builds as exactly X.Y.Z."
+            )
+        else:
+            assert version.endswith(f".dev{distance}"), (
+                f"HEAD is {distance} commits past v{tag} and the wheel is "
+                f"named {wheel.name}. A development build is named for the "
+                f"release being worked toward with the commit distance as "
+                f"its dev number (DD-38)."
+            )
 
         # ITACA-004: the filename, the metadata and the code agree.
-        assert wheel.name.startswith(f"itaca-{version}-"), (
-            f"wheel is named {wheel.name} but the package reports {version}"
-        )
         assert sdist.name == f"itaca-{version}.tar.gz", (
-            f"sdist is named {sdist.name} but the package reports {version}"
+            f"sdist is named {sdist.name} and the wheel is named {wheel.name}; "
+            f"one build produced both and they disagree on the version"
         )
 
         entries = zipfile.ZipFile(wheel).namelist()
@@ -594,6 +670,24 @@ class TestBuiltArtifactIdentity:
             .decode("utf-8")
         )
         assert f"Version: {version}" in metadata
+
+        # FND-046: `itaca.core.version` reads the generated version file
+        # BEFORE the distribution metadata, because the metadata is found
+        # by a `sys.path` scan that any stray `itaca.egg-info/` can win.
+        # That resolution order is only sound if the file actually ships
+        # inside the artifact and carries the artifact's own version, so
+        # this asserts both rather than assuming them.
+        assert "itaca/core/_version.py" in entries, (
+            "the wheel does not ship itaca/core/_version.py, which "
+            "itaca.core.version._resolve reads first; an installed consumer "
+            "would silently fall back to the distribution metadata (FND-046)."
+        )
+        version_file = zipfile.ZipFile(wheel).read("itaca/core/_version.py").decode()
+        assert f"'{version}'" in version_file, (
+            f"the wheel is named {wheel.name} but the version file it ships "
+            f"does not carry {version}, so the library would report one "
+            f"version while its own artifact is named another (FND-046)."
+        )
 
         # And the seam is genuinely in there, so the name is a claim
         # about content and not about an empty package.

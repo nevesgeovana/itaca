@@ -203,6 +203,26 @@ names `release.yml` with environment `pypi`. A publisher naming
 
 ### Fixed
 
+* **`itaca.__version__` depended on the current working directory, and
+  could be `None`.** `importlib.metadata` finds a distribution by
+  scanning `sys.path` for `*.egg-info` and `*.dist-info` directories,
+  and the working directory is on `sys.path`, so any stray
+  `itaca.egg-info/` shadowed the real install. Measured: the same
+  interpreter at the same commit reported `9.9.9.dev99` from one
+  directory and `0.3.0.dev24` from another, and that value is stamped
+  into `Provenance.itaca_version` and into every `.itc` archive.
+  Separately, `version()` returns `None` for metadata that parses with
+  no `Version:` field, which the resolver did not guard, so `None`
+  reached a field typed `str` with nothing raised; `mypy --strict`
+  cannot see this because typeshed declares `version() -> str`. The
+  generated `itaca/core/_version.py` is now read first, which is found
+  by import rather than by a path scan, and a resolution that yields
+  nothing raises `VersionResolutionError` (DD-48, supersedes one
+  sentence of DD-38). A clone that has never been built does not have
+  that file and still resolves from the metadata, unchanged.
+  `Provenance.itaca_version` in an editable checkout remains as old as
+  the last build of that checkout; that residual is named in DD-48.
+
 * **A CSV written by `to_csv` could not be read back by `itc.load`.**
   The loader took the first non-empty line as the header, so the
   provenance preamble REQ-71 requires became it and the file ITACA had

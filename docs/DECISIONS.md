@@ -1983,3 +1983,99 @@ The absent-field rule that DD-40 introduced is gone. It existed so that
 an unset metadata field emitted no token and old digests survived;
 canonical framing distinguishes absent from empty on its own, so the
 special case has nothing left to do.
+
+---
+
+## DD-48: The version is read from the generated version file, not from a path scan
+
+**Date:** 2026-08-01
+**Status:** accepted
+**Requirements:** REQ-92
+**Supersedes:** DD-38 in part, the single sentence "read back at run time
+from the installed distribution metadata". Everything else in DD-38
+stands: the version is still derived from the repository by
+`setuptools-scm` at build time and is still never a literal in a file.
+
+### The problem
+
+`importlib.metadata` locates a distribution by scanning `sys.path` for
+`*.egg-info` and `*.dist-info` directories, and the working directory is
+on `sys.path`. Every in-tree build writes an `itaca.egg-info/` into the
+repository root. So the version the library reported about itself was a
+function of where the interpreter had been launched.
+
+Measured, with the in-tree `PKG-INFO` perturbed to `9.9.9.dev99`:
+
+    cwd = repository root   itaca.__version__ = 9.9.9.dev99
+    cwd = anywhere else     itaca.__version__ = 0.3.0.dev24
+
+Same interpreter, same commit, same code, two answers, and the answer is
+stamped into `Provenance.itaca_version` and into every `.itc` archive.
+A build artifact was deciding what the library says about itself.
+
+Second face, and worse because it is silent. `version()` returns `None`
+when the metadata parses and carries no `Version:` field. The resolver
+guarded only `PackageNotFoundError`, so `None` became `__version__` and
+travelled into a field typed `str`. Measured: a `PKG-INFO` written with
+a UTF-8 BOM produced `itaca.__version__ = None` with nothing raised
+anywhere. `mypy --strict` cannot see this, because typeshed declares
+`version() -> str`.
+
+The module's own docstring already forbade it: "There is no third
+fallback. A version that cannot be resolved is not guessed." A null is
+worse than a guess. It is not even wrong.
+
+### The decision
+
+`itaca/core/_version.py`, which is `setuptools-scm`'s `version_file`, is
+read FIRST; the distribution metadata is the fallback; and a resolution
+that yields nothing raises `VersionResolutionError` instead of returning
+a null.
+
+Measured before adopting it: the file ships inside the built wheel
+(`itaca/core/_version.py` is in the namelist) and carries exactly that
+wheel's `METADATA` version, because one build writes both. It is found
+by IMPORT rather than by a path scan, so there is exactly one of it and
+no working directory can choose between copies. It is gitignored, so a
+clone that has never been built simply does not have it and falls back
+to the metadata path exactly as before.
+
+### Rejected alternative: resolve from git at import time
+
+This is the obvious idea and it is wrong, so it is recorded rather than
+left for the next session to rediscover. Measured on this tree:
+
+| what | cost |
+|---|---|
+| `import itaca`, whole | 0.114 s |
+| `setuptools_scm.get_version()` | 0.252 s |
+| `git describe --tags` by subprocess | 0.140 s |
+
+Either more than doubles the cost of importing the library, in every
+process, for a value most callers never read. Two structural objections
+outlive the timings. `setuptools-scm` is a BUILD dependency, and making
+it a runtime one puts a build tool in the import path of a library whose
+charter is NumPy and the standard library. And `git describe` alone
+yields `v0.2.0-24-g704afc9`; turning that into `0.3.0.dev24` means
+reimplementing the `release-branch-semver` scheme, which is a second
+implementation of the version, which is `ITACA-004` itself.
+
+### What this does NOT fix, named rather than smoothed over
+
+Staleness. In an editable checkout the version file is as old as the
+last build of that checkout, so `Provenance.itaca_version` can still
+name an earlier tree. What changed is that it is now stale but VALID,
+and deterministic: a true statement about an earlier tree rather than a
+different statement depending on the caller's directory, or none at all.
+Closing the staleness itself requires one of the rejected options above.
+
+### Consequences
+
+The push gate stops charging a false red. The artifact-identity test
+compared a freshly built artifact, whose version is derived, against the
+installed metadata, which is stamped, and the failing run's own build
+then rewrote that metadata so the retry passed on an identical tree
+(`ITC-20260730-2340`). Its expected version now comes from the
+repository, which is what the artifact is a claim about. It checks the
+commit distance rather than the whole scheme, deliberately, so that it
+does not become the second implementation this entry just rejected.

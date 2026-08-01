@@ -20,7 +20,28 @@ Deriving from the repository removes both, structurally.
 
 There is no third fallback. A version that cannot be resolved is not
 guessed, because the guess would be stamped into Provenance and into
-``.itc`` archives as though it were a fact.
+``.itc`` archives as though it were a fact. A NULL is not a permitted
+answer either, and for the same reason: it is not even wrong.
+
+Why the version file is read before the distribution metadata (FND-046).
+``importlib.metadata`` locates a distribution by scanning ``sys.path``
+for ``*.egg-info`` and ``*.dist-info`` directories, and the working
+directory is on ``sys.path``. Every in-tree build writes an
+``itaca.egg-info/`` into the repository root, so the same interpreter at
+the same commit reported ``9.9.9.dev99`` from one directory and
+``0.3.0.dev24`` from another: a build artifact was deciding what the
+library says about itself. ``itaca/core/_version.py`` is
+``setuptools-scm``'s ``version_file``; it is written by the same build
+that writes the distribution metadata, it ships INSIDE the built wheel,
+and it is found by IMPORT rather than by a path scan, so there is
+exactly one of it and the working directory cannot choose between
+copies.
+
+What this does not change is staleness. In an editable checkout the
+version file is as old as the last build of that checkout. That is a
+stale but VALID version, which is the distinction that matters: a stale
+version is a true statement about an earlier tree. Resolving from git at
+import time was measured and rejected (DD-48).
 """
 
 from __future__ import annotations
@@ -28,30 +49,51 @@ from __future__ import annotations
 from itaca.core.errors import VersionResolutionError
 
 
-def _resolve() -> str:
-    """Return the version the build recorded, or fail loud."""
+def _from_version_file() -> str | None:
+    """Return the version ``setuptools-scm`` wrote into the package.
+
+    Gitignored, because it is generated, so a clone that has never been
+    built does not have it and this returns ``None``.
+    """
+    try:
+        from itaca.core._version import __version__ as built
+    except ImportError:
+        return None
+    return str(built) or None
+
+
+def _from_distribution_metadata() -> str | None:
+    """Return the installed distribution's version, if one can be read.
+
+    Returns ``None`` rather than raising for BOTH ways this can fail:
+    no distribution at all, and a distribution whose metadata parses and
+    carries no ``Version:`` field. The second returns ``None`` from
+    ``version()`` at runtime while typeshed declares ``str``, so
+    ``mypy --strict`` cannot see it and only this guard can.
+    """
     from importlib.metadata import PackageNotFoundError, version
 
     try:
-        return version("itaca")
+        found: str | None = version("itaca")
     except PackageNotFoundError:
-        pass
-    try:
-        # Written by setuptools-scm at build time. Reached when the
-        # distribution metadata is unavailable but the tree was built.
-        # Gitignored, because it is generated.
-        from itaca.core._version import __version__ as built
-    except ImportError:
+        return None
+    return found or None
+
+
+def _resolve() -> str:
+    """Return the version the build recorded, or fail loud."""
+    resolved = _from_version_file() or _from_distribution_metadata()
+    if resolved is None:
         raise VersionResolutionError(
             "itaca.core.version",
-            "the installed distribution metadata for itaca could not be "
-            "read, so no version can be stamped into Provenance or a .itc "
-            "archive",
+            "neither the generated version file nor the installed "
+            "distribution metadata for itaca yielded a version, so nothing "
+            "can be stamped into Provenance or a .itc archive",
             "install the package with pip install -e . so the version is "
             "derived from the repository tag; a source tree that was never "
             "installed has no version to report (REQ-92)",
-        ) from None
-    return str(built)
+        )
+    return resolved
 
 
 __version__ = _resolve()
