@@ -132,7 +132,14 @@ _ROUNDS_MUTATIONS = _KIT / "check_review_rounds_mutations.py"
 #: what makes that direction loud too. It is a floor and not a mechanism:
 #: a lane that writes NO ledger and moves nothing is still not caught,
 #: which is `ITC-20260802-1715` and is stated rather than papered over.
-_LANE = "ITA-12"
+#: MOVED FROM `ITA-12` BY LANE ITA-2D, and the move was not remembered:
+#: `test_the_certified_ledger_is_not_older_than_another_lane_s` FAILED in
+#: ITA-2D's own pre-commit run, naming `ITA-2D_rounds.ledger` as strictly
+#: newer than the `ITA-12` ledger this constant still pointed at. The
+#: silent direction it was written for was silent for exactly one lane,
+#: which is the shortest useful life a guard can have and is the evidence
+#: that the floor is worth its cost.
+_LANE = "ITA-2D"
 
 #: The convention the kit writes down at 0.2.16. ONE copy of the fact:
 #: both the glob and the per-lane filename derive from it, because two

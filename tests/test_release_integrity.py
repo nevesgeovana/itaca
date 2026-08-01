@@ -426,8 +426,34 @@ def known_limitation_lines(section: str) -> list[str]:
     return collected
 
 
+def section_records_no_changes(section: str) -> bool:
+    """True for the shape a section has immediately after a release is cut.
+
+    `git show v0.2.0:CHANGELOG.md` is the evidence: cutting a tag leaves
+    `## [Unreleased]` holding the two words "Nothing yet." and no
+    subsection at all. A section that records no change has no limitation
+    to disclose, and demanding one would mean writing hollow disclosure
+    into notes describing nothing.
+
+    This exemption was MISSING and round one caught it. Without it the
+    working-notes guard below goes red on the tag commit and on every
+    commit after it, so the release this lane exists to protect would
+    have blocked the whole repository the moment it was cut. The design
+    document for this lane named that exact failure as the thing the
+    guard must not do, and the first version did it anyway.
+
+    The test is the absence of any `###` subsection, not a match on
+    "Nothing yet.": the wording is a house habit and would be a second
+    copy of a fact, while a section with an `Added` or `Fixed` block is
+    recording changes under anyone's wording.
+    """
+    return not re.search(r"^###\s", section, re.MULTILINE)
+
+
 def notes_disclose_known_limitations(section: str) -> bool:
     """The rule the tag gate applies. One place, so one thing is mutated."""
+    if section_records_no_changes(section):
+        return True
     return len(known_limitation_lines(section)) >= _MINIMUM_LIMITATION_LINES
 
 
@@ -436,6 +462,11 @@ def notes_disclose_known_limitations(section: str) -> bool:
 # with no refusals proves a predicate that returns True.
 _LIMITATION_CASES: tuple[tuple[str, str, bool], ...] = (
     ("no heading at all", "### Added\n\n* a thing\n* another\n* a third\n", False),
+    (
+        "a single Fixed block and no disclosure still refuses",
+        "### Fixed\n\n* a thing\n",
+        False,
+    ),
     (
         "a hollow heading, which is the shape a checker invites",
         "### Known open\n\n### Added\n\n* a thing\n",
@@ -454,6 +485,17 @@ _LIMITATION_CASES: tuple[tuple[str, str, bool], ...] = (
     (
         "the other spelling, which prose may reach for",
         "### Known limitations\n\n* one\n* two\n* three\n",
+        True,
+    ),
+    (
+        "the shape a section has right after a release is cut, from "
+        "git show v0.2.0:CHANGELOG.md",
+        "\nNothing yet.\n",
+        True,
+    ),
+    (
+        "the same exemption without the house wording",
+        "\nNo changes recorded since the last release.\n",
         True,
     ),
     (

@@ -534,7 +534,130 @@ class TestCrossVariableOperations:
 # correct, and it did so WITH the guard in place, which is why the guard
 # went (ARCH-15, ITC-20260731-1730, DD-52).
 #
-# The three other lineage refusals are untouched and are covered above.
+# The three refusals that do not pass through concat are untouched and are
+# covered above. What replaces the deleted class is below: the ACCEPTING
+# behavior, pinned, so reinstating the guard fails the suite.
+
+
+class TestConcatDiscardsLineageDeliberately:
+    """The withdrawn refusal, pinned by what the library now DOES.
+
+    Round one of this lane found the removal shipping with no test at
+    all: nothing failed if the guard came back, and nothing asserted the
+    accepting behavior. A behavior change with no test is the author's
+    decision resting on prose, which is what this repository's own rule
+    calls not a guard.
+
+    Two of these also restore coverage the deletion removed by accident.
+    `test_an_ordinary_concat_of_roots_is_untouched` and
+    `test_a_discarded_derivation_without_uncertainty_is_allowed` pinned
+    REQ-24 MAINLINE behavior, not the guard: the first is the ARCH-8
+    case, where an earlier attempt marked every concatenated frame
+    unreadable and refused two inputs of plain roots. That design is
+    re-adoptable today with nothing failing.
+    """
+
+    @staticmethod
+    def _roots(t: float) -> VarFrame:
+        arr = np.column_stack([np.array([1.0]), np.array([2.0]), np.array([t])])
+        frame = itc.load(arr, names=["x", "y", "t"]).pivot(dims=["t"])
+        return frame.set_uncertainty({"x": 0.1, "y": 0.2})
+
+    @staticmethod
+    def _derived(t: float, factor: float) -> VarFrame:
+        arr = np.column_stack(
+            [np.array([1.0]), np.array([2.0]), np.array([1.0]), np.array([t])]
+        )
+        built = itc.load(arr, names=["x", "p", "q", "t"]).pivot(dims=["t"])
+        built = built.set_uncertainty({"x": 0.1})
+        return built.compute(f"p = {factor}*x").compute("q = 2*x")
+
+    def test_an_ordinary_concat_of_roots_is_untouched(self) -> None:
+        # ARCH-8, carried over from the deleted class. This pins the
+        # REVERTED design, not the withdrawn one: marking every
+        # concatenated frame unreadable refused two inputs of plain roots
+        # with no derivation anywhere, which is REQ-24 mainline usage.
+        joined = itc.concat([self._roots(1.0), self._roots(2.0)], along="t")
+        result = joined.compute("z = x + y")
+        assert result.uncertainty.systematic["z"] == pytest.approx(np.hypot(0.1, 0.2))
+
+    def test_a_discarded_derivation_is_accepted_and_the_number_is_wrong(self) -> None:
+        # The author's decision of 2026-08-02, pinned by its consequence.
+        # Reinstating the refusal fails this test, which is the point: the
+        # decision was to declare the gap rather than half-cover it, and
+        # a decision with no mechanism is prose.
+        #
+        # 0.36055513 is hypot(0.3, 0.2), the false-independence answer.
+        # The truth on the second input's rows is 0.1, because p = 3*x
+        # and q = 2*x make r = p - q equal to x exactly.
+        joined = itc.concat([self._plain(8.0), self._derived(9.0, 3.0)], along="t")
+        result = joined.compute("r = p - q")
+        assert result.uncertainty.systematic["r"] == pytest.approx(
+            np.hypot(0.3, 0.2)
+        ), "the concat lineage refusal appears to be back; see DD-52 and OQ-55"
+
+    @staticmethod
+    def _plain(t: float) -> VarFrame:
+        arr = np.column_stack(
+            [np.array([1.0]), np.array([2.0]), np.array([1.0]), np.array([t])]
+        )
+        built = itc.load(arr, names=["x", "p", "q", "t"]).pivot(dims=["t"])
+        return built.set_uncertainty({"p": 0.3, "q": 0.2, "x": 0.1})
+
+    def test_an_unreadable_input_is_accepted_and_launders_its_refusal(self) -> None:
+        # QA-2 of round one, and the finding that mattered most: the
+        # removal took TWO branches, not one. A frame whose History this
+        # engine cannot read refuses a multi-carrier compute on its own,
+        # and stops refusing once concatenated. Measured u = 0.2236068 on
+        # the first row, where the input alone raises.
+        #
+        # This is ARCH-13 returning, and it is pinned rather than fixed
+        # because the branch that covered it keyed on uncertainty at
+        # concat time exactly as the other did: declaring after the join
+        # laundered it even before the removal. REQ-41 states it.
+        opaque = self._roots(2.0).combine(self._roots(2.0), op="mean")
+        with pytest.raises(UncertaintyLineageError):
+            opaque.compute("z = x + y")
+
+        joined = itc.concat([self._roots(1.0), opaque], along="t")
+        result = joined.compute("z = x + y")
+        assert result.uncertainty is not None, (
+            "the absent-evidence refusal appears to fire through concat "
+            "again; REQ-41 states that it does not"
+        )
+
+    def test_identically_derived_inputs_are_allowed(self) -> None:
+        # ARCH-14, carried over. Processing several runs the same way and
+        # concatenating them is the ordinary REQ-24 workflow, and it is
+        # the workflow the release notes send a reader to, so it is the
+        # one that must not break.
+        joined = itc.concat(
+            [self._derived(8.0, 3.0), self._derived(9.0, 3.0)], along="t"
+        )
+        assert joined.uncertainty.systematic["p"] == pytest.approx(0.3)
+
+    def test_a_discarded_derivation_without_uncertainty_is_allowed(self) -> None:
+        # Carried over from the deleted class: mainline REQ-24, and the
+        # case where there is nothing to lose because no uncertainty is
+        # declared anywhere.
+        def frame(t: float) -> VarFrame:
+            arr = np.column_stack([np.array([1.0]), np.array([0.0]), np.array([t])])
+            built = itc.load(arr, names=["x", "p", "t"]).pivot(dims=["t"])
+            return built.compute("p = 3*x")
+
+        joined = itc.concat([frame(8.0), frame(9.0)], along="t")
+        assert joined.uncertainty is None
+
+    def test_the_documented_way_out_actually_works(self) -> None:
+        # The release notes and REQ-41 both send the reader here, so the
+        # advice is executed rather than asserted. Deriving on ONE frame
+        # is refused, and set_correlation ON THE JOINED FRAME settles it
+        # at the correct 0.1.
+        one = self._derived(8.0, 3.0)
+        with pytest.raises(UncertaintyLineageError):
+            one.compute("r = p - q")
+        settled = one.set_correlation({("p", "q"): 1.0}).compute("r = p - q")
+        assert settled.uncertainty.systematic["r"] == pytest.approx(0.1)
 
 
 class TestNonDifferentiablePoint:

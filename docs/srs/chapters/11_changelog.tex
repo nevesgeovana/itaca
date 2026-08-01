@@ -15,28 +15,41 @@ it adds or modifies.
 \section*{Document 0.2.11, 2026-08-02, A Stated Gap Replaces a Partial Guard}
 
 A MINOR revision adding no requirement and withdrawing none, NARROWING
-REQ-41. Design decision DD-52 lands in the same window and is recorded in
-\code{docs/DECISIONS.md}.
+REQ-41 and REQ-24. Design decision DD-52 lands in the same window and is
+recorded in \code{docs/DECISIONS.md}, corrected by DD-53.
 
-\paragraph{Changed (REQ-41, the \code{concat} refusal is withdrawn and the
-gap is stated).} Author's decided call of 2026-08-02. REQ-41 stated that a
-derivation discarded by \code{concat} is refused at the concat itself.
-That refusal keyed on uncertainty being PRESENT at concat time, so the
-sequence derive, concat, then declare walked past it and reached
+\paragraph{Changed (REQ-41 and REQ-24, the \code{concat} refusal is
+withdrawn and the gap is stated).} Author's decided call of 2026-08-02.
+REQ-41 stated that a derivation discarded by \code{concat} is refused at
+the concat itself, and REQ-24 stated the same refusal in its own words.
+That refusal could only test what the inputs CARRIED AT CONCAT TIME, so
+declaring uncertainty after the join walked past it and reached
 $u = 0.36055513$ where $0.1$ is correct, which is the same number the
 refusal was specified to prevent. What \code{concat} discards is the
 RECORD, and the record is what a later declaration needs, so no test
 performed at concat time can be complete. A guard covering one ordering of
-three acts teaches that the class is handled; the requirement now states
-the gap instead, names the two workflows that are correct, and leaves the
-wider trade, refusing every discarding \code{concat} irrespective of
-uncertainty, as an open product decision.
+the same acts teaches that the class is handled; REQ-41 now states the
+gap instead, names the workflows that are correct, and leaves the wider
+trade, refusing every discarding \code{concat} irrespective of
+uncertainty, as an open product decision (OQ-55). REQ-24 now states no
+rule of its own and points at REQ-41, so the fact keeps ONE home and the
+two cannot disagree again.
 
-The other three lineage refusals of REQ-41 are unchanged in force and in
-wording: \code{compute} over shared ancestry, \code{translate\_moments}
-stacked on an earlier transfer, and a random-component reduction over an
-interpolated dimension, together with the fourth absent-evidence case.
-\code{UncertaintyLineageError} remains public surface.
+\paragraph{Stated (REQ-41, the absent-evidence case is lost the same
+way).} Not a change of behavior and not previously written down. An input
+whose History the engine cannot READ refuses a multi-carrier
+\code{compute} on its own and stops refusing once it has been
+concatenated, because the merged frame carries only the first input's
+record: measured $u = 0.2236$ after the join. The withdrawn guard covered
+this case under the same concat-time condition and under no other, so it
+was never complete here either. REQ-41 now says so; an earlier draft of
+this entry claimed the fourth case was untouched, which was false.
+
+The three refusals that do NOT pass through \code{concat} are unchanged
+in force and in wording: \code{compute} over shared ancestry,
+\code{translate\_moments} stacked on an earlier transfer, and a
+random-component reduction over an interpolated dimension.
+\code{UncertaintyLineageError} remains public surface for all of them.
 
 \section*{Document 0.2.10, 2026-08-01, The Dependency Table Is Checked, Not Maintained}
 

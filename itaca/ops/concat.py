@@ -221,6 +221,37 @@ def concat(
         time. An input that never declared the group counts as the
         canonical body axis (REQ-38, REQ-107).
 
+    Notes
+    -----
+    **The result carries the History of the FIRST input alone, and a
+    known limitation follows from it.** A derivation recorded in any
+    other input is DISCARDED, and so is an input whose History cannot be
+    read at all. The uncertainty engine reads ancestry out of History, so
+    after the join it has nothing to read: its refusals do not fire, and
+    a later ``compute`` over two quantities of common origin returns a
+    number computed from a false independence assumption.
+
+    Measured, with ``p`` and ``q`` plain roots carrying declared
+    uncertainty in the first input and both derived from a shared ``x``
+    in the second: ``compute("r = p - q")`` on the joined frame returns
+    ``u(r) = 0.36055513`` where ``0.1`` is correct on those rows. The
+    same route defeats the absent-evidence refusal: an input that
+    refuses a multi-carrier ``compute`` on its own stops refusing once
+    concatenated, measured ``u = 0.2236``.
+
+    **What to do instead.** Concatenate the INPUTS of a derivation and
+    derive once on the joined frame; that derivation is then covered by
+    REQ-41's refusals, and ``db.set_correlation`` ON THE JOINED FRAME
+    settles a pair the engine declines to guess. Deriving every input
+    identically needs no extra step and is the ordinary workflow of
+    processing several runs the same way.
+
+    A refusal for this case was implemented and WITHDRAWN by the author's
+    decision of 2026-08-02, because it could only test what the inputs
+    carried at concat time and the measurements above were taken with it
+    in place. See REQ-41, DD-52 and OQ-55; the class is listed in
+    ``CHANGELOG.md`` under Known open.
+
     Examples
     --------
     >>> import numpy as np
@@ -241,17 +272,12 @@ def concat(
         )
     _validate_inputs(frames, along)
     # A lineage refusal stood here and was REMOVED by the author's decision
-    # of 2026-08-02. It refused a concat whose result would misdescribe its
-    # own inputs, and it keyed on uncertainty present AT CONCAT TIME, so
-    # `derive, concat, then declare` walked past it and still reached
-    # u = 0.36055513 where 0.1 is correct (ARCH-15, ITC-20260731-1730).
-    # A partial guard teaches that the class is covered, and that
-    # measurement is the proof it is not; refusing regardless of
-    # uncertainty would refuse ordinary data concatenation, which is the
-    # trade she took rather than delegated. The class is now DECLARED in
-    # CHANGELOG.md under Known open and in REQ-41, not half-covered.
-    # Do not reinstate a guard here without her decision (DD-52 records
-    # what the record is for; the open item is ARCH-15).
+    # of 2026-08-02. DO NOT REINSTATE ONE WITHOUT HER DECISION: the reasons,
+    # the measurements and the open trade are in REQ-41, DD-52 section 4 and
+    # OQ-55, and the docstring above states the gap for a caller. The one
+    # line worth keeping here is why no narrower guard works: what concat
+    # discards is the RECORD, so a test performed at concat time cannot see
+    # what a later declaration will need.
     first = frames[0]
     content = content_of(first)
     axis = list(content.dims).index(along)

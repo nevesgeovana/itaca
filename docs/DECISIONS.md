@@ -2478,3 +2478,95 @@ than from anything in this repository. DD-51 asked the next entry carrying
 a measurement to carry its command line with it; the measurements in
 decision 4 came from `probe4.py` in this lane's session scratchpad, and
 the invocation is recorded with them in `ITC-20260802-2100`.
+
+---
+
+## DD-53: Three corrections to DD-52, which froze at the commit round one reviewed
+
+**Date:** 2026-08-02
+**Status:** confirmed
+**Context:** ITA-2D round one. Supersedes three statements inside DD-52
+and nothing else: its four decisions stand exactly as taken.
+**Supersedes:** DD-52, in the three respects below only.
+**Requirements:** REQ-41, REQ-24
+
+DD-52 was published by the commit the five reviewer lenses were given,
+`407dde2`, and the round found three factual errors in it. An entry
+freezes at the commit that ships it and not at the push, so the
+instrument is a superseding entry rather than an edit; DD-30 records that
+rule being broken once, and DD-51 applied this same remedy to DD-50 eight
+hours earlier.
+
+**1. The removal took TWO refusals, not one, and "the three other lineage
+refusals are untouched" is false.** DD-52 section 4 ends by saying that
+removing the guard was measured not to change any other behavior.
+`_refuse_discarded_lineage` held two branches: the derivation-disagreement
+branch and an ABSENT-EVIDENCE branch covering an input whose History
+could not be read at all. Both went. Measured after the removal, a frame
+that raises `UncertaintyLineageError` on its own returns
+`u = [0.2236068 0.15811388]` once concatenated, so REQ-41's fourth case
+is defeated by `concat` exactly as the shared-origin ones are.
+
+This is `ARCH-13`, which lane ITA-2B found and fixed. Its return was
+found by the QA lens of round one, not by the lane.
+
+**The decision is unchanged and the measurement is why.** Before treating
+the removal as having exceeded the author's call, the absent-evidence
+branch was tested for the same defect that condemned the other: it has
+it. Declaring uncertainty AFTER the join launders the unreadable case
+too, measured `u = [0.2236068 0.2236068]`, so that branch could only ever
+catch one ordering of the same three acts. Her reasoning covers it
+verbatim. What was wrong was the description, not the removal, and the
+repair is that REQ-41, the release notes and the `concat` docstring now
+all state the fourth case with the rest of the class.
+
+**2. The account of the measurement conflated two different
+declarations.** DD-52 section 4, the CHANGELOG, REQ-41 and OQ-55 all said
+the sequence was "derive, concat, then declare" and that the number was
+the same either way. Measured, three constructions, and only two of them
+reach the number:
+
+- declare in the inputs BEFORE the concat: `u(r) = 0.36055513`;
+- declare `u(x) = 0.1` on the JOINED frame: `r` gets no component at all,
+  because `x` is the only carrier and `p` and `q` are plain roots there;
+- declare `u(p)` and `u(q)` directly on the JOINED frame:
+  `u(r) = 0.36055513`.
+
+The withdrawal rationale is untouched, because the third construction
+carries no uncertainty at concat time and the removed guard would not
+have fired on it either. What was wrong is that a reader following the
+sentence as written would not reproduce the number. Every statement of
+the gap now names WHAT was declared and WHERE.
+
+**3. The SRS amendment named one requirement and changed two.** REQ-24
+carried its own normative statement of the same refusal, "Refusing to
+join a record it cannot keep", and DD-52's window left it standing while
+REQ-41 said the opposite. Three lenses found it independently. Since the
+SRS is the top of the authority chain, the shipped code was in violation
+of a `\stable` requirement rather than merely inconsistent with it.
+REQ-24 now states no rule of its own and points at REQ-41, so the fact
+has ONE home; Chapter 11 and the revision history name both.
+
+### What is NOT corrected
+
+The four decisions themselves. The JSON non-finite policy, the exported
+combined uncertainty, the rejected `split_by` encoder and the withdrawal
+of the `concat` refusal all stand as DD-52 states them, and the
+alternatives and costs it records were re-checked in the round.
+
+Two findings against DD-52 are registered rather than repaired, because a
+superseding entry cannot reach them: its TITLE names three decisions
+where the entry records four, and it cites plan ids without their titles
+against the convention `CLAUDE.md` adopted the same week. Renaming a
+frozen entry is not something this instrument does. `ITC-20260802-2230`
+carries both, and the next DD written here carries its citations with
+their titles.
+
+### The rule this pair demonstrates, and it is the second time in two days
+
+DD-51 corrected DD-50 for restating counts. This entry corrects DD-52 for
+describing a REMOVAL by what it was aimed at rather than by what it
+touched. Both are the same shape: the entry recorded the intent of the
+change instead of its measured extent. A decision record about a deletion
+should name every branch deleted and show the measurement for each, and
+`git show <commit>:<path>` is the cheapest way to enumerate them.

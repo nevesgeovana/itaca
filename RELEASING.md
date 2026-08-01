@@ -47,6 +47,18 @@ refused.
 
 - The working tree is clean and pushed, and CI is green on that commit.
 - `CHANGELOG.md` has a section for the version, not `[Unreleased]`.
+- **That section carries a `### Known open` block**, stating each known
+  limitation as something a user can observe from their own usage rather
+  than as an internal defect id, with at least three lines under the
+  heading. `tests/test_release_integrity.py` refuses the tag without one,
+  and a hollow heading does not satisfy it. This is written here because
+  a required release step that lives only in a test is a step you meet
+  for the first time as a red gate.
+  Carry the previous release's block FORWARD and edit it rather than
+  starting from nothing: most limitations outlive one release, and the
+  ones that closed are the most useful thing the new block can say. A
+  fresh `[Unreleased]` section recording no changes at all is exempt, so
+  cutting the tag does not immediately redden the next commit.
 - `CITATION.cff` carries the version being released and its DOI, if one
   is minted for it. The v0.2.0 release review found this file still at
   `0.1.0` with the previous release's DOI, which Zenodo would have

@@ -424,19 +424,15 @@ input that never declared a group counts as the canonical body axis for
 it, so the commonest shape of all, where nobody called
 \code{db.declare\_vector}, is covered rather than passed over.
 
-\textbf{Refusing to join a record it cannot keep.} The result carries
-the History of the FIRST input alone, and that record is then asserted
-over every input's rows. When a variable carrying uncertainty is derived
-DIFFERENTLY across the inputs, or derived in some and a plain root in
-others, the joined record would be false for part of the frame, and
-\code{UncertaintyLineageError} is raised naming the variable. The same
-applies to an input whose record cannot be read at all, such as one
-produced by \code{combine}: joining it would present an unreadable
-origin as a clean one. Inputs that derive a variable identically are
-unaffected, which is the ordinary case of processing several runs the
-same way and concatenating them, and so is any concat whose variables
-carry no uncertainty, where there is no covariance to lose (REQ-41,
-SEAT-UNC).
+\textbf{The discarded record is a STATED GAP and not a refusal.} The
+result carries the History of the FIRST input alone, and that record is
+then asserted over every input's rows, so a derivation recorded in any
+other input is discarded and an input whose record cannot be read at all
+is presented as a clean one. \code{concat} does NOT refuse either case.
+A refusal was specified here and withdrawn; REQ-41 is the single home of
+what is lost, what it costs and which workflows are correct, and this
+paragraph deliberately states no rule of its own so the two cannot
+disagree again (REQ-41, DD-52, OQ-55, SEAT-UNC).
 \end{reqbox}
 
 \begin{reqbox}{REQ-25}{\stable}
@@ -1016,27 +1012,42 @@ alone (REQ-24), so a derivation recorded in any other input is
 discarded and this engine has nothing left to read. The refusals above
 therefore do not fire on the joined frame, and a later
 \code{compute} over two such quantities returns a number computed from
-the false independence assumption: measured $u = 0.36055513$ where
-$0.1$ is correct.
+the false independence assumption. Measured: with \code{p} and \code{q}
+plain roots carrying declared uncertainty in the first input and both
+derived from a shared \code{x} in the second,
+\code{compute("r = p - q")} on the joined frame returns
+$u(r) = 0.36055513$ where $0.1$ is correct on the second input's rows.
+
+THE FOURTH CASE IS LOST THE SAME WAY, and it is stated because a reader
+of the paragraph above would not predict it. An input whose History this
+engine cannot read refuses a multi-carrier \code{compute} on its own, and
+stops refusing once it has been concatenated, because the merged frame
+carries only the first input's record: measured, the same \code{compute}
+returns $u = 0.2236$ after the join. So the absent-evidence refusal is
+defeated by \code{concat} exactly as the shared-origin ones are.
 
 A refusal at the concat itself was specified and implemented, and it is
-WITHDRAWN. It keyed on uncertainty being present at concat time, so the
-sequence derive, concat, then declare reached the same measurement with
-the mechanism in place; what \code{concat} discards is the RECORD, and
-the record is what a later declaration needs. A guard covering one
-ordering of the same three acts teaches that the class is handled, and
-that is worse than a stated gap. Refusing every \code{concat} that
-discards a derivation, irrespective of uncertainty, would refuse
-ordinary data concatenation, so the choice between those is a product
-decision and it is open. Until it is taken, this requirement states the
-gap, the release notes state it where a user reads them, and no
-mechanism claims it.
+WITHDRAWN. It could only test what the inputs CARRIED AT CONCAT TIME, so
+declaring uncertainty after the join walked past it: the identical
+sequence with the same declaration made on the joined frame reached
+$u(r) = 0.36055513$ with the mechanism in place. What \code{concat}
+discards is the RECORD, and the record is what a later declaration
+needs, so no concat-time test can be complete. A guard covering one
+ordering of the same acts teaches that the class is handled, and that is
+worse than a stated gap. Refusing every \code{concat} that discards a
+derivation, irrespective of uncertainty, would refuse ordinary data
+concatenation, so the choice between those is a product decision and it
+is open. Until it is taken, this requirement states the gap, the release
+notes state it where a user reads them, and no mechanism claims it.
 
-The two workflows that are correct are named here because a gap without
-a way around it is only half the statement: concatenate the INPUTS of a
-derivation and derive once on the joined frame, or declare the pair with
-\code{set\_correlation}, which this engine then propagates. Deriving
-every input identically is also safe, and is the ordinary REQ-24
+The workflows that are correct are named here because a gap without a
+way around it is only half the statement. Concatenate the INPUTS of a
+derivation and derive once on the joined frame; that derivation is then
+refused under the paragraphs above, and \code{set\_correlation} ON THE
+JOINED FRAME settles it, measured $u(r) = 0.1$. The frame matters:
+\code{concat} refuses inputs whose declared correlation stores differ,
+so declaring on one input and then joining raises. Deriving every input
+identically is safe with no extra step, and is the ordinary REQ-24
 workflow of processing several runs the same way.
 \end{reqbox}
 

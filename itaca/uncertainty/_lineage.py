@@ -191,12 +191,32 @@ a shared origin in a later input goes unrecorded (ARCH-5, measured at
 concatenated frame, which refused two inputs of plain roots with no
 derivation anywhere, and that is REQ-24 mainline usage (ARCH-8).
 
-Neither reading of this set was the fix. The information is lost at the
-concat itself, so that is where it is now refused, narrowly and with a
-message that can still name the inputs: see
-``_refuse_discarded_lineage`` in :mod:`itaca.ops.concat`. By the time a
-frame reaches this module the evidence is gone, and a set membership
-cannot recover it.
+Neither reading of this set was the fix, and the third attempt was
+WITHDRAWN. A refusal at the concat itself was implemented and removed by
+the author's decision of 2026-08-02: it could only test what the frames
+carried AT CONCAT TIME, so declaring uncertainty after the join walked
+past it and reached the same wrong number. What ``concat`` discards is
+the RECORD a later declaration needs, which is why no concat-time test
+can be complete rather than why that one was written badly.
+
+So ``concat`` stays in this set for the reason it was always safe to be
+here, ARCH-8: taking it out poisons every concatenated frame and refuses
+two inputs of plain roots, which is REQ-24 mainline usage. The discarded
+record is a DECLARED GAP, not something handled elsewhere. Read REQ-41,
+DD-52 section 4 and OQ-55 before changing either this entry or that
+decision; the class is stated in CHANGELOG.md under Known open, where a
+user can see it.
+
+Note that this reaches further than the discarded derivations. An input
+whose History this module cannot READ AT ALL is laundered by the same
+route: it refuses a multi-carrier ``compute`` on its own and stops
+refusing once it has been concatenated, because the merged frame carries
+only the first input's record. That is the fourth, absent-evidence case
+of REQ-41 meeting the same structural loss, and it is declared with the
+rest of the class rather than being a separate defect.
+
+By the time a frame reaches this module the evidence is gone, and a set
+membership cannot recover it.
 
 The entries here build or annotate a frame without deriving anything.
 """

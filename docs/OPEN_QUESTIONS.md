@@ -1808,3 +1808,27 @@ is worth the ordinary workflow it costs; the numerical analyst, on whether
 any narrower predicate is actually complete.
 
 **SRS:** REQ-24, REQ-41. **Records:** DD-52, `ITC-20260731-1730`.
+
+**Appended 2026-08-02, lane ITA-2D round one: the gap is WIDER than this
+entry first stated, and the widening changes what is being decided.**
+
+The entry above describes the loss for a DERIVATION discarded by
+`concat`. Round one measured that the same route defeats all four of
+REQ-41's refusals, including the fourth, absent-evidence one: an input
+whose History the engine cannot read refuses a multi-carrier `compute`
+on its own, and stops refusing once concatenated, measured `u = 0.2236`
+where the input alone raises `UncertaintyLineageError`.
+
+That case was covered by a second branch of the withdrawn guard, and
+that branch keyed on uncertainty at concat time exactly as the first
+did, so declaring after the join laundered it even before the removal.
+Nothing regressed that was not already conditional; what changed is that
+the entry now says so.
+
+Why it matters to the question rather than only to the record: option 1,
+refusing always, is a wider refusal than this entry first implied,
+because it would have to fire for an unreadable input as well as for a
+disagreeing derivation, and an unreadable input is produced by ordinary
+`combine`. Option 3, carrying the record through the merge, dissolves
+all four at once, which strengthens it relative to the other two.
+DD-53 records the same correction against DD-52.

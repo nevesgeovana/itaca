@@ -32,8 +32,9 @@ names `release.yml` with environment `pypi`. A publisher naming
 **This release ships with known limitations, deliberately and on the
 record.** v0.2.0 disclosed its known defects here and pinned each one with
 a strict-xfail test; that ledger,
-`tests/test_chk1_open_defects.py`, now runs `38 passed, 2 xfailed`, so all
-but two of them are closed. What follows is those two, plus the classes
+`tests/test_chk1_open_defects.py`, now marks exactly TWO defects
+`xfail(strict=True)` and passes everything else, so all but two of them
+are closed. What follows is those two, plus the classes
 the independent review and this cycle's own review rounds found and no
 lane has closed. Disclosure is the half that makes shipping with a known
 gap legitimate, and a section stating it is now REQUIRED before a version
@@ -52,16 +53,26 @@ is silently overstated.** `compute` refuses when it can see that two
 quantities came from a common root (see class 3), and that net has a hole
 at `concat`: the joined frame carries the History of its FIRST input
 alone, so a derivation recorded in any other input is gone, and the
-refusal has nothing left to fire on. Measured, with `p = 3*x` and
-`q = 2*x` derived in the second input and `u(x) = 0.1` declared:
-`compute("r = p - q")` on the joined frame returns
-`u(r) = 0.36055513` where `0.1` is correct on those rows. The number is
-the same whether you declare before or after the `concat`.
-**What to do now:** concatenate the INPUTS of a derivation and derive once
-on the joined frame, rather than joining frames that are already derived;
-or declare the pair you need with `set_correlation`, which the engine then
-propagates. Deriving each input identically is safe, and is the ordinary
-workflow of processing several runs the same way.
+refusal has nothing left to fire on.
+
+Measured, with `p` and `q` plain roots carrying `u(p) = 0.3` and
+`u(q) = 0.2` in the first input and both derived from a shared `x` with
+`u(x) = 0.1` in the second: `compute("r = p - q")` on the joined frame
+returns `u(r) = 0.36055513`, where `0.1` is correct on the second input's
+rows. **The same route defeats all four of the refusals in class 3**,
+including the one for a record the engine cannot read at all: an input
+that raises on its own returns `u = 0.2236` once concatenated.
+
+**What to do now**, and both routes were run as written. Concatenate the
+INPUTS of a derivation and derive once on the joined frame, rather than
+joining frames that are already derived. That derivation is then refused
+by class 3, which is the correct outcome and not a second problem:
+`set_correlation` **on the joined frame** settles it, measured
+`u(r) = 0.1`. The frame matters, because `concat` refuses inputs whose
+declared correlation stores differ, so declaring on one input and then
+joining raises instead. Deriving each input identically needs no extra
+step and is the ordinary workflow of processing several runs the same
+way.
 **Why there is no partial guard, stated because one was here and is gone.**
 This release removed a `concat`-time refusal that covered only the case
 where uncertainty was already present when the frames were joined. It did
@@ -100,6 +111,11 @@ false independence assumption; the message names the single expression
 that is already correct. A fourth case joins them: a History entry the
 engine cannot interpret leaves every origin unknown, so a multi-carrier
 `compute` is refused even for quantities that were never derived.
+**All four are defeated by `concat`**, which is class 1 and not a
+separate limitation: the joined frame carries only the first input's
+History, so there is nothing left for any of them to read. Measured, an
+input that raises on its own returns `u = 0.2236` after being
+concatenated.
 **What to do now:** run the five before assigning uncertainty, or use
 `fill(method="linear")` or `fill(method="nearest")`; for the refusals,
 write the single expression the message names, or declare the pair with
@@ -124,9 +140,13 @@ the coverage is partial in a way the requirement's wording does not
 signal. `db.fitmodel` followed by `db.fitvalue` drops the source
 dimension's unit entirely: measured `deg` in, `None` on the coefficient
 dimension and `None` again on the dimension `fitvalue` restores.
-**What to do now:** convert to a common unit yourself before combining or
-concatenating, with `utils.units.convert`, and re-apply the unit with
-`set_metadata` after a `fitmodel`/`fitvalue` round trip.
+**What to do now:** convert before you combine or concatenate, and note
+where the conversion has to happen. `from itaca.utils.units import
+convert` gives the factor, and `itc.utils` is not exported, so that is the
+import that works. For a VARIABLE, convert with `compute` and re-label
+with `set_metadata`. For a DIMENSION there is no route on the frame you
+have, so convert the coordinate array before `itc.load`. After a
+`fitmodel`/`fitvalue` round trip, re-apply the unit with `set_metadata`.
 
 **5. Structure can survive an operation that invalidated it.** Three
 shapes, all reproduced.
@@ -183,14 +203,21 @@ one holding the result.
 **What to do now:** treat `save`/`itc.open` as the supported way to move a
 frame between processes; it is also the only one that carries Provenance.
 
-**9. Three requirements the specification states and this release does not
-implement.** `REQ-88` (all operations vectorized, with no benchmark
-behind it), `REQ-89` (`db.summary()` reporting the footprint and a warning
-above 1 GB) and `REQ-90` (sparse-aware variants, opt-in via
-`db.use_sparse`). Measured: `db.use_sparse` does not exist. They are
-`stable` in the SRS and ungated, which means the document promises them
-without qualification; whether to implement or descope is an open author
-decision.
+**9. One requirement asserted with nothing measuring it, and two the
+release does not implement.** All three are `stable` in the SRS and
+ungated, which means the document promises them without qualification.
+`REQ-88` (all operations vectorized, no Python element loops in hot
+paths) is ASSERTED and satisfied as far as anyone can tell, and there is
+no benchmark behind it, so nothing would notice if a hot path stopped
+being vectorized.
+`REQ-89` ships HALF: `db.summary()` does report the in-memory footprint,
+and no operation warns when a projected allocation exceeds 1 GB, so an
+`expand` onto a high-cardinality dimension is silent until memory runs
+out.
+`REQ-90` (sparse-aware variants of `compute`, `interpolate` and
+`integrate`) is absent entirely; measured, `db.use_sparse` does not
+exist.
+Whether to implement or descope is an open author decision.
 
 **The `.itceq` uncertainty moment stays open.** The three limitations
 declared under `[0.2.0]` about when a declared uncertainty is applied
@@ -200,9 +227,12 @@ the FIRST write, a relative declaration on a name that is both carried and
 written resolves twice, and a declaration speaks for the systematic
 component only.
 
-**The wider population, and what this section does not cover.** The
-independent verification compilation returned 98 verdicts. The classes
-above are those a user can recognize from their own usage; the remainder
+**The wider population, and what this section does not cover.** An
+independent verification compilation reviewed this library and its
+findings are what most of the classes above are drawn from; its own
+records live outside this repository, so this section states no count
+from it. The classes above are those a user can recognize from their own
+usage; the remainder
 are process, CI topology and documentation currency, which are real and
 tracked in the project's working ledger outside this repository. Two of
 the classes above are pinned by strict-xfail tests in
