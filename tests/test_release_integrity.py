@@ -442,12 +442,31 @@ def section_records_no_changes(section: str) -> bool:
     document for this lane named that exact failure as the thing the
     guard must not do, and the first version did it anyway.
 
-    The test is the absence of any `###` subsection, not a match on
-    "Nothing yet.": the wording is a house habit and would be a second
-    copy of a fact, while a section with an `Added` or `Fixed` block is
-    recording changes under anyone's wording.
+    THE FIRST VERSION OF THIS TESTED FOR THE ABSENCE OF `###` AND THAT
+    WAS A HOLE, found by round two's QA lens with the shipped predicate in
+    hand. Its docstring claimed the test was "records changes under
+    anyone's wording" and the code tested "uses h3 subsections", so a
+    section written with `####`, with bold labels, or in plain prose was
+    exempted WHOLESALE, at the tag gate as well. Measured on that version:
+
+        "#### Added\n\n* a\n* b\n* c\n"      -> exempt
+        "\n**Added**\n\n* a\n* another\n"    -> exempt
+        "#### Known open\n\n* one bullet\n"  -> exempt
+
+    The third is the sharpest: the hollow-heading refusal this guard was
+    built for was defeated by writing the heading one level deeper.
+
+    So the test is now BOTH halves, and the exemption is deliberately
+    tiny: no heading at ANY level, and at most two non-blank lines. A
+    section recording real changes is longer than that under every
+    wording, and the shape this exists for, "Nothing yet.", is one line.
+    The remaining hole is a release whose entire notes are two lines of
+    prose, which is stated here rather than closed because closing it
+    means guessing what prose means.
     """
-    return not re.search(r"^###\s", section, re.MULTILINE)
+    if re.search(r"^#", section, re.MULTILINE):
+        return False
+    return len([line for line in section.splitlines() if line.strip()]) <= 2
 
 
 def notes_disclose_known_limitations(section: str) -> bool:
@@ -498,6 +517,24 @@ _LIMITATION_CASES: tuple[tuple[str, str, bool], ...] = (
         "\nNo changes recorded since the last release.\n",
         True,
     ),
+    # The three shapes that DEFEATED the first version of the exemption.
+    # All three record changes and disclose nothing, so all three refuse.
+    (
+        "an h4 change block, which the first exemption let through",
+        "#### Added\n\n* a\n* b\n* c\n",
+        False,
+    ),
+    (
+        "bold labels instead of headings, same",
+        "\n**Added**\n\n* a\n* another\n",
+        False,
+    ),
+    (
+        "a hollow limitations heading one level deeper, which is the "
+        "refusal this guard exists for being defeated by an h4",
+        "#### Known open\n\n* one bullet\n",
+        False,
+    ),
     (
         "a deeper heading level still counts",
         "#### Known open\n\n* one\n* two\n* three\n",
@@ -529,6 +566,33 @@ def test_the_known_limitations_rule_accepts_and_refuses() -> None:
         f"the case list must exercise both verdicts, and it accepts "
         f"{accepted} of {len(_LIMITATION_CASES)}. A list with no refusals "
         f"passes a predicate that returns True and proves nothing."
+    )
+
+
+@pytest.mark.fast  # 0.01 s, pure string work
+def test_the_heading_match_is_level_agnostic_at_the_collector() -> None:
+    """`known_limitation_lines` is asserted DIRECTLY, not through the rule.
+
+    Round two measured that the composed predicate had stopped proving
+    this: with the exemption in place, the h4 case in the list above
+    returned True by being EXEMPT rather than by the heading matching, so
+    a mutant recognizing only exactly-h3 headings survived the whole case
+    list with nothing wrong. That is a case going inert while still
+    looking green, which is the failure this file's own comments warn
+    about one level up.
+
+    Asserting the collector directly separates the two verdicts: this
+    fails if the level-agnostic `lstrip("#")` is ever narrowed, whatever
+    the exemption does.
+    """
+    for heading in ("## Known open", "### Known open", "#### Known open"):
+        section = f"{heading}\n\n* one\n* two\n* three\n"
+        assert len(known_limitation_lines(section)) == 3, (
+            f"{heading!r} was not recognized as a limitations heading; the "
+            f"match is meant to be level-agnostic"
+        )
+    assert known_limitation_lines("### Added\n\n* one\n* two\n* three\n") == [], (
+        "a non-limitations heading must collect nothing"
     )
 
 

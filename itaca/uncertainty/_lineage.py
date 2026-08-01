@@ -191,29 +191,19 @@ a shared origin in a later input goes unrecorded (ARCH-5, measured at
 concatenated frame, which refused two inputs of plain roots with no
 derivation anywhere, and that is REQ-24 mainline usage (ARCH-8).
 
-Neither reading of this set was the fix, and the third attempt was
-WITHDRAWN. A refusal at the concat itself was implemented and removed by
-the author's decision of 2026-08-02: it could only test what the frames
-carried AT CONCAT TIME, so declaring uncertainty after the join walked
-past it and reached the same wrong number. What ``concat`` discards is
-the RECORD a later declaration needs, which is why no concat-time test
-can be complete rather than why that one was written badly.
+``concat`` satisfies this set's PREDICATE: it joins along a dimension
+and never rewrites one variable from another, so it confers no
+cross-variable ancestry. That is why it belongs here. Removing it was
+tried and poisoned every concatenated frame, refusing two inputs of
+plain roots, which is REQ-24 mainline usage (ARCH-8); that is
+corroboration and not the reason.
 
-So ``concat`` stays in this set for the reason it was always safe to be
-here, ARCH-8: taking it out poisons every concatenated frame and refuses
-two inputs of plain roots, which is REQ-24 mainline usage. The discarded
-record is a DECLARED GAP, not something handled elsewhere. Read REQ-41,
-DD-52 section 4 and OQ-55 before changing either this entry or that
-decision; the class is stated in CHANGELOG.md under Known open, where a
-user can see it.
-
-Note that this reaches further than the discarded derivations. An input
-whose History this module cannot READ AT ALL is laundered by the same
-route: it refuses a multi-carrier ``compute`` on its own and stops
-refusing once it has been concatenated, because the merged frame carries
-only the first input's record. That is the fourth, absent-evidence case
-of REQ-41 meeting the same structural loss, and it is declared with the
-rest of the class rather than being a separate defect.
+What ``concat`` DOES lose is the RECORD, because the joined frame keeps
+the History of its first input alone. A refusal at the concat itself was
+implemented and WITHDRAWN by the author's decision of 2026-08-02. The
+consequence is a DECLARED GAP covering every refusal in this module, and
+REQ-41 is its single home; read it, DD-52 section 4 and OQ-55 before
+changing this entry or that decision.
 
 By the time a frame reaches this module the evidence is gone, and a set
 membership cannot recover it.

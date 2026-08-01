@@ -12,6 +12,59 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.12, 2026-08-02, REQ-24 Stops Stating the Withdrawn Refusal}
+
+A MINOR revision adding no requirement and withdrawing none, NARROWING
+REQ-24 and CORRECTING REQ-41. It exists as its own document version
+rather than as an edit to 0.2.11 because 0.2.11 had already shipped in
+the commit that published it, and the DECISIONS half of the identical
+correction was made by a superseding entry (DD-53) on exactly that rule.
+Two halves of one repair cannot run on opposite rules without teaching
+that neither is real.
+
+\paragraph{Changed (REQ-24, the refusal it still stated is removed).}
+0.2.11 withdrew the \code{concat} lineage refusal from REQ-41 and named
+REQ-24 as narrowed, and REQ-24's own normative paragraph "Refusing to
+join a record it cannot keep" was left standing. Three reviewer lenses
+found it independently. Since \code{docs/srs/} is the top of the
+authority chain, the shipped code was in violation of a \stable{}
+requirement rather than merely inconsistent with it. REQ-24 now states
+the propagation and the loss, which are its own subject, and names
+REQ-41 as the single home of the consequence, its cost and the
+workflows.
+
+\paragraph{Corrected (REQ-41, ALL FOUR refusals are defeated by
+\code{concat}, and the rule is about which INPUT carries the evidence).}
+0.2.11 stated the loss for a discarded derivation and for the
+absent-evidence case, and left the impression that the other two
+survived a join. Measured, they do not, and the reason is one mechanism
+rather than four:
+
+\begin{itemize}[noitemsep,topsep=2pt]
+  \item every refusal in REQ-41 reads ancestry out of History;
+  \item \code{concat} keeps the History of its FIRST input alone;
+  \item so any refusal whose evidence sits in another input is defeated,
+    and the same evidence in the first input survives.
+\end{itemize}
+
+Measured, each with the evidence in a later input: a discarded
+derivation gives $u(r) = 0.36055513$ where $0.1$ is correct; an
+unreadable record gives $u = 0.2236$ where the input alone raises; a
+prior \code{translate\_moments} lets the second transfer through at
+$u(MY) = 1.41421356$ where $2.0$ is correct; and an earlier
+\code{interpolate} lets a random-component reduction through at
+$u = 0.45069391$. With the same evidence in the FIRST input the refusal
+fires, measured for the moment transfer.
+
+A THIRD DIRECTION is stated here for the first time. When the derivation
+is in the first input and another input carries the same name as a plain
+root, the record is not discarded, it is OVER-ASSERTED over rows where
+it is false. The refusal fires, which looks correct, and the single
+expression it suggests is wrong for those rows: measured
+\code{z = (2*x) - 2*x} returning $[0, 0]$ where the truth is $[0, 97]$.
+So this direction is not a silent wrong number but a refusal carrying a
+wrong workaround.
+
 \section*{Document 0.2.11, 2026-08-02, A Stated Gap Replaces a Partial Guard}
 
 A MINOR revision adding no requirement and withdrawing none, NARROWING
@@ -45,11 +98,13 @@ this case under the same concat-time condition and under no other, so it
 was never complete here either. REQ-41 now says so; an earlier draft of
 this entry claimed the fourth case was untouched, which was false.
 
-The three refusals that do NOT pass through \code{concat} are unchanged
-in force and in wording: \code{compute} over shared ancestry,
-\code{translate\_moments} stacked on an earlier transfer, and a
-random-component reduction over an interpolated dimension.
-\code{UncertaintyLineageError} remains public surface for all of them.
+The other three refusals are unchanged in force and in wording:
+\code{compute} over shared ancestry, \code{translate\_moments} stacked on
+an earlier transfer, and a random-component reduction over an
+interpolated dimension. \code{UncertaintyLineageError} remains public
+surface for all of them. An earlier draft of this entry said those three
+"do NOT pass through \code{concat}", which is false and is corrected in
+document 0.2.12 below.
 
 \section*{Document 0.2.10, 2026-08-01, The Dependency Table Is Checked, Not Maintained}
 

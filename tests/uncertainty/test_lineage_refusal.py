@@ -621,9 +621,16 @@ class TestConcatDiscardsLineageDeliberately:
 
         joined = itc.concat([self._roots(1.0), opaque], along="t")
         result = joined.compute("z = x + y")
-        assert result.uncertainty is not None, (
-            "the absent-evidence refusal appears to fire through concat "
-            "again; REQ-41 states that it does not"
+        # THE NUMBER, not merely presence. Round two found this asserting
+        # `is not None`, while REQ-41, the CHANGELOG, the concat docstring
+        # and DD-53 all PUBLISH 0.2236. A partial refusal that zeroed or
+        # dropped a component would have left four published statements
+        # false with this test green.
+        assert result.uncertainty.systematic["z"] == pytest.approx(
+            [0.2236068, 0.15811388]
+        ), (
+            "the laundered value changed; REQ-41, CHANGELOG.md Known open "
+            "class 1, itaca/ops/concat.py and DD-53 all publish 0.2236"
         )
 
     def test_identically_derived_inputs_are_allowed(self) -> None:
@@ -648,16 +655,67 @@ class TestConcatDiscardsLineageDeliberately:
         joined = itc.concat([frame(8.0), frame(9.0)], along="t")
         assert joined.uncertainty is None
 
-    def test_the_documented_way_out_actually_works(self) -> None:
-        # The release notes and REQ-41 both send the reader here, so the
-        # advice is executed rather than asserted. Deriving on ONE frame
-        # is refused, and set_correlation ON THE JOINED FRAME settles it
-        # at the correct 0.1.
-        one = self._derived(8.0, 3.0)
+    def test_the_first_inputs_derivation_is_over_asserted(self) -> None:
+        # VV-16, the THIRD direction of this class, and the one round two
+        # found had no replacement: the deleted class pinned it and the
+        # first replacement did not, so a partial guard could be
+        # reinstated in this direction with the whole suite green.
+        #
+        # Here the derivation is in the FIRST input, so it is not
+        # discarded, it is ASSERTED over rows where it is false. `y` is a
+        # plain root in the second input. The engine refuses, which looks
+        # right, and its suggested single expression is wrong for those
+        # rows: measured z = [0, 0] where the truth is [0, 97].
+        #
+        # So this direction is not a silent wrong number, it is a refusal
+        # carrying a wrong workaround, which is why it is stated
+        # separately in REQ-41 and in the release notes.
+        def frame(t: float, derive: bool) -> VarFrame:
+            arr = np.column_stack([np.array([1.0]), np.array([99.0]), np.array([t])])
+            built = itc.load(arr, names=["x", "y", "t"]).pivot(dims=["t"])
+            built = built.set_uncertainty({"x": 0.1})
+            return (
+                built.compute("y = 2*x")
+                if derive
+                else built.set_uncertainty({"y": 0.5})
+            )
+
+        joined = itc.concat([frame(8.0, True), frame(9.0, False)], along="t")
         with pytest.raises(UncertaintyLineageError):
-            one.compute("r = p - q")
-        settled = one.set_correlation({("p", "q"): 1.0}).compute("r = p - q")
-        assert settled.uncertainty.systematic["r"] == pytest.approx(0.1)
+            joined.compute("z = y - 2*x")
+
+        # The workaround the refusal offers, run: wrong on the second
+        # input's rows, where y is 99 and z should be 97.
+        followed = joined.compute("z = (2*x) - 2*x")
+        assert followed.vars["z"].values.tolist() == [0.0, 0.0]
+        assert joined.vars["y"].values.tolist() == [2.0, 99.0], (
+            "the fixture no longer produces the asymmetry this test is about"
+        )
+
+    def test_the_documented_way_out_actually_works(self) -> None:
+        # The release notes, REQ-41 and the concat docstring all send the
+        # reader HERE, so the advice is executed rather than asserted.
+        #
+        # ROUND TWO FOUND THIS TEST ONE STEP SHORT OF THE ADVICE, from
+        # three lenses at once: it derived on a single frame and never
+        # called concat, while the documented route is concatenate the
+        # INPUTS, derive ON THE JOINED FRAME, and settle there. The
+        # operation this whole lane is about was absent from the test
+        # pinning its workaround.
+        roots = self._roots(1.0), self._roots(2.0)
+        joined = itc.concat(list(roots), along="t")
+        derived = joined.compute("p = 3*x").compute("q = 2*x")
+
+        # Deriving on the joined frame is refused, which is the correct
+        # outcome and the reason the advice continues rather than stops.
+        with pytest.raises(UncertaintyLineageError):
+            derived.compute("r = p - q")
+
+        settled = derived.set_correlation({("p", "q"): 1.0}).compute("r = p - q")
+        assert settled.uncertainty.systematic["r"] == pytest.approx(0.1), (
+            "the documented way out no longer produces the number REQ-41 "
+            "and CHANGELOG.md Known open class 1 both publish"
+        )
 
 
 class TestNonDifferentiablePoint:

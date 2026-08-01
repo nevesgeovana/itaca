@@ -1,7 +1,7 @@
 # ITACA SRS: LaTeX sources
 
-Authoritative specification of ITACA, document version 0.2.11
-(2026-08-02, a stated gap replaces a partial guard;
+Authoritative specification of ITACA, document version 0.2.12
+(2026-08-02, REQ-24 stops stating the withdrawn refusal;
 baseline 0.1.0 was
 the first workspace-tracked version,
 research-workspace snapshot id DLV-008). Companions: `../DECISIONS.md`

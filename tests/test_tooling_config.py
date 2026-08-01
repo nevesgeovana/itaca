@@ -302,6 +302,14 @@ _COMMIT_TIER_GUARD_TESTS = (
     # 0.00 s. The section bound, which the case list above cannot reach.
     "tests/test_release_integrity.py"
     "::test_a_section_cannot_borrow_the_next_release_s_limitations",
+    # 0.00 s. Added in ITA-2D round two, and it is here because the case
+    # list STOPPED proving this: with the post-tag exemption in place the
+    # h4 case passed by being exempt rather than by the heading matching,
+    # so a mutant recognizing only h3 headings survived the whole list
+    # clean. This asserts the collector directly, which is the only form
+    # the exemption cannot answer for.
+    "tests/test_release_integrity.py"
+    "::test_the_heading_match_is_level_agnostic_at_the_collector",
     # 0.00 s. The working notes, so the tag is never the first time anyone
     # is asked for the disclosure.
     "tests/test_release_integrity.py::test_the_unreleased_notes_disclose_known_limitations",

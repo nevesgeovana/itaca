@@ -221,8 +221,8 @@ def concat(
         time. An input that never declared the group counts as the
         canonical body axis (REQ-38, REQ-107).
 
-    Notes
-    -----
+    Warnings
+    --------
     **The result carries the History of the FIRST input alone, and a
     known limitation follows from it.** A derivation recorded in any
     other input is DISCARDED, and so is an input whose History cannot be
@@ -234,7 +234,8 @@ def concat(
     Measured, with ``p`` and ``q`` plain roots carrying declared
     uncertainty in the first input and both derived from a shared ``x``
     in the second: ``compute("r = p - q")`` on the joined frame returns
-    ``u(r) = 0.36055513`` where ``0.1`` is correct on those rows. The
+    ``u(r) = 0.36055513`` where ``0.1`` is correct on the second
+    input's rows. The
     same route defeats the absent-evidence refusal: an input that
     refuses a multi-carrier ``compute`` on its own stops refusing once
     concatenated, measured ``u = 0.2236``.

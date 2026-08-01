@@ -10,6 +10,29 @@
 \textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Summary}\\
 \midrule
 \midrule
+0.2.12 & 2026-08-02 & Geovana Neves &
+REQ-24 stops stating the withdrawn refusal. A MINOR revision adding no
+requirement and withdrawing none, NARROWING REQ-24 and CORRECTING
+REQ-41. Its own document version rather than an edit to 0.2.11, because
+0.2.11 had shipped in the commit that published it and the DECISIONS
+half of the same correction went through a superseding entry (DD-53) on
+that rule. REQ-24's paragraph "Refusing to join a record it cannot keep"
+survived 0.2.11 and was found by three reviewer lenses; since the SRS is
+the top of the authority chain, the shipped code was in violation of a
+\stable{} requirement rather than merely inconsistent with it. REQ-41 is
+corrected in the same window: ALL FOUR of its refusals are defeated by
+\code{concat}, not two, and the rule is one mechanism rather than four,
+namely that every refusal reads ancestry out of History and
+\code{concat} keeps only the FIRST input's, so any refusal whose
+evidence sits in another input is defeated. Measured with the evidence
+in a later input: $u(r) = 0.36055513$ against $0.1$ for a discarded
+derivation, $u = 0.2236$ for an unreadable record, $u(MY) = 1.41421356$
+against $2.0$ for a stacked moment transfer, and $u = 0.45069391$ for a
+random reduction over an interpolated dimension. A third direction is
+stated for the first time: a derivation in the FIRST input is
+OVER-asserted over rows where another input carries the name as a plain
+root, and the refusal's suggested expression is wrong there, measured
+$[0, 0]$ where the truth is $[0, 97]$.\[4pt]
 0.2.11 & 2026-08-02 & Geovana Neves &
 A stated gap replaces a partial guard. A MINOR revision adding no
 requirement and withdrawing none, NARROWING REQ-41 and REQ-24: the refusal of a
@@ -26,8 +49,8 @@ is left as an open product decision (OQ-55). REQ-41 now names the
 workflows that are correct and additionally STATES, for the first time,
 that the fourth absent-evidence case is lost by the same route: an input
 whose History cannot be read refuses on its own and stops refusing once
-concatenated, measured $u = 0.2236$. The three refusals that do not pass
-through \code{concat} are unchanged, and \code{UncertaintyLineageError}
+concatenated, measured $u = 0.2236$. The other three refusals are
+unchanged in force and in wording, and \code{UncertaintyLineageError}
 remains public surface. Design decision DD-52 lands in the same window,
 recording the author's two JSON export calls and the rejected
 \code{split\_by} alternative, all three of which had entered as normative

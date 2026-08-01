@@ -59,9 +59,25 @@ Measured, with `p` and `q` plain roots carrying `u(p) = 0.3` and
 `u(q) = 0.2` in the first input and both derived from a shared `x` with
 `u(x) = 0.1` in the second: `compute("r = p - q")` on the joined frame
 returns `u(r) = 0.36055513`, where `0.1` is correct on the second input's
-rows. **The same route defeats all four of the refusals in class 3**,
-including the one for a record the engine cannot read at all: an input
-that raises on its own returns `u = 0.2236` once concatenated.
+rows.
+
+**This defeats all four of the refusals in class 3, and the rule is one
+mechanism rather than four.** Every one of them reads ancestry out of
+History, and `concat` keeps only the FIRST input's, so a refusal whose
+evidence sits in any other input is defeated. Measured, each with the
+evidence in a later input: an unreadable record returns `u = 0.2236`
+where the input alone raises; a prior `translate_moments` lets a second
+transfer through at `u(MY) = 1.41421356` where `2.0` is correct; an
+earlier `interpolate` lets a random-component reduction through at
+`u = 0.45069391`. The same evidence in the FIRST input survives the join.
+
+**A third direction is a wrong workaround rather than a wrong number.**
+When the derivation is in the first input and another input carries that
+name as a plain root, the record is OVER-asserted rather than discarded.
+The refusal fires, which looks right, and the expression it suggests is
+wrong for the rows that were not derived: measured `z = (2*x) - 2*x`
+returning `[0, 0]` where the truth is `[0, 97]`. If you follow a refusal's
+suggestion on a concatenated frame, check it against those rows.
 
 **What to do now**, and both routes were run as written. Concatenate the
 INPUTS of a derivation and derive once on the joined frame, rather than
@@ -73,12 +89,13 @@ declared correlation stores differ, so declaring on one input and then
 joining raises instead. Deriving each input identically needs no extra
 step and is the ordinary workflow of processing several runs the same
 way.
+
 **Why there is no partial guard, stated because one was here and is gone.**
 This release removed a `concat`-time refusal that covered only the case
-where uncertainty was already present when the frames were joined. It did
-not cover `derive, concat, then declare`, which reaches the measurement
-above unchanged, so its real effect was to teach readers that the class
-was covered. Refusing every `concat` that discards a derivation,
+where uncertainty was already present when the frames were joined.
+Declaring on the JOINED frame instead reached the measurement above with
+the mechanism in place, so its real effect was to teach readers that the
+class was covered. Refusing every `concat` that discards a derivation,
 regardless of uncertainty, would refuse ordinary data concatenation. The
 trade between those is an open author decision, and until it is taken the
 gap is declared here rather than half-covered in code.
@@ -113,9 +130,8 @@ engine cannot interpret leaves every origin unknown, so a multi-carrier
 `compute` is refused even for quantities that were never derived.
 **All four are defeated by `concat`**, which is class 1 and not a
 separate limitation: the joined frame carries only the first input's
-History, so there is nothing left for any of them to read. Measured, an
-input that raises on its own returns `u = 0.2236` after being
-concatenated.
+History, so a refusal whose evidence sits in another input has nothing
+left to read. Class 1 carries the measurements.
 **What to do now:** run the five before assigning uncertainty, or use
 `fill(method="linear")` or `fill(method="nearest")`; for the refusals,
 write the single expression the message names, or declare the pair with

@@ -57,8 +57,10 @@ refused.
   Carry the previous release's block FORWARD and edit it rather than
   starting from nothing: most limitations outlive one release, and the
   ones that closed are the most useful thing the new block can say. A
-  fresh `[Unreleased]` section recording no changes at all is exempt, so
-  cutting the tag does not immediately redden the next commit.
+  section carrying no heading at all and at most two non-blank lines is
+  exempt, which is the shape a section has right after a release is cut,
+  so cutting the tag does not immediately redden the next commit. The
+  first commit that records a change re-arms the requirement in full.
 - `CITATION.cff` carries the version being released and its DOI, if one
   is minted for it. The v0.2.0 release review found this file still at
   `0.1.0` with the previous release's DOI, which Zenodo would have
