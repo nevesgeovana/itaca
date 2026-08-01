@@ -89,6 +89,13 @@ def marker_expression(argv: list[str]) -> str:
     >>> marker_expression(["pytest", "-m", "not slow", "-q"])
     'not slow'
     """
+    # `python -m pytest -m "fast"` carries TWO `-m` tokens and only the
+    # second is a marker selection; the first names the module the
+    # INTERPRETER runs. Counting both false-fired the ambiguity refusal on
+    # an ordinary command line. Latent when this reads a bare `pytest`
+    # entry, and not latent for any caller that passes a full argv.
+    if argv[:2] == [argv[0], "-m"] and Path(argv[0]).stem.lower().startswith("python"):
+        argv = argv[2:]
     positions = [i for i, token in enumerate(argv) if token == "-m"]
     assert positions, (
         f"the command {argv!r} carries no `-m` selection, so there is no "

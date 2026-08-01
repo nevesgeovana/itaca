@@ -132,25 +132,38 @@ def draft_prov(prov: Provenance) -> Provenance:
 _FAST_TEST_BUDGET_SECONDS = 3.0
 
 
-def pytest_runtest_logreport(report: pytest.TestReport) -> None:
-    """Accumulate the wall time of each phase, per unmarked test.
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Record which tests carry which MARKER, at collection.
 
-    `slow` AND NOT `fast`. A `fast` test inside a module carrying
-    `pytestmark = pytest.mark.slow` still has `slow` among its keywords,
-    so exempting on that word alone left the one population the `fast`
-    marker creates with no per-test budget at all: the marker's whole
-    purpose is to put a test INTO the commit tier, and it was putting it
-    there unmeasured.
+    MARKERS, read from the item, and not `report.keywords`. That mapping
+    is a string namespace holding the module name, the class name, every
+    fixture name and every PARAMETRIZE ID, so keying on it matched a word
+    rather than the condition it stood for. Two reviewers measured the
+    two ways that let a test out of this budget:
 
-    MEASURED before the fix, with a probe module carrying a module-level
-    `slow` and one `fast` test sleeping 3.5 s, run with the commit tier's
-    own selection: `1 passed in 3.83s`, exit 0, no budget refusal. The
-    documentation claimed the opposite, which is why this reads the
-    condition it means rather than the word it used to key on.
+    - a `fast` test inside a module marked `slow` still carried `slow`,
+      which exempted exactly the population the `fast` marker creates;
+    - an UNMARKED test whose parametrize id is the string ``slow`` was
+      exempted too, at 3.5 s, with no marker anywhere near it.
+
+    The second survived the repair of the first, one line later, because
+    that repair also keyed on the word. `iter_markers` answers the
+    question this budget actually asks, and no id, fixture or class name
+    can reach it. `tests/test_tooling_config.py` carries the falsifying
+    test, because a measurement narrated in a docstring is not a guard.
     """
-    keywords = getattr(report, "keywords", {})
-    if report.when == "setup" and "slow" in keywords and "fast" not in keywords:
-        _seen_slow.add(report.nodeid)
+    for item in items:
+        names = {mark.name for mark in item.iter_markers()}
+        if "fast" in names:
+            # Budgeted like any other commit-tier test. Recorded only so
+            # the refusal can name the remedy that works for it.
+            _seen_fast.add(item.nodeid)
+        elif "slow" in names:
+            _seen_slow.add(item.nodeid)
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """Accumulate the wall time of each phase, per budgeted test."""
     if report.nodeid in _seen_slow:
         return
     _durations[report.nodeid] = _durations.get(report.nodeid, 0.0) + report.duration
@@ -158,6 +171,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
 _durations: dict[str, float] = {}
 _seen_slow: set[str] = set()
+_seen_fast: set[str] = set()
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
@@ -201,9 +215,28 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     if not over:
         return
     listed = "\n".join(f"    {total:6.2f}s  {nodeid}" for nodeid, total in over)
+    # TWO POPULATIONS, TWO REMEDIES. The heading used to say "without
+    # carrying the `slow` marker" and to offer `@pytest.mark.slow` first.
+    # For a `fast` test inside a module marked slow, which is the
+    # population this budget only reaches since the `slow and not fast`
+    # repair, both are wrong: it DOES carry `slow`, and adding the marker
+    # is a no-op. A reviewer measured a 3.5 s probe being refused under a
+    # heading that misdescribed it and a remedy that would not have moved
+    # it. A refusal naming the wrong cause is worse than a slower test.
+    fast_offenders = sorted(node for node, _ in over if node in _seen_fast)
+    remedy = (
+        f"For a test carrying `@pytest.mark.fast` ({len(fast_offenders)} "
+        f"here: {fast_offenders}), the remedy is NOT the slow marker, which "
+        f"it already inherits from its module and which no longer exempts "
+        f"it: either make it faster, or DROP the fast marker so it goes "
+        f"back to the pre-push tier with the rest of its module, and remove "
+        f"it from _COMMIT_TIER_GUARD_TESTS in the same edit.\n"
+        if fast_offenders
+        else ""
+    )
     raise pytest.UsageError(
         f"{len(over)} test(s) exceeded the {_FAST_TEST_BUDGET_SECONDS:.1f}s "
-        f"commit-tier budget without carrying the `slow` marker:\n{listed}\n"
+        f"commit-tier budget:\n{listed}\n{remedy}"
         f'The commit tier runs `pytest -m "not slow or fast"` and is budgeted '
         f"at a p95 under 30 seconds, so an unmarked test this size makes "
         f"every commit in this repository pay for it. Either decorate that "

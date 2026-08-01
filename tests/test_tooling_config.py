@@ -28,6 +28,7 @@ import importlib.metadata
 import itertools
 import json
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -228,11 +229,18 @@ _COMMIT_TIER_CONTRACT_MODULES = (
 # tests/conftest.py; before that repair a `fast` test was exempt, which a
 # reviewer measured with a 3.5 s probe that passed silently.
 #
-# WHAT THE FOUR COST THE TIER, since a single-sample comparison first
-# reported it as nothing: three runs of each selection, minimum of each,
-# gave 17.59 s without them and 18.45 s with them. About 0.9 s, against a
-# p95 target of 30 s. Cheap, and not free, and the difference between
-# those two words is why the number is here.
+# WHAT THE FOUR COST THE TIER, and the number is the SUM OF THEIR OWN
+# DURATIONS measured inside the tier, 0.01 + 0.08 + 0.05 + 0.50, about
+# 0.6 s against a p95 target of 30 s.
+#
+# It is not a before-and-after difference of tier wall time, and two
+# earlier attempts at that were both wrong. The first was a single sample
+# each and reported "no measurable cost". The second was a minimum of
+# three each and reported 0.9 s; a reviewer replicated the method and got
+# 0.2 s, with a run-to-run spread of about 5 s. A method whose noise is
+# ten times the quantity cannot resolve it in either direction, so the
+# additive cost is measured directly instead and the tier-level
+# difference is left unclaimed.
 #
 # The one cheap test in these modules deliberately NOT promoted is
 # `test_a_push_with_no_resolvable_repo_denies_with_the_repo_kind` (0.11 s).
@@ -317,16 +325,27 @@ def test_the_commit_tier_runs_only_the_fast_subset() -> None:
         "all. Restore `pytest-fast` with the `not slow` selection."
     )
     entry = entries["pytest-fast"]
-    # PARSED, not searched. A substring check passed for any expression
-    # containing the words, including one that widens the tier back to the
-    # whole suite, which is the defect this assertion exists to refuse.
+    # PARSED, and every disjunct read. A substring check passed for any
+    # expression containing the words; checking only the first two tokens
+    # then passed `not slow or slow`, which selects the WHOLE suite, and
+    # two reviewers measured that (1662 collected against 1579). Refusing
+    # the head and ignoring the tail is the same defect one term along, so
+    # the terms after the first are read and constrained.
     selection = _commit_tier_selection()
-    assert selection.split()[:2] == ["not", "slow"], (
+    head, _, tail = selection.partition(" or ")
+    assert head.split() == ["not", "slow"], (
         f"the commit hook selects {selection!r}, which does not begin by "
         f"EXCLUDING the slow tier, so it runs the FULL suite on every "
         f"commit. That is the exact defect BRF-063 measured: a hook named "
-        f'fast that was not. Select the subset with -m "not slow", widened '
-        f"only by `or fast` for tests declared in _COMMIT_TIER_GUARD_TESTS."
+        f'fast that was not. Select the subset with -m "not slow".'
+    )
+    widened = {term.strip() for term in tail.split(" or ")} - {""}
+    assert widened <= {"fast"}, (
+        f"the commit hook selects {selection!r}, widening the tier with "
+        f"{sorted(widened)}. Only `or fast` may widen it, for tests declared "
+        f"in _COMMIT_TIER_GUARD_TESTS with a measured cost and a reason. Any "
+        f"other term readmits a population nothing here has budgeted, and "
+        f"`or slow` readmits the entire suite while looking like a narrowing."
     )
     assert "--no-cov" in entry, (
         f"the commit hook runs {entry!r} with coverage on. Coverage is the "
@@ -505,9 +524,25 @@ def test_the_selection_reader_refuses_what_it_cannot_answer(
 
 
 def test_the_selection_reader_answers_the_ordinary_case() -> None:
-    """The control, so the refusals above are not refusing everything."""
+    """The control, so the refusals above are not refusing everything.
+
+    The second form is the one a reviewer measured false-firing: the
+    interpreter's own `-m pytest` is a `-m` token and is not a marker
+    selection, so counting both refused an ordinary command line as
+    ambiguous.
+    """
     assert marker_expression(["pytest", "-m", "not slow or fast", "-x"]) == (
         "not slow or fast"
+    )
+    assert (
+        marker_expression(["/usr/bin/python3", "-m", "pytest", "-m", "fast", "-q"])
+        == "fast"
+    )
+    assert (
+        marker_expression(
+            [r"C:\repo\.venv\Scripts\python.exe", "-m", "pytest", "-m", "not slow"]
+        )
+        == "not slow"
     )
 
 
@@ -652,7 +687,106 @@ def test_the_contract_modules_stay_in_the_commit_tier() -> None:
         )
 
 
+# TWO probe modules, and the split is the point rather than tidiness. The
+# parametrize-id case must live in a module with NO module-level marker,
+# or the test carries the real `slow` marker and is exempt for a correct
+# reason; the first version of this probe put it in the marked module and
+# the guard below caught the fixture, not the mechanism.
+_BUDGET_PROBE_MARKED = """
+import time
+import pytest
+
+pytestmark = pytest.mark.slow
+
+
+@pytest.mark.fast
+def test_fast_inside_a_slow_module_is_budgeted() -> None:
+    time.sleep(3.5)
+
+
+def test_a_genuinely_slow_module_member_is_exempt() -> None:
+    time.sleep(3.5)
+"""
+
+_BUDGET_PROBE_UNMARKED = """
+import time
+import pytest
+
+
+@pytest.mark.parametrize("case", ["slow"])
+def test_an_unmarked_test_whose_case_id_is_a_marker_name(case: str) -> None:
+    time.sleep(3.5)
+"""
+
+
 @pytest.mark.slow
+def test_the_commit_tier_budget_reaches_exactly_who_it_should() -> None:
+    """The falsifier the budget repair shipped without, on three populations.
+
+    A reviewer measured that the repair's only evidence was a docstring
+    narrating a measurement, and that reverting the repair left the whole
+    suite green: the four declared `fast` guards cost 0.01 to 0.5 s, so
+    nothing in the suite could tell the two versions apart.
+
+    Three cases, one run, because the budget is a session-level verdict:
+
+    1. a `fast` test inside a module marked `slow` MUST be refused. It is
+       the population the marker creates, and it was exempt.
+    2. an UNMARKED test whose parametrize id is the string `slow` MUST be
+       refused. `report.keywords` holds parametrize ids, so the first
+       repair exempted this one while fixing case 1.
+    3. an ordinary member of the slow module MUST be exempt, or the
+       marker has stopped routing anything and the tier is the suite.
+
+    The probe lives under `tests/` and not in `tmp_path`, deliberately:
+    this conftest's hooks are what is under test, and they apply to this
+    directory. It is removed in a `finally` and its absence is asserted.
+    """
+    probe_dir = ROOT / "tests" / "_budget_probe"
+    probe_dir.mkdir(exist_ok=True)
+    (probe_dir / "test_marked.py").write_text(_BUDGET_PROBE_MARKED, encoding="utf-8")
+    (probe_dir / "test_unmarked.py").write_text(
+        _BUDGET_PROBE_UNMARKED, encoding="utf-8"
+    )
+    argv = [
+        sys.executable, "-m", "pytest", "-m", "not slow or fast",
+        "-q", "--no-cov", "-p", "no:cacheprovider", str(probe_dir),
+    ]  # fmt: skip
+    try:
+        done = subprocess.run(
+            argv, capture_output=True, text=True, cwd=str(ROOT), env=child_env()
+        )
+    finally:
+        # rmtree, not rmdir: the child run leaves a `__pycache__` inside,
+        # and an rmdir that raises here would leave a stray test module in
+        # the suite's own directory for every later run to collect.
+        shutil.rmtree(probe_dir, ignore_errors=True)
+    assert not probe_dir.exists(), f"the probe directory survived at {probe_dir}"
+
+    output = done.stdout + done.stderr
+    assert done.returncode != 0, (
+        f"the budget did not refuse a 3.5 s test in the commit tier at all, "
+        f"so it is enforcing nothing:\n{output[-3000:]}"
+    )
+    assert "test_fast_inside_a_slow_module_is_budgeted" in output, (
+        f"a `fast` test inside a module marked slow was NOT budgeted. That "
+        f"is the population the marker creates, and exempting it makes "
+        f"`fast` a way to put an arbitrarily slow test on every developer's "
+        f"commit.\n{output[-3000:]}"
+    )
+    assert "test_an_unmarked_test_whose_case_id_is_a_marker_name" in output, (
+        f"an UNMARKED test was exempted because its parametrize id is the "
+        f"word `slow`. The budget must read MARKERS, not the keywords "
+        f"namespace, which holds ids, fixture names and class names.\n"
+        f"{output[-3000:]}"
+    )
+    assert "test_a_genuinely_slow_module_member_is_exempt" not in output, (
+        f"an ordinary member of a module marked slow was budgeted, so the "
+        f"marker has stopped routing and the commit tier is the whole "
+        f"suite.\n{output[-3000:]}"
+    )
+
+
 def test_no_undeclared_test_uses_the_fast_marker() -> None:
     """The other direction: collected-by-`fast` must equal the declared list.
 
@@ -664,12 +798,20 @@ def test_no_undeclared_test_uses_the_fast_marker() -> None:
     that a module-level marker does not govern, so it is the one that
     needs both directions.
 
-    MARKED `slow`, and the reason is a measurement rather than a habit.
-    This needs its own collection, and the sibling above already spends
-    about four seconds on one; a second in the same commit-tier test would
-    break the three-second per-test budget, and the honest answer to that
-    is to run this at the tier that can afford it rather than to raise the
-    budget. The cheaper direction stays where a developer feels it.
+    IT RUNS IN THE COMMIT TIER, and the first version of it did not. That
+    version carried `slow` on an argument a reviewer measured false: it
+    said the sibling above "already spends about four seconds" and that a
+    second collection "would break the three-second per-test budget". The
+    budget is PER TEST, not aggregate, so two collections in two tests
+    break nothing; measured warm, the sibling is 1.74 s and this is
+    1.65 s, against a 3.0 s per-test budget and a tier of about 18 s
+    against a 30 s p95.
+
+    The consequence of that false argument was not the seconds. It put the
+    guard that closes a hole one tier LATER than the edit that opens it:
+    an undeclared `fast` marker would have entered the commit tier and
+    been caught only at the push. A guard belongs at the gate where the
+    mistake it catches is made.
     """
     argv = [
         sys.executable, "-m", "pytest", "--collect-only", "-q", "--no-cov",
@@ -682,8 +824,14 @@ def test_no_undeclared_test_uses_the_fast_marker() -> None:
         f"collecting `-m fast` failed, so this guard cannot say which tests "
         f"carry the marker:\n{done.stdout[-2000:]}"
     )
+    # The trailing `[case]` is stripped, because the unit of admission is
+    # the TEST and not the case. Comparing raw node ids deadlocked a
+    # legitimate change: parametrizing a declared guard makes collection
+    # yield `...::test_x[a]` while the list holds `...::test_x`, firing
+    # BOTH assertions at once and forcing every parameter id into a list
+    # whose stated unit is one guard with one measured cost.
     collected = {
-        line.strip()
+        re.sub(r"\[.*\]$", "", line.strip())
         for line in done.stdout.replace("\\", "/").splitlines()
         if "::" in line and line.strip().startswith("tests/")
     }
