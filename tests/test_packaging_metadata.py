@@ -90,6 +90,12 @@ LOAD_BEARING_EXTRA_MEMBERSHIPS = {
     "pandas": ("dev", "ITACA-015: a test imports pandas at module scope"),
 }
 
+#: Floors, so that emptying either registry above cannot make its guard
+#: vanish. A parametrized test over an empty collection SKIPS, which
+#: reads like nothing was needed rather than like a guard was deleted.
+_SECURITY_FLOOR_COUNT = 1
+_LOAD_BEARING_MEMBERSHIP_COUNT = 1
+
 _ROW = re.compile(
     r"^\\code\{(?P<name>[^}]+)\}\s*&\s*(?P<role>\w+)\s*&"
     r"(?P<used_for>[^&]*)&\s*(?P<range>.*?)\\\\\s*$"
@@ -216,8 +222,9 @@ class TestTheDependencyTableMatchesPyproject:
 
         Measured before the fix: the table said ruff `>=0.5,<1.0` where
         `pyproject.toml` carries the exact pin `==0.15.22`, which is
-        deliberate and load-bearing (REQ-96), so the table contradicted
-        the reason the pin exists.
+        deliberate and load-bearing (DD-29, the pin's authority; REQ-96
+        is the CI-to-hook mirror the pin serves), so the table
+        contradicted the reason the pin exists.
         """
         declared = _declared()
         wrong = {
@@ -267,6 +274,22 @@ class TestTheDependencyTableMatchesPyproject:
 class TestSecurityFloorsAreDeclaredAndInstalled:
     """FND-067: a floor taken for a CVE is a fact, not a comment."""
 
+    def test_the_registry_is_not_empty(self) -> None:
+        """A parametrized guard over an empty dict SKIPS rather than fails.
+
+        Which means the whole of this class disappears if someone
+        removes the row, and pytest reports a skip that reads like
+        nothing was needed. The date and version site lists in
+        `tests/test_house_style.py` pin their counts for exactly this
+        reason; these registries were added without one.
+        """
+        assert len(SECURITY_FLOORS) >= _SECURITY_FLOOR_COUNT, (
+            f"SECURITY_FLOORS holds {len(SECURITY_FLOORS)} entries, below the "
+            f"{_SECURITY_FLOOR_COUNT} recorded. Removing one takes its guard "
+            f"with it silently. Remove the floor and this count in the same "
+            f"commit, with the reason the advisory no longer applies."
+        )
+
     @pytest.mark.parametrize("package", sorted(SECURITY_FLOORS))
     def test_the_declared_floor_is_at_or_above_the_advisorys_fix(
         self, package: str
@@ -311,6 +334,15 @@ class TestSecurityFloorsAreDeclaredAndInstalled:
 
 class TestLoadBearingExtraMemberships:
     """A membership whose reason a later editor would not guess."""
+
+    def test_the_registry_is_not_empty(self) -> None:
+        """Same shape as the security-floor registry: empty parametrize skips."""
+        assert len(LOAD_BEARING_EXTRA_MEMBERSHIPS) >= _LOAD_BEARING_MEMBERSHIP_COUNT, (
+            f"LOAD_BEARING_EXTRA_MEMBERSHIPS holds "
+            f"{len(LOAD_BEARING_EXTRA_MEMBERSHIPS)} entries, below the "
+            f"{_LOAD_BEARING_MEMBERSHIP_COUNT} recorded; removing one takes "
+            f"its guard with it silently."
+        )
 
     @pytest.mark.parametrize("package", sorted(LOAD_BEARING_EXTRA_MEMBERSHIPS))
     def test_the_membership_survives(self, package: str) -> None:

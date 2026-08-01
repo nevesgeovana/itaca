@@ -120,6 +120,14 @@ dev = [
     # (ITACA-015). The separate `pandas` extra above stays, for runtime
     # consumers who want the bridge without the toolchain.
     "pandas>=2.1,<3.0",
+    # Two test modules compare PEP 440 versions and specifiers: the
+    # security-floor check in tests/test_packaging_metadata.py and the
+    # built-artifact identity check in tests/test_release_integrity.py.
+    # It arrives transitively today, through pytest and build, and an
+    # undeclared transitive is one resolver change away from vanishing
+    # out from under a documented command. That is ITACA-015 exactly,
+    # so it is declared rather than relied upon.
+    "packaging>=23.0,<26.0",
 ]
 
 [tool.setuptools.packages.find]

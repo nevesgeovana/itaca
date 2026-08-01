@@ -137,19 +137,36 @@ dependency, or that it does not declare it yet.
 
 The specifier is usually a bounded range, and it is not always one, so
 this requirement says \emph{specifier} rather than \emph{range with an
-upper bound}. Three rows are deliberately otherwise. \code{ruff} is an
-EXACT pin (see below). \code{setuptools} and \code{setuptools-scm}
-carry a floor with no ceiling, because they are build-time tools
-resolved by the frontend in an isolated environment, where a ceiling
-pins a consumer's toolchain rather than this project's.
+upper bound}. Three of the DECLARED rows are deliberately otherwise.
+\code{ruff} is an EXACT pin (see below). \code{setuptools} and
+\code{setuptools-scm} carry a floor with no ceiling, because they are
+build-time tools resolved by the frontend in an isolated environment,
+where a ceiling pins a consumer's toolchain rather than this project's.
+The two \code{external} rows carry no specifier at all and read
+\code{system}, because they name system tools rather than Python
+packages.
+
+A package may be declared in more than one extra, and the role column
+names one. \code{pandas} is the case: its role is \code{optional}, for
+the extra of that name, and it is ALSO in \code{dev}, because a test
+imports it at module scope, so the documented
+\code{pip install -e ".[dev]"} fails at collection without it
+(\code{ITACA-015}). That second membership is load-bearing and is
+guarded by name in \code{tests/test\_packaging\_metadata.py}, since the
+table cannot express it.
 
 CI runs the full test suite against the LATEST compatible versions on
-every supported interpreter, and against the declared minimum of the
-runtime dependencies \code{numpy} and \code{pandas}. It does NOT
-exercise the floor of every row of the table; the development and
-build-time floors are declared and not minimum-tested. That gap is
-stated here rather than left to be inferred from the workflow, and it
-is recorded as a known limitation rather than as a promise.
+the lowest and highest supported interpreters, and against the declared
+minimum SERIES of the runtime dependencies \code{numpy} and
+\code{pandas} on the lowest. Three statements of what it does NOT do,
+made here because this paragraph exists to replace an inferred promise
+with a stated one, and an earlier draft of it overstated all three.
+Interpreters between the ends of the supported range are not exercised:
+\code{3.12} is supported and has no leg. The floor of every other row
+is declared and not minimum-tested, which covers every development and
+build-time dependency. And the minimum leg pins a series
+(\code{1.26.*}, \code{2.1.*}) rather than the exact declared floor.
+These are known limitations, not promises.
 
 The table is CHECKED against \code{pyproject.toml} rather than
 generated from it, in both directions, by
@@ -184,7 +201,10 @@ other, and to the standard-library modules the library imports, by
 \begin{table}[H]
 \centering
 \caption{Dependency version policy for \itc{}. Bounds are PEP 440
-specifiers, and every row is checked against \code{pyproject.toml} by
+specifiers for every row \code{pyproject.toml} declares; an
+\emph{external} row names a system tool rather than a Python package
+and carries \code{system}. Every declared row is checked against
+\code{pyproject.toml} by
 \code{tests/test\_packaging\_metadata.py}. The role says where that file
 declares the dependency: \emph{required} in \code{dependencies},
 \emph{optional} in an extra, \emph{dev} in the \code{dev} extra,
@@ -214,6 +234,7 @@ package this project intends to declare and has not, and
 \code{build}          & dev       & Release-integrity tests build artifacts  & \code{>=1.0,<2.0}\\
 \code{matplotlib}     & planned   & Default plotting backend                 & \code{>=3.8,<4.0}\\
 \code{plotly}         & planned   & Interactive plotting backend             & \code{>=5.20,<6.0}\\
+\code{packaging}      & dev       & Version and specifier comparison in tests & \code{>=23.0,<26.0}\\
 \code{smt}            & planned   & Surrogate modeling                       & \code{>=2.5,<3.0}\\
 \code{tectonic}       & external  & LaTeX-backed PDF reports (preferred)     & system\\
 \code{pdflatex}       & external  & LaTeX-backed PDF reports (fallback)      & system\\
@@ -222,13 +243,23 @@ package this project intends to declare and has not, and
 \end{table}
 
 The \code{ruff} pin is exact rather than a range, and that is
-deliberate. \code{ruff} is declared twice, here and as a
-\code{pre-commit} hook revision that builds its own isolated
-environment, so a range would let CI and the local hook resolve
-different versions and run different rule sets. REQ-96 requires the two
-to MIRROR each other and does not itself mandate an exact pin; the pin
-is the means by which that mirror is kept, and
+deliberate. Its authority is DD-29: \code{ruff} is not a library
+\itc{} calls but a tool whose OUTPUT is a gate, and it is declared
+twice, here and as a \code{pre-commit} hook revision that builds its
+own isolated environment, so a range would let CI and the local hook
+resolve different versions and run different rule sets. REQ-96 requires
+the two to MIRROR each other and does not itself mandate an exact pin;
+the pin is the means by which that mirror is kept, and
 \code{tests/test\_tooling\_config.py} is what enforces it.
+
+This paragraph is what DD-29 was waiting for. That decision recorded
+itself as \emph{open, deferred to the author}, because REQ-83 then said
+\emph{ranges} with an upper bound and an exact pin is neither, so by the
+authority chain the SRS contradicted the pin. The wording above admits
+an exact specifier for a tool of this kind, which is the amendment DD-29
+named as one of its two exits. Whether that CLOSES the deferral is the
+author's call and is not asserted here.
+
 \code{scipy} and \code{uncertainties} are
 development test oracles (DD-26, DD-25) and are barred from library
 code by the import policy of REQ-82; their presence in this table is

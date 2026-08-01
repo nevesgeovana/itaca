@@ -20,12 +20,12 @@ expression is accepted, because within a single expression every
 occurrence of a variable is the same quantity and the correlation is
 carried exactly.
 
-"Exactly" there means to the first order the GUM linearization already
-works to, which is the accuracy REQ-41 promises everywhere; it is not a
-claim that the propagated uncertainty of a nonlinear expression is
-exact in the ordinary sense. This correction is cubic in ``CL``, so its
-uncertainty is a first-order result, as it would be in any LPU
-treatment.
+"Exactly" there means to the first order that the law of propagation of
+uncertainty (LPU, GUM clause 5) already works to, which is the accuracy
+REQ-41 promises everywhere; it is not a claim that the propagated
+uncertainty of a nonlinear expression is exact in the ordinary sense.
+This correction is cubic in ``CL``, so its uncertainty is a first-order
+result, as it would be under any LPU treatment.
 
 All data is synthetic (textbook curves), see examples/README.md for the
 provenance statement.
@@ -70,8 +70,8 @@ q_inf = "0.5 * rho * V**2"
 # carries no lineage between calls (REQ-41). Written as ONE expression
 # every occurrence of CL is the same quantity, so the correlation is
 # carried rather than dropped, which is why the engine accepts this form
-# and refuses the other. The result is still a first-order LPU value:
-# the expression is cubic in CL.
+# and refuses the other. The result is still a first-order value under
+# the law of propagation of uncertainty: the expression is cubic in CL.
 blockage = "1 + 0.005 * CL**2"
 CL_corr  = "CL * (1 + 0.005 * CL**2)"
 """

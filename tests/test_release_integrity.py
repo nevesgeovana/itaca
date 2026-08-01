@@ -670,18 +670,38 @@ class TestBuiltArtifactIdentity:
                 f"the wheel is named {wheel.name}, which is not after the "
                 f"last release tag v{tag}."
             )
-            advanced = [
-                index
-                for index, (left, right) in enumerate(
-                    zip(built.release, released.release, strict=False)
-                )
-                if left != right
-            ]
-            assert len(advanced) == 1, (
+            # A development build names the release being worked TOWARD,
+            # so exactly one component of the released version increases
+            # and every component after it resets to zero. That is true
+            # of a minor bump (0.2.1 -> 0.3.0) and of a major one
+            # (0.9.3 -> 1.0.0) alike, which "differs in exactly one
+            # index" is NOT: 0.2.1 -> 0.3.0 differs in two, and this
+            # assertion would have false-reddened on the first build
+            # after the v0.2.1 that CLAUDE.md contemplates.
+            width = max(len(built.release), len(released.release))
+            after = built.release + (0,) * (width - len(built.release))
+            before = released.release + (0,) * (width - len(released.release))
+            bumped = next(
+                (
+                    index
+                    for index, (a, b) in enumerate(zip(after, before, strict=True))
+                    if a != b
+                ),
+                None,
+            )
+            assert bumped is not None, (
                 f"the wheel is named {wheel.name} and the last tag is v{tag}; "
-                f"a development build advances exactly one component of the "
-                f"released version, and this differs in {len(advanced)}. A "
-                f"setuptools_scm version_scheme change is the usual cause."
+                f"a development build must name a LATER release than the tag "
+                f"it descends from."
+            )
+            assert after[bumped] == before[bumped] + 1 and set(after[bumped + 1 :]) <= {
+                0
+            }, (
+                f"the wheel is named {wheel.name} and the last tag is v{tag}. "
+                f"A development build names the next release, so exactly one "
+                f"component of {before} increases by one and the components "
+                f"after it are zero; this gives {after}. A setuptools_scm "
+                f"version_scheme change is the usual cause."
             )
 
         # ITACA-004: the filename, the metadata and the code agree.

@@ -1991,25 +1991,10 @@ special case has nothing left to do.
 **Date:** 2026-08-01
 **Status:** accepted
 **Requirements:** REQ-92
-**Supersedes:** DD-38 in part, in TWO sentences rather than one.
-
-The first is "read back at run time from the installed distribution
-metadata", which this entry replaces with the resolution order below.
-
-The second is DD-38's accepted cost, "an editable install freezes the
-version at install time, so `itaca.__version__` goes stale in a working
-tree until the next reinstall". That sentence is now mechanically wrong
-and it is the one a reader would act on. The primary source is
-`itaca/core/_version.py`, which every BUILD of the tree rewrites,
-including a `python -m build` that the test suite performs, so an
-ordinary `pytest` run can change what `itaca.__version__` reports in
-that checkout and no reinstall is involved. A reader following DD-38
-would look for a reinstall that never happened. Naming it here is the
-only available repair, since DD entries are frozen and append-only.
-
-Everything else in DD-38 stands: the version is still derived from the
-repository by `setuptools-scm` at build time and is still never a
-literal in a file.
+**Supersedes:** DD-38 in part, the single sentence "read back at run time
+from the installed distribution metadata". Everything else in DD-38
+stands: the version is still derived from the repository by
+`setuptools-scm` at build time and is still never a literal in a file.
 
 ### The problem
 
@@ -2077,36 +2062,12 @@ implementation of the version, which is `ITACA-004` itself.
 
 ### What this does NOT fix, named rather than smoothed over
 
-**Staleness.** In an editable checkout the version file is as old as the
-last BUILD of that checkout, so `Provenance.itaca_version` can still
+Staleness. In an editable checkout the version file is as old as the
+last build of that checkout, so `Provenance.itaca_version` can still
 name an earlier tree. What changed is that it is now stale but VALID,
 and deterministic: a true statement about an earlier tree rather than a
 different statement depending on the caller's directory, or none at all.
 Closing the staleness itself requires one of the rejected options above.
-
-**A tree that has never been built is NOT covered, and an earlier draft
-of this entry claimed it was.** The version file is gitignored, so a
-fresh clone, a detached git worktree, or a CI leg before
-`pip install -e .` does not have one, and resolution falls through to
-the metadata path with the `sys.path` scan intact. Measured: the same
-planted `itaca.egg-info` that the reordering defeats on a built tree
-still wins on an unbuilt one, reporting `9.9.9.dev99`.
-
-It is not closed here because the obvious closure is wrong, and that is
-worth recording so the next session does not reach for it. Refusing when
-the found distribution's location does not match the imported package
-would refuse the ordinary development case: an editable install
-legitimately keeps its `dist-info` in site-packages while its code sits
-in the source tree, so those locations differ by design. Nothing cheaper
-distinguishes "the metadata of this tree" from "the metadata of some
-other install that happens to be on the path".
-
-The residual is pinned rather than described.
-`tests/core/test_version_resolution.py` asserts BOTH meanings against
-the tree under test, branching on whether the version file is present,
-so neither branch is assumed. The day the fallback stops being
-cwd-dependent, the residual test fails and says to delete itself and
-this paragraph together.
 
 ### Consequences
 
@@ -2118,3 +2079,93 @@ then rewrote that metadata so the retry passed on an identical tree
 repository, which is what the artifact is a claim about. It checks the
 commit distance rather than the whole scheme, deliberately, so that it
 does not become the second implementation this entry just rejected.
+
+---
+
+## DD-49: The version file is read first, and a tree that was never built is not covered
+
+**Date:** 2026-08-01
+**Status:** accepted
+**Requirements:** REQ-92
+**Supersedes:** DD-48 in part, in two places, and DD-38 in one further
+place that DD-48 should have named and did not.
+
+This entry exists because DD-48 was CORRECTED IN PLACE after the commit
+that published it, which this file forbids: an entry is frozen from
+publication and the only instrument after that is a superseding entry.
+The correction was reverted and is recorded here instead. Two review
+lenses found the in-place edit independently, and the rule they cited
+anticipates the excuse, since it says an in-place edit is a defect
+"regardless of how small it looks" (`ITACA-017`, DD-30). The same
+mistake, one file over, one lane later.
+
+### What DD-48 got wrong, first: the scope of its own supersession
+
+DD-48 says it supersedes "the single sentence" of DD-38 about reading
+the version back from the installed distribution metadata. It supersedes
+a second sentence too, and that one is the sentence a reader would act
+on. DD-38's accepted cost reads:
+
+> An editable install freezes the version at install time, so
+> `itaca.__version__` goes stale in a working tree until the next
+> reinstall.
+
+That mechanism is now wrong. The primary source is
+`itaca/core/_version.py`, which every BUILD of the tree rewrites,
+including the `python -m build` that `tests/test_release_integrity.py`
+performs, so an ordinary `pytest` run can change what
+`itaca.__version__` reports in that checkout and no reinstall is
+involved. A reader following DD-38 would look for a reinstall that never
+happened.
+
+### What DD-48 got wrong, second: it claimed more than the change delivers
+
+DD-48's residual section names staleness and stops there, which reads as
+though the working directory can no longer decide the version. It can,
+on a tree that has never been BUILT.
+
+The version file is gitignored, so a fresh clone, a detached git
+worktree, or a CI leg before `pip install -e .` does not have one, and
+resolution falls through to the metadata path with the `sys.path` scan
+intact. Measured: the same planted `itaca.egg-info` that the reordering
+defeats on a built tree still wins on an unbuilt one, reporting
+`9.9.9.dev99`.
+
+It is not closed, and the obvious closure is recorded as REJECTED so the
+next session does not reach for it. Refusing when the found
+distribution's location does not match the imported package would refuse
+the ordinary development case: an editable install legitimately keeps
+its `dist-info` in site-packages while its code sits in the source tree,
+so those locations differ by design. Nothing cheaper distinguishes "the
+metadata of this tree" from "the metadata of some other install on the
+path".
+
+### What this adds beyond correcting DD-48
+
+**A corrupt version file degrades rather than killing the import.** The
+file is generated, so it can exist and be unusable: an interrupted
+write, a truncated one, or a template using syntax the running
+interpreter rejects. Because it is read FIRST and at `import itaca`
+time, a narrow `except ImportError` let a `SyntaxError` out of the
+import statement itself. Measured, with it truncated to
+`__version__ = (`:
+
+    python -c "import itaca"  ->  SyntaxError: '(' was never closed
+
+Not the three-part error the module exists to give, and the metadata
+path that would have answered was never reached. Every failure of that
+read is now caught and degrades to the metadata, and the degradation
+WARNS rather than passing silently, because a silently unreadable
+primary source is the "not even wrong" case this decision's own
+reasoning refuses.
+
+### How both residuals are pinned rather than described
+
+`tests/core/test_version_resolution.py` asserts both meanings against
+the tree under test, branching on whether the version file is present,
+so neither is assumed. The unbuilt-tree test says, in its own failure
+message, to delete itself and this section together on the day it starts
+failing. A unit test drives the resolution ORDER directly, with both
+sources answering different values, so the order is proven without
+needing a built tree: on an unbuilt tree the branch tests skip, and
+reverting the order was measured to ship green there without it.

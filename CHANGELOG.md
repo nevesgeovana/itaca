@@ -254,21 +254,20 @@ names `release.yml` with environment `pypi`. A publisher naming
   cannot see this because typeshed declares `version() -> str`. The
   generated `itaca/core/_version.py` is now read first, which is found
   by import rather than by a path scan, and a resolution that yields
-  nothing raises `VersionResolutionError` (DD-48, supersedes two
-  sentences of DD-38). A corrupt or unparsable version file degrades to
-  the metadata rather than making `import itaca` fail.
+  nothing raises `VersionResolutionError` (DD-48 and DD-49, which
+  together supersede two sentences of DD-38). A corrupt or unparsable
+  version file degrades to the metadata with a `RuntimeWarning` rather
+  than making `import itaca` fail.
 
-  **Two limits, stated because the first version of this entry
-  overstated the fix.** A tree that has never been BUILT has no version
-  file, so a fresh clone, a detached worktree or a CI leg before
-  `pip install -e .` still resolves through the path scan and can still
-  be shadowed; closing that would require refusing when the found
-  distribution's location differs from the imported package, which is
-  exactly what an editable install looks like, so it would refuse the
-  ordinary development case. And `Provenance.itaca_version` in an
-  editable checkout remains as old as the last build of that checkout.
-  Both are named in DD-48 and pinned by tests that branch on which case
-  applies rather than assuming one.
+  **Two cases this does not fix.** If your tree has never been built (a
+  fresh clone, a git worktree, or CI before its install step) there is
+  no generated version file, so the version still comes from
+  `importlib.metadata` and a stray `itaca.egg-info/` on `sys.path` can
+  still shadow it. **Run `pip install -e .` before relying on
+  `itaca.__version__` or on `Provenance.itaca_version`.** Second, in an
+  editable checkout the version is as old as the last build of that
+  checkout, so reinstall after moving between branches if the recorded
+  version matters. DD-49 records why neither is closed.
 
 * **A CSV written by `to_csv` could not be read back by `itc.load`.**
   The loader took the first non-empty line as the header, so the

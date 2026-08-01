@@ -215,11 +215,14 @@ class Pin:
 # differ and span several kit versions, which is the manifest being per
 # file rather than a lag; see the module docstring.
 #
-# AS OF 2026-08-01 this is IDENTICAL to the manifest of record: all 21
-# pins equal the canonical table, hash and version, in both directions.
-# It said "with two DELIBERATE deviations marked in place below" and
-# that was true until this lane closed them, so it is corrected rather
-# than left as a warning about deviations that no longer exist.
+# It said "with two DELIBERATE deviations marked in place below", which
+# was true until lane ITA-4 closed them, so the warning is corrected
+# rather than left describing deviations that no longer exist. Measured
+# on 2026-08-01 by a throwaway comparison against the kit README's
+# table: all 21 pins equal it, hash and version, in both directions.
+# That measurement is NOT repeatable from this repository and nothing
+# maintains it, which is exactly the gap OQ-53 raises; read it as a
+# dated observation and not as a currency guarantee.
 #
 # The rule it was protecting still stands and is the reason this comment
 # is not simply deleted: a deviation IS legitimate, for a pin naming an

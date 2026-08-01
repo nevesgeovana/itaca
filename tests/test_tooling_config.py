@@ -488,23 +488,55 @@ def test_the_mypy_missing_import_exemption_stays_scoped_to_generated_modules() -
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     mypy = config["tool"]["mypy"]
 
-    assert "ignore_missing_imports" not in mypy, (
-        "pyproject.toml sets ignore_missing_imports at [tool.mypy], which "
-        "exempts EVERY unresolved import in the package from mypy --strict "
-        "(REQ-78). Scope it to the module that needs it instead."
+    # The gate itself, first. Pinning the exemption while `strict` or
+    # `files` can move is guarding the lock and not the door.
+    assert mypy.get("strict") is True, (
+        "pyproject.toml no longer sets strict = true under [tool.mypy]; "
+        "REQ-78 states mypy --strict on the public API."
     )
-    exempted = {
-        module
-        for override in mypy.get("overrides", [])
-        if override.get("ignore_missing_imports")
-        for module in override["module"]
-    }
-    assert exempted == {"pandas", "pandas.*", "itaca.core._version"}, (
-        f"the mypy missing-import exemption covers {sorted(exempted)}. It is "
+    assert mypy.get("files") == ["itaca"], (
+        f"[tool.mypy] files is {mypy.get('files')!r}, not ['itaca']; "
+        f"narrowing it removes packages from the gate without removing the "
+        f"gate."
+    )
+
+    # Every knob that can suppress an error, not just the one this
+    # repository happens to use. An override reaching the same weakening
+    # by `follow_imports = "skip"` or `ignore_errors` over `itaca.*`
+    # would leave the exemption set below untouched while mypy stopped
+    # seeing most of the package.
+    suppressors = ("ignore_missing_imports", "ignore_errors", "follow_imports")
+    for knob in suppressors:
+        assert knob not in mypy, (
+            f"pyproject.toml sets {knob} at [tool.mypy], which applies it to "
+            f"EVERY module in the package and turns the REQ-78 gate off "
+            f"wholesale. Scope it to the module that needs it instead."
+        )
+    assert "disable_error_code" not in mypy, (
+        "pyproject.toml disables error codes at [tool.mypy], repository-wide."
+    )
+
+    suppressing: set[tuple[str, str]] = set()
+    for override in mypy.get("overrides", []):
+        used = tuple(knob for knob in suppressors if override.get(knob))
+        if not used and not override.get("disable_error_code"):
+            continue
+        for module in override["module"]:
+            for knob in used:
+                suppressing.add((module, knob))
+            if override.get("disable_error_code"):
+                suppressing.add((module, "disable_error_code"))
+
+    assert suppressing == {
+        ("pandas", "ignore_missing_imports"),
+        ("pandas.*", "ignore_missing_imports"),
+        ("itaca.core._version", "ignore_missing_imports"),
+    }, (
+        f"the mypy error suppression covers {sorted(suppressing)}. It is "
         f"allowed for the optional pandas bridge (REQ-84) and for the "
-        f"generated, gitignored itaca/core/_version.py, and for nothing else; "
-        f"a wildcard over itaca.* would turn the strict gate off for the "
-        f"package it exists to check."
+        f"generated, gitignored itaca/core/_version.py, by missing-import "
+        f"only, and for nothing else. A wildcard over itaca.* by any knob "
+        f"would turn the strict gate off for the package it exists to check."
     )
 
 

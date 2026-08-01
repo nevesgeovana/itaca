@@ -13,12 +13,20 @@
 0.2.10 & 2026-08-01 & Geovana Neves &
 REQ-83's dependency table is checked against \code{pyproject.toml}
 instead of maintained beside it. A PATCH revision adding no requirement
-and withdrawing none, correcting REQ-83. The table had drifted in both
+and withdrawing none, correcting REQ-83 and clarifying REQ-84. Design
+decisions DD-48 and DD-49 land in the same window, on how
+\code{itaca.\_\_version\_\_} is resolved; both modify no requirement.
+REQ-84 gains the distinction between \emph{optional} in the usage
+sense, a dependency the library works without, and the
+\code{optional} ROLE of the table, which means declared in an extra of
+\code{pyproject.toml}; of the five packages REQ-84 names, only
+\code{pandas} carries that role today. The table had drifted in both
 directions at once: it omitted six declared dependencies
 (\code{build}, \code{pyyaml}, \code{scipy}, \code{setuptools},
 \code{setuptools-scm}, \code{uncertainties}), stated a range for
 \code{ruff} where \code{pyproject.toml} carries an exact pin, and
-carried five rows for packages declared in no extra at all. That last group is why the roles are now split: a \code{planned}
+carried five rows for packages declared in no extra at all. That last
+group is why the roles are now split: a \code{planned}
 or \code{external} row is policy for something not declared yet, and it
 may not name something the file does declare, so a row cannot stay in
 an uncheckable state once the package becomes real. The table is

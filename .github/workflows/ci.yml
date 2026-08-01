@@ -28,7 +28,8 @@
 # What each leg now does that it did not before: it builds the wheel and
 # smoke-tests it in a clean virtualenv with the source tree absent. That
 # is more work per leg and it is the point. Lint and types also move from
-# a single 3.12 job to every leg; ruff is pinned exactly (REQ-96) so its
+# a single 3.12 job to every leg; ruff is pinned exactly (DD-29, which
+# is what the pin rests on; REQ-96 is the mirror the pin serves) so its
 # verdict cannot differ between them.
 name: CI
 

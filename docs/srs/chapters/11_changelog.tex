@@ -15,13 +15,13 @@ it adds or modifies.
 \section*{Document 0.2.10, 2026-08-01, The Dependency Table Is Checked, Not Maintained}
 
 A PATCH revision adding no requirement and withdrawing none, correcting
-REQ-83 and clarifying REQ-84. Design decision DD-48 lands in the same
-window and is recorded in \code{docs/DECISIONS.md}; it changes how
-\code{itaca.\_\_version\_\_} is resolved and supersedes two sentences of
-DD-38, and it modifies no requirement, which is why it appears here as a
-citation rather than as its own paragraph. The table REQ-83 carries is
-normative, it was hand-maintained beside \code{pyproject.toml}, and it
-had drifted in both directions at once.
+REQ-83 and clarifying REQ-84. Design decisions DD-48 and DD-49 land in
+the same window and are recorded in \code{docs/DECISIONS.md}; together
+they change how \code{itaca.\_\_version\_\_} is resolved and supersede
+two sentences of DD-38. Neither modifies a requirement, which is why
+they appear here as a citation rather than as their own paragraphs. The
+table REQ-83 carries is normative, it was hand-maintained beside
+\code{pyproject.toml}, and it had drifted in both directions at once.
 
 \paragraph{Changed (REQ-83, the table is checked against the file).}
 Six declared dependencies were absent from it: \code{build},
@@ -51,6 +51,18 @@ would lose the role and used-for columns, and those columns are the
 reason a dependency policy belongs in a specification rather than in a
 lockfile. Checking gives the same protection from drift without
 discarding what the table is for.
+
+\paragraph{Clarified (REQ-84, optional in the usage sense, not the
+role sense).} REQ-84 calls matplotlib, plotly, SMT, pandas and the
+LaTeX toolchain "optional dependencies", and REQ-83's table now uses
+\emph{optional} as a ROLE meaning \emph{declared in an extra of}
+\code{pyproject.toml}. Of the five, only \code{pandas} carries that
+role; three are \code{planned} and the LaTeX toolchain is
+\code{external}. Without the distinction the two requirements appear to
+contradict each other about the same five packages. The
+\code{itaca[plot]} extra in REQ-84's example is likewise the shape the
+message will take and not an extra that exists, which is now said
+rather than left for a reader to discover by installing it.
 
 \paragraph{Changed (REQ-83, the pytest floor rises to 9.0.3).} A
 security floor rather than a preference. CVE-2025-71176 is pytest's

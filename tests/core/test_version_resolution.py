@@ -65,6 +65,14 @@ def _plant_egg_info(directory: Path, *, version: str | None) -> None:
 _ROOT = Path(__file__).resolve().parents[2]
 _VERSION_FILE = _ROOT / "itaca" / "core" / "_version.py"
 
+#: Captured ONCE, at import, and not re-read per test. The two pairs of
+#: complementary tests below branch on it, and
+#: `tests/test_release_integrity.py` runs `python -m build` in this tree,
+#: which CREATES the file mid-session. Re-reading per test would let a
+#: build land between the members of a pair and skip both, leaving that
+#: pair measuring nothing while the run stayed green.
+_WAS_BUILT = _VERSION_FILE.is_file()
+
 
 def _child(cwd: Path, env: EnvFactory, source: str) -> str:
     """Run `source` in a fresh interpreter under `cwd`, against THIS tree.
@@ -143,7 +151,7 @@ class TestTheWorkingDirectoryDoesNotDecideTheVersion:
         `0.3.0.dev24` without it, same interpreter, same commit. This is
         the face the reordering closes.
         """
-        if not _VERSION_FILE.is_file():
+        if not _WAS_BUILT:
             pytest.skip(
                 f"{_VERSION_FILE} does not exist, so this tree has never been "
                 f"built and the version-file path cannot be exercised; the "
@@ -179,7 +187,7 @@ class TestTheWorkingDirectoryDoesNotDecideTheVersion:
         failure is the signal to delete it and DD-48's residual
         paragraph together.
         """
-        if _VERSION_FILE.is_file():
+        if _WAS_BUILT:
             pytest.skip(
                 f"{_VERSION_FILE} exists, so this tree resolves through the "
                 f"version file and the residual is not reachable here; the "
@@ -220,6 +228,42 @@ class TestTheWorkingDirectoryDoesNotDecideTheVersion:
         )
 
 
+class TestTheResolutionOrderItself:
+    """The order IS the decision (DD-48, DD-49), so it is asserted directly.
+
+    Everything in the class above needs a particular SHAPE of tree: the
+    built-tree test skips without a version file and the residual test
+    skips with one. Measured consequence, and it is the reason this
+    class exists: reverting `_resolve` to metadata-first, which is the
+    whole of the fix, left the module at `8 passed, 2 skipped` on an
+    unbuilt tree. On a built tree it failed. So the fix was proven only
+    where someone had already run a build, and never on a fresh clone,
+    a reviewer worktree, or a CI leg before `pip install -e .`.
+
+    These tests need neither a build nor a plant. They drive the
+    resolver with both sources answering DIFFERENT values, which is the
+    one condition that can observe an order at all.
+    """
+
+    def test_the_version_file_wins_over_the_distribution_metadata(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Both sources answer, and the generated file is the one that counts."""
+        import importlib.metadata
+
+        written = types.ModuleType("itaca.core._version")
+        written.__version__ = "7.0.0"  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "itaca.core._version", written)
+        monkeypatch.setattr(importlib.metadata, "version", lambda _name: "9.9.9")
+
+        assert _resolve() == "7.0.0", (
+            "the distribution metadata answered where the generated version "
+            "file should have. That is the metadata-first order DD-48 "
+            "replaced, and it is what makes the resolved version depend on "
+            "the working directory."
+        )
+
+
 class TestAVersionIsNeverNull:
     """Face 3: a version that cannot be resolved is refused, not returned."""
 
@@ -248,7 +292,7 @@ class TestAVersionIsNeverNull:
         against a tree with no version file, where it failed on the
         child's exit status.
         """
-        if not _VERSION_FILE.is_file():
+        if not _WAS_BUILT:
             pytest.skip(
                 f"{_VERSION_FILE} does not exist, so a version-less plant "
                 f"silences both sources and the refusal is the right answer; "
@@ -270,7 +314,7 @@ class TestAVersionIsNeverNull:
         happen is the original defect, a null travelling into
         `Provenance.itaca_version` at a field typed `str`.
         """
-        if _VERSION_FILE.is_file():
+        if _WAS_BUILT:
             pytest.skip(
                 f"{_VERSION_FILE} exists, so the version file answers and both "
                 f"sources cannot be silenced from outside; the sibling test "
@@ -359,7 +403,13 @@ class TestAVersionIsNeverNull:
             broken, "__getattr__", lambda _name: _raise(), raising=False
         )
 
-        assert _resolve() == "4.5.6"
+        # And it SAYS so. Present-and-unusable is a different condition
+        # from absent, and degrading silently would hand the answer to
+        # the metadata path, which may describe a different tree, and
+        # stamp it into Provenance as a fact.
+        with pytest.warns(RuntimeWarning, match="could not be read"):
+            resolved = _resolve()
+        assert resolved == "4.5.6"
 
     def test_resolve_refuses_when_nothing_is_installed_at_all(
         self, monkeypatch: pytest.MonkeyPatch

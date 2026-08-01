@@ -124,12 +124,23 @@ def test_chk1_001_the_constant_set_is_one_fact_not_two() -> None:
     source = Path(parser.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
 
+    engine_module = "itaca.uncertainty.expression"
+    # Names bound to something the engine module supplies, by either
+    # import form. `import x.y as z` is accepted as well as
+    # `from x.y import z`, because rejecting it made this guard RED on a
+    # correct refactor and told the developer to do what they had done.
     imported_from_engine = {
         alias.asname or alias.name
         for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
-        and node.module == "itaca.uncertainty.expression"
+        if isinstance(node, ast.ImportFrom) and node.module == engine_module
         for alias in node.names
+    }
+    engine_aliases = {
+        alias.asname or alias.name.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+        if alias.name == engine_module
     }
 
     bindings = [
@@ -150,14 +161,43 @@ def test_chk1_001_the_constant_set_is_one_fact_not_two() -> None:
         f"{type(value).__name__} rather than to a call deriving it from the "
         f"expression engine (FND-015 class: a second copy of one fact)."
     )
-    sources = {argument.id for argument in value.args if isinstance(argument, ast.Name)}
-    assert sources and sources <= imported_from_engine, (
+
+    sources: set[str] = set()
+    for argument in value.args:
+        if isinstance(argument, ast.Name):
+            sources.add(argument.id)
+        elif isinstance(argument, ast.Attribute) and isinstance(
+            argument.value, ast.Name
+        ):
+            # `_engine._CONSTANTS`, where `_engine` is the module.
+            sources.add(argument.value.id)
+    assert sources and sources <= (imported_from_engine | engine_aliases), (
         f"{parser.__file__} derives _EXPRESSION_CONSTANTS from {sorted(sources)}, "
-        f"which is not imported from itaca.uncertainty.expression (imported: "
-        f"{sorted(imported_from_engine)}). The constants must come from the "
-        f"engine that supplies them, not be restated here: the two agree "
-        f"today and that is the whole problem, since a constant added to the "
-        f"engine would silently stop being subtracted."
+        f"which is not bound to itaca.uncertainty.expression (from-imports: "
+        f"{sorted(imported_from_engine)}; module aliases: "
+        f"{sorted(engine_aliases)}). The constants must come from the engine "
+        f"that supplies them, not be restated here: the two agree today and "
+        f"that is the whole problem, since a constant added to the engine "
+        f"would silently stop being subtracted."
+    )
+
+    # An imported name that is REBOUND before use defeats everything
+    # above: the import is present, the call derives from that name, and
+    # the name no longer holds what the engine supplied. Measured as a
+    # working two-line refactor that restored the duplication with this
+    # guard green, so it is closed rather than trusted.
+    rebound = {
+        target.id
+        for node in tree.body
+        if isinstance(node, ast.Assign | ast.AnnAssign)
+        for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        if isinstance(target, ast.Name) and target.id in sources
+    }
+    assert not rebound, (
+        f"{parser.__file__} rebinds {sorted(rebound)} at module level after "
+        f"importing it from the expression engine, so _EXPRESSION_CONSTANTS "
+        f"is derived from a local value wearing an imported name. That "
+        f"restores the duplication this guard exists to refuse."
     )
 
 

@@ -1591,6 +1591,8 @@ represent the induced covariance soundly; the product owner on whether
 
 ## OQ-52: Should an unset `ITACA_PLAN_VALIDATOR` still skip validation silently?
 
+**Status:** open (product owner)
+
 **Raised:** 2026-08-01, lane ITA-4, the kit floor.
 
 `CLAUDE.md` gives three different meanings of "unset" across one family
@@ -1637,6 +1639,8 @@ states, and the locator table is her seat.
 ---
 
 ## OQ-53: Should the vendored kit be checked for CURRENCY, and by what locator?
+
+**Status:** open (product owner)
 
 **Raised:** 2026-08-01, lane ITA-4, the kit floor.
 

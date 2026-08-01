@@ -607,6 +607,50 @@ def test_every_document_dating_the_srs_revision_dates_it_the_same_day() -> None:
         f"README and CLAUDE.md must agree with them."
     )
 
+    # The date and the version are ONE record, and asserting each set is
+    # self-consistent does not say they belong together. A bump that
+    # moved all seven version sites and no date site would satisfy both
+    # guards while dating the new revision to the old one's day, which is
+    # the same partial edit that produced this guard, with the halves
+    # swapped. So the two records that carry BOTH are read as pairs.
+    changelog = (_ROOT / "docs/srs/chapters/11_changelog.tex").read_text(
+        encoding="utf-8"
+    )
+    history = (_ROOT / "docs/srs/frontmatter/revision_history.tex").read_text(
+        encoding="utf-8"
+    )
+    paired = re.search(
+        r"\\section\*\{Document (\d+\.\d+\.\d+), (\d{4}-\d\d-\d\d),", changelog
+    )
+    row = re.search(
+        r"\\midrule\s*\\midrule\s*(\d+\.\d+\.\d+) & (\d{4}-\d\d-\d\d) &", history
+    )
+    assert paired is not None and row is not None
+    assert paired.groups() == row.groups(), (
+        f"Chapter 11's newest section is {paired.groups()} and the newest "
+        f"revision-history row is {row.groups()}. They are two records of one "
+        f"revision and must name the same version AND the same date."
+    )
+    current_date = next(iter(found))
+    assert paired.group(2) == current_date, (
+        f"the newest Chapter 11 section is dated {paired.group(2)} and the "
+        f"live declarations say {current_date}."
+    )
+
+    # The "newest" cardinality above takes the FIRST match, which is only
+    # the current revision because Chapter 11 is written newest-first.
+    # Nothing said so, and a section appended at the bottom would make
+    # this guard compare against an old date and fail with a message
+    # about disagreement rather than about ordering.
+    dated = re.findall(
+        r"\\section\*\{Document \d+\.\d+\.\d+, (\d{4}-\d\d-\d\d),", changelog
+    )
+    assert dated == sorted(dated, reverse=True), (
+        f"Chapter 11's sections are no longer newest-first: {dated}. The date "
+        f"guard reads the first section as the current revision, so a section "
+        f"appended at the bottom silently changes what it checks."
+    )
+
 
 def test_every_document_naming_the_srs_version_names_the_same_one() -> None:
     """One SRS document version, stated in seven places, agreeing.
