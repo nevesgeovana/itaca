@@ -10,6 +10,14 @@ it. That is deliberate: it shows both halves of DD-17. In the default
 file order the workflow would fail, and ``auto_sort=True`` resolves the
 dependency order and reports the order it chose.
 
+The ``[corrections]`` section shows the second thing worth learning
+here. A correction chained onto a quantity it already depends on is a
+product of two correlated quantities, and ``compute`` carries no
+lineage between calls, so it refuses that composition rather than
+omitting a covariance term and reporting an uncertainty that is wrong in
+an unpredictable direction (REQ-41). The same correction written as one
+expression is exact by construction and is accepted.
+
 All data is synthetic (textbook curves), see examples/README.md for the
 provenance statement.
 """
@@ -46,8 +54,15 @@ CM    = "MY / (q_inf * S_ref * c_ref)"
 q_inf = "0.5 * rho * V**2"
 
 [corrections]
+# blockage is reported for the record. CL_corr does NOT multiply by it,
+# and the repetition below is deliberate: blockage and CL both descend
+# from the same measured channels, so `CL * blockage` is a product of
+# two correlated quantities across two separate calls, and compute
+# carries no lineage between calls (REQ-41). Written as ONE expression
+# the covariance is exact by construction, which is why the engine
+# accepts this form and refuses the other.
 blockage = "1 + 0.005 * CL**2"
-CL_corr  = "CL * blockage"
+CL_corr  = "CL * (1 + 0.005 * CL**2)"
 """
 
 

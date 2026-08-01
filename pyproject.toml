@@ -60,8 +60,19 @@ Issues = "https://github.com/nevesgeovana/itaca/issues"
 [project.optional-dependencies]
 pandas = ["pandas>=2.1,<3.0"]
 dev = [
-    "pytest>=8.0,<9.0",
-    "pytest-cov>=5.0,<6.0",
+    # The floor is 9.0.3 and not 8.x because of CVE-2025-71176, pytest's
+    # insecure temporary-directory handling on UNIX: /tmp/pytest-of-{user}
+    # is predictable, so a local attacker can pre-create it or symlink it
+    # before pytest does. The advisory's affected range is `< 9.0.3` and
+    # its patched range is `9.0.3` alone, with NO backport to the 8.x
+    # series, so the old `>=8.0,<9.0` did not merely exclude the fix: it
+    # pinned this project to a vulnerable pytest with no remedy inside
+    # its own range. Moderate, CVSS 6.8, and dev-only, which is why this
+    # is a floor rise and not an incident.
+    "pytest>=9.0.3,<10.0",
+    # Moved with pytest, not independently: pytest-cov 5.x predates
+    # pytest 9 and does not support it, so the two pins are one decision.
+    "pytest-cov>=7.0,<8.0",
     "hypothesis>=6.100,<7.0",
     # Exact pin, bumped deliberately: ruff is the one tool whose version
     # is declared twice, because ruff-pre-commit builds an isolated hook

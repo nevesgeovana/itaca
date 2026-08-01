@@ -46,6 +46,18 @@ reason a dependency policy belongs in a specification rather than in a
 lockfile. Checking gives the same protection from drift without
 discarding what the table is for.
 
+\paragraph{Changed (REQ-83, the pytest floor rises to 9.0.3).} A
+security floor rather than a preference. CVE-2025-71176 is pytest's
+insecure temporary-directory handling on UNIX, and its advisory gives
+the affected range as \code{< 9.0.3} and the patched range as
+\code{9.0.3} alone, with no backport to the 8.x series. The previous
+\code{>=8.0,<9.0} therefore did not merely exclude the fix; it pinned
+this project to a vulnerable pytest with no remedy inside its own
+range. \code{pytest-cov} rises to 7.0 in the same movement, because
+5.x predates pytest 9 and the two pins are one decision. Measured in a
+clean environment before the change shipped: the suite passes unchanged
+on pytest 9.1.1 with pytest-cov 7.1.0 and needs no source change.
+
 \paragraph{Changed (REQ-83, the setuptools floor rises to 77).} Not a
 tooling preference: the library's license metadata moved to a PEP 639
 SPDX expression, which setuptools understands from 77 onward. A floor

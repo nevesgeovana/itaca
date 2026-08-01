@@ -25,8 +25,12 @@ may not name something the file does declare, so a row cannot stay in
 an uncheckable state once the package becomes real. The table is
 checked rather than generated, because generating it would lose the
 role and used-for columns, which are why it belongs in a specification
-and not in a lockfile. The \code{setuptools} floor rises to 77 in the
-same revision, for PEP 639.\\[4pt]
+and not in a lockfile. Two floors rise in the same revision:
+\code{setuptools} to 77, for PEP 639 license metadata, and
+\code{pytest} to 9.0.3 with \code{pytest-cov} to 7.0, for
+CVE-2025-71176, whose advisory patches 9.0.3 alone and backports to no
+8.x release, so the old range held this project on a vulnerable pytest
+with no remedy inside it.\\[4pt]
 0.2.9 & 2026-07-31 & Geovana Neves &
 The \code{.itc} becomes an authenticated canonical payload. A MINOR
 revision adding no requirement and withdrawing none, widening REQ-103,

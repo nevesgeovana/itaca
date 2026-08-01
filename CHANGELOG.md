@@ -71,6 +71,21 @@ names `release.yml` with environment `pypi`. A publisher naming
   emit the legacy metadata again. Nothing changes for an installing
   consumer.
 
+* **The `dev` extra requires `pytest>=9.0.3` and `pytest-cov>=7.0`.**
+  CVE-2025-71176 is pytest's insecure temporary-directory handling on
+  UNIX: `/tmp/pytest-of-{user}` is predictable, so a local attacker can
+  pre-create it or symlink it ahead of pytest, for information
+  disclosure, altered permissions or denial of service. Verified against
+  the advisory rather than assumed: the affected range is `< 9.0.3` and
+  the patched range is `9.0.3` alone, with no backport to 8.x. So the
+  previous `>=8.0,<9.0` did not merely exclude the fix, it pinned this
+  project to a vulnerable pytest with no remedy inside its own range.
+  Moderate, CVSS 6.8, and a development dependency only, so no released
+  artifact is affected. `pytest-cov` moves with it because 5.x predates
+  pytest 9. Measured before shipping, in a clean environment: the suite
+  passes unchanged on pytest 9.1.1 with pytest-cov 7.1.0, needing no
+  source change. **Reinstall with `pip install -e ".[dev]"`.**
+
 * The REQ-83 dependency table in the SRS is now checked against
   `pyproject.toml` in both directions, by
   `tests/test_packaging_metadata.py`, rather than maintained beside it.
