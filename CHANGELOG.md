@@ -56,6 +56,28 @@ names `release.yml` with environment `pypi`. A publisher naming
 
 ### Changed
 
+* **License metadata is a PEP 639 SPDX expression.** `pyproject.toml`
+  declared the license in the legacy setuptools table form
+  (`license = { text = "MIT" }`), so a built artifact carried a
+  free-text `License: MIT` field and the deprecated
+  `License :: OSI Approved :: MIT License` classifier, and no
+  `License-Expression` at all. The license is unchanged and still MIT;
+  what changes is that it is now machine-readable, which is the reason
+  PEP 639 exists, since a downstream redistributor has to answer the
+  license question programmatically. `license-files` is declared so the
+  license TEXT ships and not only its name. **The build requirement for
+  `setuptools` rises from `>=68` to `>=77`**, which is where PEP 639
+  support begins; a lower floor would let a conforming build environment
+  emit the legacy metadata again. Nothing changes for an installing
+  consumer.
+
+* The REQ-83 dependency table in the SRS is now checked against
+  `pyproject.toml` in both directions, by
+  `tests/test_packaging_metadata.py`, rather than maintained beside it.
+  It had drifted both ways: six declared dependencies missing, a range
+  for `ruff` where the file carries the exact pin, and five rows for
+  packages declared in no extra at all. SRS document 0.2.10.
+
 * **BREAKING: the `.itc` format moves to schema `itaca-itc/3`, and
   archives written by an earlier version no longer open.** They are
   refused by name, with a message saying what the archive lacks and to

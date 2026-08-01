@@ -1,6 +1,6 @@
 # ITACA SRS: LaTeX sources
 
-Authoritative specification of ITACA, document version 0.2.9
+Authoritative specification of ITACA, document version 0.2.10
 (2026-07-31, the archive authenticates what it carries;
 baseline 0.1.0 was
 the first workspace-tracked version,

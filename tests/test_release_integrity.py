@@ -711,6 +711,52 @@ class TestBuiltArtifactIdentity:
                 name.endswith("itaca/py.typed") for name in archive.getnames()
             ), "itaca/py.typed missing from the sdist"
 
+    def test_fnd056_the_artifact_carries_a_pep_639_license_expression(
+        self, artifacts: tuple[Path, Path]
+    ) -> None:
+        """The license is machine-readable in the ARTIFACT, not only declared.
+
+        `FND-056`, measured before the fix: `pyproject.toml` used the
+        legacy `license = { text = "MIT" }` table, so the built
+        `PKG-INFO` carried a free-text `License: MIT` and the deprecated
+        `License :: OSI Approved :: MIT License` classifier, while
+        `License-Expression` was absent. The installed distribution
+        reported `License-Expression=None`.
+
+        This is asserted against the ARTIFACT and not against
+        `pyproject.toml`, for the same reason `ITACA-014` is: the source
+        declaration and the emitted metadata are two different facts,
+        and only the second reaches a redistributor.
+        """
+        wheel, _sdist = artifacts
+        archive = zipfile.ZipFile(wheel)
+        dist_info = next(
+            name.split("/")[0]
+            for name in archive.namelist()
+            if name.endswith(".dist-info/METADATA")
+        )
+        metadata = archive.read(f"{dist_info}/METADATA").decode("utf-8")
+
+        assert "License-Expression: MIT" in metadata, (
+            f"the wheel's METADATA carries no PEP 639 License-Expression. "
+            f"Header lines present: "
+            f"{[line for line in metadata.splitlines() if 'License' in line]}"
+        )
+        stale = [
+            line
+            for line in metadata.splitlines()
+            if line.startswith("Classifier: License ::")
+        ]
+        assert not stale, (
+            f"the wheel still declares the deprecated license classifier "
+            f"{stale}, which PEP 639 replaces with the expression above; two "
+            f"declarations of one fact can disagree (FND-056)."
+        )
+        assert f"{dist_info}/licenses/LICENSE" in archive.namelist(), (
+            "the wheel does not ship the license TEXT, so a consumer gets "
+            "the name of a license without its terms (PEP 639, FND-056)."
+        )
+
     def test_brf048_no_identifier_travels_inside_the_built_artifacts(
         self, artifacts: tuple[Path, Path]
     ) -> None:

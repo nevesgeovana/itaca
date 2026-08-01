@@ -12,6 +12,47 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.10, 2026-08-01, The Dependency Table Is Checked, Not Maintained}
+
+A PATCH revision adding no requirement and withdrawing none, correcting
+REQ-83. The table it carries is normative, it was hand-maintained beside
+\code{pyproject.toml}, and it had drifted in both directions at once.
+
+\paragraph{Changed (REQ-83, the table is checked against the file).}
+Six declared dependencies were absent from it: \code{build},
+\code{pyyaml}, \code{scipy}, \code{setuptools}, \code{setuptools-scm}
+and \code{uncertainties}. The \code{ruff} row stated the range
+\code{>=0.5,<1.0} where \code{pyproject.toml} carries the exact pin
+\code{==0.15.22}, so the normative document contradicted the reason
+REQ-96 requires that pin: \code{ruff} is declared twice, and a range
+lets CI and the local hook run different rule sets. And five rows named
+packages declared in no extra at all, so a reader could not tell a
+policy from a plan and those rows could not be checked against
+anything.
+
+\code{tests/test\_packaging\_metadata.py} now checks the table in both
+directions: every declared requirement has a row whose range is that
+requirement's specifier character for character, and every row claiming
+a declared role names something the file declares. The roles are split
+for the second direction to have meaning. A \code{planned} row is a
+package this project intends to declare and has not, an \code{external}
+row is not a Python package at all, and neither may name something
+\code{pyproject.toml} declares, so a row cannot go on sitting in an
+uncheckable role once the package becomes real.
+
+The table is CHECKED and not GENERATED, deliberately. Generating it
+would lose the role and used-for columns, and those columns are the
+reason a dependency policy belongs in a specification rather than in a
+lockfile. Checking gives the same protection from drift without
+discarding what the table is for.
+
+\paragraph{Changed (REQ-83, the setuptools floor rises to 77).} Not a
+tooling preference: the library's license metadata moved to a PEP 639
+SPDX expression, which setuptools understands from 77 onward. A floor
+of 68 would have let a conforming build environment install a
+setuptools that silently emitted the legacy free-text metadata, which
+is the defect that change removed.
+
 \section*{Document 0.2.9, 2026-07-31, The Archive Authenticates What It Carries}
 
 A MINOR revision adding no requirement and withdrawing none, widening

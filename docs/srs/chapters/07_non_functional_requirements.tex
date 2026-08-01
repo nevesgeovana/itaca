@@ -132,9 +132,27 @@ quietly stop covering a package the other still covers.
 \textbf{Pinned dependency version ranges.}\\
 \itc{} declares explicit version ranges for every dependency in
 \code{pyproject.toml}. Table~\ref{tab:dependency-versions} lists the
-minimum tested version, the upper bound, and whether the dependency is
-required, optional, or development-only. CI runs the full test suite
-against the minimum and the latest compatible versions.
+minimum tested version, the upper bound, and the role: where
+\code{pyproject.toml} declares the dependency, or that it does not
+declare it yet. CI runs the full test suite against the minimum and the
+latest compatible versions.
+
+The table is CHECKED against \code{pyproject.toml} rather than
+generated from it, in both directions, by
+\code{tests/test\_packaging\_metadata.py}. Generated would lose the
+\emph{role} and \emph{used for} columns, which are the reason this
+belongs in a specification and not in a lockfile; checked gives the
+same protection from drift. The check was written because the table had
+drifted in both directions at once: it omitted six declared
+dependencies, stated a range for \code{ruff} where the file carries the
+exact pin REQ-96 requires, and carried five rows for packages declared
+in no extra at all, so a reader could not tell a policy from a plan.
+
+That last case is why the roles are split. A \code{planned} row is a
+package this project intends to declare and has not; an
+\code{external} row is not a Python package at all. Neither may name
+something \code{pyproject.toml} declares, so a row cannot go on sitting
+in an uncheckable role once the package becomes real.
 
 The language baseline is normative in both directions: it may not fall
 below a standard-library module the implementation already depends on.
@@ -151,31 +169,52 @@ other, and to the standard-library modules the library imports, by
 
 \begin{table}[H]
 \centering
-\caption{Dependency version policy for \itc{}, as amended at the M1
-Phase B3b checkpoint. Bounds are expressed as PEP 440 specifiers.}
+\caption{Dependency version policy for \itc{}. Bounds are PEP 440
+specifiers, and every row is checked against \code{pyproject.toml} by
+\code{tests/test\_packaging\_metadata.py}. The role says where that file
+declares the dependency: \emph{required} in \code{dependencies},
+\emph{optional} in an extra, \emph{dev} in the \code{dev} extra,
+\emph{build} in \code{build-system.requires}, \emph{planned} for a
+package this project intends to declare and has not, and
+\emph{external} for what is not a Python package.}
 \label{tab:dependency-versions}
 \small
 \begin{tabularx}{\textwidth}{@{}llXl@{}}
 \toprule
 \textbf{Dependency} & \textbf{Role} & \textbf{Used for} & \textbf{Range}\\
 \midrule
-\code{numpy}        & required  & Core arrays, AST, propagation, ops          & \code{>=1.26,<3.0}\\
-\code{python}       & required  & Language baseline                            & \code{>=3.11,<3.14}\\
-\code{matplotlib}   & optional  & Default plotting backend                     & \code{>=3.8,<4.0}\\
-\code{plotly}       & optional  & Interactive plotting backend                 & \code{>=5.20,<6.0}\\
-\code{pandas}       & optional  & DataFrame bridge                             & \code{>=2.1,<3.0}\\
-\code{smt}          & optional  & Surrogate modeling                           & \code{>=2.5,<3.0}\\
-\code{tectonic}     & optional  & LaTeX-backed PDF reports (preferred)         & system\\
-\code{pdflatex}     & optional  & LaTeX-backed PDF reports (fallback)          & system\\
-\code{pytest}       & dev       & Test runner                                  & \code{>=8.0,<9.0}\\
-\code{pytest-cov}   & dev       & Coverage gate                                & \code{>=5.0,<6.0}\\
-\code{hypothesis}   & dev       & Property-based testing                       & \code{>=6.100,<7.0}\\
-\code{ruff}         & dev       & Linting and formatting                       & \code{>=0.5,<1.0}\\
-\code{mypy}         & dev       & Static type checking                         & \code{>=1.10,<2.0}\\
-\code{pre-commit}   & dev       & Local CI mirror                              & \code{>=3.7,<5.0}\\
+\code{numpy}          & required  & Core arrays, AST, propagation, ops       & \code{>=1.26,<3.0}\\
+\code{python}         & required  & Language baseline                        & \code{>=3.11,<3.14}\\
+\code{pandas}         & optional  & DataFrame bridge                         & \code{>=2.1,<3.0}\\
+\code{setuptools}     & build     & Build backend, PEP 639 metadata          & \code{>=77}\\
+\code{setuptools-scm} & build     & Version derived from the repository       & \code{>=8}\\
+\code{pytest}         & dev       & Test runner                              & \code{>=8.0,<9.0}\\
+\code{pytest-cov}     & dev       & Coverage gate                            & \code{>=5.0,<6.0}\\
+\code{hypothesis}     & dev       & Property-based testing                   & \code{>=6.100,<7.0}\\
+\code{ruff}           & dev       & Linting and formatting                   & \code{==0.15.22}\\
+\code{mypy}           & dev       & Static type checking                     & \code{>=1.10,<2.0}\\
+\code{pre-commit}     & dev       & Local CI mirror                          & \code{>=3.7,<5.0}\\
+\code{scipy}          & dev       & Geometry oracle only (DD-26)             & \code{>=1.11,<2.0}\\
+\code{uncertainties}  & dev       & GUM oracle only (DD-25)                  & \code{>=3.2,<4.0}\\
+\code{pyyaml}         & dev       & Release-gate checker reads workflow YAML & \code{>=6.0,<7.0}\\
+\code{build}          & dev       & Release-integrity tests build artifacts  & \code{>=1.0,<2.0}\\
+\code{matplotlib}     & planned   & Default plotting backend                 & \code{>=3.8,<4.0}\\
+\code{plotly}         & planned   & Interactive plotting backend             & \code{>=5.20,<6.0}\\
+\code{smt}            & planned   & Surrogate modeling                       & \code{>=2.5,<3.0}\\
+\code{tectonic}       & external  & LaTeX-backed PDF reports (preferred)     & system\\
+\code{pdflatex}       & external  & LaTeX-backed PDF reports (fallback)      & system\\
 \bottomrule
 \end{tabularx}
 \end{table}
+
+The \code{ruff} pin is exact rather than a range, and that is
+deliberate: \code{ruff} is declared twice, here and as a
+\code{pre-commit} hook revision that builds its own isolated
+environment, so a range would let CI and the local hook run different
+rule sets (REQ-96). \code{scipy} and \code{uncertainties} are
+development test oracles (DD-26, DD-25) and are barred from library
+code by the import policy of REQ-82; their presence in this table is
+not a relaxation of that rule.
 
 \begin{reqbox}{REQ-84}{\stable}
 \textbf{Optional dependency management.}\\

@@ -27,8 +27,15 @@ def test_version_is_semver() -> None:
     assert re.fullmatch(r"\d+\.\d+\.\d+(\.dev\d+)?", itc.__version__)
 
 
-def test_itaca_004_the_version_is_the_installed_distribution_version() -> None:
-    """`ITACA-004`: the code's version and the artifact's must be one fact.
+def _is_a_source_checkout() -> bool:
+    """Whether `itaca` is imported from the repository rather than an install."""
+    from pathlib import Path
+
+    return (Path(itc.__file__).resolve().parents[1] / "pyproject.toml").is_file()
+
+
+def test_itaca_004_the_version_is_the_one_the_build_wrote() -> None:
+    """`ITACA-004`: the code's version is what a BUILD recorded, not a literal.
 
     This asserts the IDENTITY, not a literal. A literal is what the
     finding was: `version.py` pinned `0.1.0` while the tree carried the
@@ -36,6 +43,22 @@ def test_itaca_004_the_version_is_the_installed_distribution_version() -> None:
     `itaca-0.1.0.tar.gz` and Provenance recorded a false statement about
     which implementation produced a result. Pinning another literal here
     would reintroduce exactly the hand-maintained fact that went stale.
+
+    It used to say `itc.__version__ == importlib.metadata.version(...)`,
+    and that was FND-046's fourth face, found when the resolver stopped
+    reading the metadata first (DD-48). Both sides are written by a
+    build, but by DIFFERENT builds: the version file by every build of
+    this tree, the distribution metadata only by `pip install -e .`. In
+    an editable checkout they drift apart by construction, so that
+    equality made the commit gate go red on a correct tree, which is the
+    same tax FND-046 charged the push gate one tier up.
+
+    So the equality is asserted against whichever generated source the
+    resolver actually consults, and the cross-source agreement is
+    asserted only where one build wrote both, which is any install that
+    is not a source checkout. Where it is relaxed, it is relaxed because
+    DD-48 names that drift as the residual it did not close, not because
+    the assertion was inconvenient.
 
     Whether the derived version correctly identifies the COMMIT is a
     different question, and it is answered by the vendored
@@ -46,7 +69,26 @@ def test_itaca_004_the_version_is_the_installed_distribution_version() -> None:
     """
     from importlib.metadata import version
 
-    assert itc.__version__ == version("itaca")
+    try:
+        from itaca.core._version import __version__ as written
+    except ImportError:
+        written = None
+
+    if written is not None:
+        assert itc.__version__ == written, (
+            f"itc.__version__ is {itc.__version__} and the generated version "
+            f"file says {written}; the resolver reads that file first (DD-48), "
+            f"so these cannot differ unless something else is answering."
+        )
+    else:
+        assert itc.__version__ == version("itaca")
+
+    if not _is_a_source_checkout():
+        assert written is None or written == version("itaca"), (
+            f"this is an installed distribution, so one build wrote both the "
+            f"version file ({written}) and the distribution metadata "
+            f"({version('itaca')}), and they disagree."
+        )
 
 
 def test_itaca_004_the_version_is_not_a_literal_in_the_source() -> None:

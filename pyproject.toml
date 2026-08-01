@@ -1,5 +1,10 @@
 [build-system]
-requires = ["setuptools>=68", "setuptools-scm>=8"]
+# The setuptools floor is 77 and not 68 because of the license
+# declaration below: PEP 639's `license` SPDX expression and
+# `license-files` are understood from 77 onward, and a lower floor would
+# let a conforming build environment install a setuptools that silently
+# falls back to the legacy free-text metadata (FND-056).
+requires = ["setuptools>=77", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +12,13 @@ name = "itaca"
 description = "Integrated Toolkit for Aerospace Computation and Analysis: rigorous engineering data management, analysis, and computation"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
-license = { text = "MIT" }
+# PEP 639: an SPDX expression, not the legacy `{ text = "MIT" }` table,
+# and `license-files` so the TEXT of the license reaches the artifact
+# rather than only its name. A free-text field is not machine-checkable,
+# which is the whole reason PEP 639 exists: a downstream redistributor
+# has to answer the license question programmatically (FND-056).
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Geovana Neves" }]
 keywords = [
     "aerospace",
@@ -20,7 +31,9 @@ keywords = [
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    # No `License ::` classifier: PEP 639 deprecates them in favour of
+    # the SPDX expression above, precisely because two declarations of
+    # one fact can disagree (FND-056).
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",

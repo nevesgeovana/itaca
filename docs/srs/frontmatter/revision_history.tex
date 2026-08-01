@@ -10,6 +10,23 @@
 \textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Summary}\\
 \midrule
 \midrule
+0.2.10 & 2026-08-01 & Geovana Neves &
+REQ-83's dependency table is checked against \code{pyproject.toml}
+instead of maintained beside it. A PATCH revision adding no requirement
+and withdrawing none, correcting REQ-83. The table had drifted in both
+directions at once: it omitted six declared dependencies
+(\code{build}, \code{pyyaml}, \code{scipy}, \code{setuptools},
+\code{setuptools-scm}, \code{uncertainties}), stated a range for
+\code{ruff} where \code{pyproject.toml} carries the exact pin REQ-96
+requires, and carried five rows for packages declared in no extra at
+all. That last group is why the roles are now split: a \code{planned}
+or \code{external} row is policy for something not declared yet, and it
+may not name something the file does declare, so a row cannot stay in
+an uncheckable state once the package becomes real. The table is
+checked rather than generated, because generating it would lose the
+role and used-for columns, which are why it belongs in a specification
+and not in a lockfile. The \code{setuptools} floor rises to 77 in the
+same revision, for PEP 639.\\[4pt]
 0.2.9 & 2026-07-31 & Geovana Neves &
 The \code{.itc} becomes an authenticated canonical payload. A MINOR
 revision adding no requirement and withdrawing none, widening REQ-103,
