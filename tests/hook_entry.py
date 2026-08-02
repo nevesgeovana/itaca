@@ -24,6 +24,7 @@ is one token and cannot be mistaken for a program name or a separator.
 
 from __future__ import annotations
 
+import re
 import shlex
 from pathlib import Path
 
@@ -61,6 +62,14 @@ def split_wrapper(entry: str) -> tuple[list[str] | None, list[str]]:
     return argv[:cut], argv[cut + 1 :]
 
 
+_INTERPRETER = re.compile(r"python[0-9.]*(\.exe)?", re.IGNORECASE)
+"""A CPython executable NAME, with no directory part and either separator.
+
+Matched against the last component of argv[0] after splitting on BOTH
+separators, so the same string is read identically on Windows and POSIX.
+"""
+
+
 def marker_expression(argv: list[str]) -> str:
     """The marker selection a pytest argv actually runs under.
 
@@ -94,7 +103,17 @@ def marker_expression(argv: list[str]) -> str:
     # INTERPRETER runs. Counting both false-fired the ambiguity refusal on
     # an ordinary command line. Latent when this reads a bare `pytest`
     # entry, and not latent for any caller that passes a full argv.
-    if argv[:2] == [argv[0], "-m"] and Path(argv[0]).stem.lower().startswith("python"):
+    #
+    # THE SPLIT IS DONE HERE AND NOT BY `pathlib`, because `pathlib` is
+    # PLATFORM-DEPENDENT and this reader is handed paths written on the
+    # other platform. `Path(r"C:\repo\.venv\Scripts\python.exe").stem` is
+    # `python` on Windows and the WHOLE STRING on POSIX, where a backslash
+    # is an ordinary character, so the interpreter went unrecognized, the
+    # `-m` was not stripped, and CI refused an ordinary command line that
+    # passed on the author's machine. Red on every CI run from `ad0698b`
+    # to `58709f3` while three lanes' local suites were green.
+    name = re.split(r"[\\/]", argv[0])[-1]
+    if argv[:2] == [argv[0], "-m"] and _INTERPRETER.fullmatch(name):
         argv = argv[2:]
     positions = [i for i, token in enumerate(argv) if token == "-m"]
     assert positions, (
