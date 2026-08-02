@@ -1767,7 +1767,7 @@ root in a discarded input returns `u = 0.36055513` where `0.1` is correct.
 
 **What was tried, and why it is gone.** A refusal at the concat itself was
 specified in REQ-41 and implemented in `ITA-2B`, and it is withdrawn by
-the author's decision of 2026-08-02 (DD-52, ARCH-15,
+the author's decision of 2026-08-02 (DD-52 section 4 as corrected by DD-53, ARCH-15,
 `ITC-20260731-1730`). It keyed on uncertainty being PRESENT at concat
 time, and the measurement above was taken WITH it in place, by declaring
 after the join rather than before. That is not a hole in the

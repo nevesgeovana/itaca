@@ -253,10 +253,13 @@ def _refuse_second_transfer(
         "and that induced correlation is not recorded anywhere: a second "
         "transfer would treat them as independent and UNDERSTATE the "
         "result (measured 1.414 where 2.0 is correct, 29 percent low)",
-        f"do it in one call from the original reference point: "
-        f"db.translate_moments(to_point={[float(v) for v in to_pt]}, "
-        f"from_point={[float(v) for v in origin]}), which gives the same "
-        f"moments and the correct uncertainty because one Jacobian spans "
+        f"do it in one call ON THE FRAME AS IT WAS BEFORE THE FIRST "
+        f"TRANSFER: db.translate_moments(to_point={[float(v) for v in to_pt]}, "
+        f"from_point={[float(v) for v in origin]}). Running that on the frame "
+        f"you are holding raises this same error, because the first transfer "
+        f"is on its record; the frame cannot be repaired in place, since the "
+        f"correlation it induced was never stored. One call gives the same "
+        f"moments and the correct uncertainty, because one Jacobian spans "
         f"the whole transfer. Carrying the induced correlation forward "
         f"instead needs lineage with sensitivities and is v0.3.0 work "
         f"(SEAT-UNC, REQ-100)",

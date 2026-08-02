@@ -35,7 +35,7 @@ release reaches PyPI and the next tag runs on it.
 were uploaded by hand, over the artifact the release gate had built. The
 automated path could not publish, for the reason under Changed below.
 Those files therefore carry no PEP 740 provenance attestation. Releases
-from the next tag onward are published by the workflow and do carry one,
+from this one onward are published by the workflow and do carry one,
 so a reader comparing the two will find that asymmetry and this is what
 explains it.
 
@@ -150,11 +150,17 @@ History, so a refusal whose evidence sits in another input has nothing
 left to read. Class 1 carries the measurements.
 **What to do now:** run the five before assigning uncertainty, or use
 `fill(method="linear")` or `fill(method="nearest")`; for the refusals,
-write the single expression the message names, or declare the pair with
-`set_correlation`, which settles it either way including a declared zero.
-Measured: with `p = 3*x`, `q = 2*x` and `u(x) = 0.1`, `compute("r = p - q")`
-raises, and after `set_correlation({("p","q"): 1.0})` it returns
-`u(r) = 0.1`, which is correct.
+the escape differs per case, so follow the message you actually got.
+The two `compute` refusals, shared ancestry and absent evidence, are
+settled EITHER by the single expression the message names OR by
+`set_correlation`, including a declared zero. Measured: with `p = 3*x`,
+`q = 2*x` and `u(x) = 0.1`, `compute("r = p - q")` raises, and after
+`set_correlation({("p","q"): 1.0})` it returns `u(r) = 0.1`, correct.
+The other two do NOT consult correlation and cannot be escaped that way:
+a stacked `translate_moments` wants ONE transfer done on the frame before
+the first one, and a random-component reduction over an interpolated
+dimension wants the reduction done before the `interpolate`. Declaring a
+pair against either of those re-raises the same error.
 **The limit of that advice:** there is still no `drop_uncertainty`
 (`OQ-46`), so once a frame carries an UncFrame the only way back is to
 re-run from `itc.load`, and applying a processor assigns its
@@ -174,8 +180,9 @@ dimension's unit entirely: measured `deg` in, `None` on the coefficient
 dimension and `None` again on the dimension `fitvalue` restores.
 **What to do now:** convert before you combine or concatenate, and note
 where the conversion has to happen. `from itaca.utils.units import
-convert` gives the factor, and `itc.utils` is not exported, so that is the
-import that works. For a VARIABLE, convert with `compute` and re-label
+convert` is the import that works, since `itc.utils` is not exported. It
+CONVERTS VALUES and is not a factor you can fold into an expression: the
+temperature units are affine, so `convert(1.0, "C", "K")` is `274.15`. For a VARIABLE, convert with `compute` and re-label
 with `set_metadata`. For a DIMENSION there is no route on the frame you
 have, so convert the coordinate array before `itc.load`. After a
 `fitmodel`/`fitvalue` round trip, re-apply the unit with `set_metadata`.

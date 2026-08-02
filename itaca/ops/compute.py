@@ -162,9 +162,10 @@ def compute(
             f"correlated, and compute carries no lineage between calls: the "
             f"covariance term would be omitted and u({name}) would be wrong "
             f"in an unpredictable direction",
-            f"{fix}; or declare the pair with "
-            f"db.set_correlation({{('{name_a}', '{name_b}'): r}}) if you know "
-            f"r. Propagating this composition instead of refusing it needs "
+            f"{fix}; or, if you know the coefficient, declare the pair with "
+            f"db.set_correlation({{('{name_a}', '{name_b}'): <coefficient>}}), "
+            f"substituting the number. Propagating this composition "
+            f"instead of refusing it needs "
             f"lineage with sensitivities and is v0.3.0 work (SEAT-UNC, "
             f"REQ-41)",
         )

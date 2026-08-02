@@ -202,7 +202,8 @@ What ``concat`` DOES lose is the RECORD, because the joined frame keeps
 the History of its first input alone. A refusal at the concat itself was
 implemented and WITHDRAWN by the author's decision of 2026-08-02. The
 consequence is a DECLARED GAP covering every refusal in this module, and
-REQ-41 is its single home; read it, DD-52 section 4 and OQ-55 before
+REQ-41 is its single home; read it, DD-52 section 4 as corrected by
+DD-53, and OQ-55 before
 changing this entry or that decision.
 
 By the time a frame reaches this module the evidence is gone, and a set

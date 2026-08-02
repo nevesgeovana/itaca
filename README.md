@@ -84,18 +84,27 @@ because its propagation rule is not yet frozen. The notes also carry a
 `Known open` section listing the defects known open in this release, several
 of which produce a wrong number silently.
 
-**Upgrading from an earlier version**, two things will bite first. Python 3.11
-is now the floor. And an `.itc` archive written by ANY earlier version no
-longer opens at all: the format is at `itaca-itc/3` and its two predecessors
-are refused by name, with a message saying what the archive lacks. Re-export
-those archives from their source data.
+**Upgrading from an earlier version**, three things will bite first.
 
-They are refused rather than read, and the reason is the point of the change:
-neither predecessor records a spatial coordinate system, so a frame saved in
-polar coordinates would come back cartesian and integrate against the wrong
-area element. Reading them would reintroduce the defect the new schema exists
-to close, so silent reinterpretation is not offered as the remedy. Both are in
-the release notes with the reasoning.
+An `.itc` archive written by ANY earlier version no longer opens: the format
+is at `itaca-itc/3` and its two predecessors are refused by name, with a
+message saying what the archive lacks. Re-export from the source data, or, if
+the archive is your only copy, open it in a scratch environment on the version
+that wrote it and export to CSV or JSON first.
+
+The archives are refused rather than read, and the reason is the point of the
+change: neither predecessor records a spatial coordinate system, so a frame
+saved in Polar coordinates would come back Cartesian and integrate against the
+wrong area element. Reading them would reintroduce the defect the new schema
+exists to close, so silent reinterpretation is not offered as the remedy.
+
+Code that derived quantities from a common root now RAISES
+`UncertaintyLineageError` where it previously returned a number. The number
+was wrong, by up to 3.6x on the measured case, and the message names the
+single expression that is already correct or the `set_correlation` call that
+settles it.
+
+Python 3.11 is the floor, as of v0.2.0.
 
 The SRS is versioned in `docs/srs/`; its document version and revision
 are stated on the SRS title page and in the revision history table.
@@ -135,9 +144,9 @@ milestone ships on PyPI with a Zenodo DOI.
 MIT License (see `LICENSE`). Citation metadata lives in `CITATION.cff`.
 Tagged releases are mirrored on Zenodo: cite the concept DOI
 [10.5281/zenodo.21482648](https://doi.org/10.5281/zenodo.21482648) for
-the latest version, or the per-release DOI (v0.1.0:
-[10.5281/zenodo.21482649](https://doi.org/10.5281/zenodo.21482649); the
-v0.2.0 DOI is minted when the tag is archived and is on the Zenodo record).
+the latest version, or the per-release DOI, which is on the Zenodo record
+for each archived version (v0.1.0:
+[10.5281/zenodo.21482649](https://doi.org/10.5281/zenodo.21482649)).
 A
 software paper (JOSS or SoftwareX) is planned after the API
 stabilizes.

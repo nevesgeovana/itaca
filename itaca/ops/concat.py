@@ -250,7 +250,8 @@ def concat(
     A refusal for this case was implemented and WITHDRAWN by the author's
     decision of 2026-08-02, because it could only test what the inputs
     carried at concat time and the measurements above were taken with it
-    in place. See REQ-41, DD-52 and OQ-55; the class is listed in
+    in place. See REQ-41, DD-52 section 4 as corrected by DD-53, and
+    OQ-55; the class is listed in
     ``CHANGELOG.md`` under Known open.
 
     Examples
@@ -274,8 +275,9 @@ def concat(
     _validate_inputs(frames, along)
     # A lineage refusal stood here and was REMOVED by the author's decision
     # of 2026-08-02. DO NOT REINSTATE ONE WITHOUT HER DECISION: the reasons,
-    # the measurements and the open trade are in REQ-41, DD-52 section 4 and
-    # OQ-55, and the docstring above states the gap for a caller. The one
+    # the measurements and the open trade are in REQ-41, DD-52 section 4 as
+    # corrected by DD-53, and OQ-55, and the docstring above states the gap
+    # for a caller. The one
     # line worth keeping here is why no narrower guard works: what concat
     # discards is the RECORD, so a test performed at concat time cannot see
     # what a later declaration will need.
