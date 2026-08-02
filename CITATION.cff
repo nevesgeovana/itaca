@@ -6,8 +6,8 @@ authors:
   - family-names: Neves
     given-names: Geovana
 license: MIT
-version: 0.2.0
-date-released: 2026-07-30
+version: 0.2.1
+date-released: 2026-08-02
 # No per-release `doi:` here, deliberately. Zenodo mints the v0.2.0 DOI when
 # this tag is archived, so a value written before the tag can only be the
 # PREVIOUS release's, which is what shipped in the v0.1.0 record: this file

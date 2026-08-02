@@ -6,6 +6,22 @@ document baseline has its own changelog in `docs/srs/` Chapter 11.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.1] - 2026-08-02
+
+**Read this before upgrading: this is a PATCH release and it breaks the
+reading of files written by 0.2.0.** The version number does not say so,
+which is why this paragraph is first. The `.itc` format moves to schema
+`itaca-itc/3`, and archives at `itaca-itc/1` and `itaca-itc/2` are
+REFUSED by name rather than reinterpreted, because neither records the
+spatial coordinate system and reading one back would return a polar frame
+as Cartesian. Separately, every state hash changes, once.
+**What to do:** re-export any `.itc` you need from the source data before
+upgrading, and expect new state hashes for frames you rebuild. The
+refusal names the migration and tells you to re-export; nothing is
+silently reinterpreted.
+
 New public surface is listed under Added below, and the observable
 behavior changes are the bullets under Changed and Fixed, rather than a
 count restated here. The count has now been wrong three times: seven

@@ -21,7 +21,7 @@ uncertainty propagation including covariance, and origin tags for every
 value. Where a propagation rule is not yet frozen, the operation raises
 instead of returning a number: see Status below for which five. The
 plotting layer (`ItcFigure`, the AIAA style, the matplotlib backend) is
-roadmapped for v0.2.1 and is not in the library today.
+roadmapped for v0.3.0 and is not in the library today.
 
 ## Installation
 
