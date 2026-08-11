@@ -12,6 +12,29 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.14, 2026-08-11, REQ-96's Compensating Claim Matches Its Mechanism}
+
+A MINOR revision adding no requirement and withdrawing none, WEAKENING one
+sentence of the requirement amended at 0.2.13 the same day.
+
+\paragraph{Changed.} REQ-96's second exception was justified by the claim
+that a red CI "blocks the lane CLOSING". It does not block anything. The
+closing check is invoked by an instruction in the \code{handoff} skill; no
+hook runs it, no test asserts that a session ran it, and the push gate's CI
+arm fires on version tags only. The requirement now states what exists: an
+INSTRUCTION whose ANSWER is mechanical, because the checker exits non-zero
+and prints the sentence to write instead of "closed".
+
+\paragraph{Why it was worth a document version rather than a note.} That
+sentence is the entire justification for the second exception. If the
+compensating control were as strong as the word "blocks" implies, moving
+guard proofs out of the only blocking local tier would be nearly free; at
+its real strength it is a deliberate, smaller trade that a reader must be
+able to weigh. A requirement that overstates its own compensating control
+is worse than one that omits it. Found by a V and V reviewer lens in round
+two of lane ITA-15's review, one round after the same lens obtained the
+0.2.13 amendment.
+
 \section*{Document 0.2.13, 2026-08-11, REQ-96 States a Second CI-Mirror Exception}
 
 A MINOR revision adding no requirement and withdrawing none, WIDENING the
@@ -39,9 +62,12 @@ incomplete by ITC-20260802-2300, where three lanes ran a green local suite
 over a test that was red on every CI run. CI is the authority; the local
 tiers are a fast pre-flight. The second exception is weaker than the
 first, because it moves a check to a tier that does not block the push,
-and what keeps it a routing decision rather than an exemption is that a
-red CI now blocks the lane CLOSING through
-\code{.claude/tools/closing\_ci\_check.py} (INC-20260811-1745-itaca).
+and what compensates is that a lane closing its work runs
+\code{.claude/tools/closing\_ci\_check.py}, which refuses to let the work
+be reported closed over a red, running or unknown CI
+(INC-20260811-1745-itaca). That is an instruction with a mechanical
+answer and not an enforcement that a session ran it, which the
+requirement now states at that strength.
 
 \section*{Document 0.2.12, 2026-08-02, REQ-24 Stops Stating the Withdrawn Refusal}
 

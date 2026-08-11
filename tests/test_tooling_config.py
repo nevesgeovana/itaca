@@ -468,10 +468,14 @@ def test_the_push_tier_runs_the_whole_suite_and_blocks() -> None:
     # proof or the tier-speed assertion, none of them exercises library
     # behavior, and all of them run in CI on three legs on every push.
     #
-    # AND CI IS NO LONGER ADVISORY, which is the half that makes this a
-    # routing decision rather than an exemption: since ITA-15 a red CI
-    # blocks the lane CLOSING, through `.claude/tools/closing_ci_check.py`
-    # (INC-20260811-1745-itaca).
+    # WHAT COMPENSATES, at the strength it actually has: since ITA-15 a lane
+    # closing its work runs `.claude/tools/closing_ci_check.py`, which
+    # refuses to let the work be reported closed over a red, running or
+    # unknown CI (INC-20260811-1745-itaca). That is an instruction whose
+    # ANSWER is mechanical, not an enforcement that a session ran it, and
+    # nothing here makes a red CI block a push. An earlier version of this
+    # comment claimed it "blocks the lane CLOSING"; a V and V lens measured
+    # that as stronger than the mechanism.
     # `test_the_guardproof_marker_has_a_tier_behind_it` below is what keeps
     # that true, and `test_no_undeclared_test_uses_the_guardproof_marker`
     # is what keeps the marker from being reached for to make a red push

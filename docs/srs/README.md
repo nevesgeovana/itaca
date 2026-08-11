@@ -1,7 +1,7 @@
 # ITACA SRS: LaTeX sources
 
-Authoritative specification of ITACA, document version 0.2.13
-(2026-08-11, REQ-96 states a second CI-mirror exception;
+Authoritative specification of ITACA, document version 0.2.14
+(2026-08-11, REQ-96's compensating claim matches its mechanism;
 baseline 0.1.0 was
 the first workspace-tracked version,
 research-workspace snapshot id DLV-008). Companions: `../DECISIONS.md`

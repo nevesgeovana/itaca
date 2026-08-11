@@ -11,11 +11,20 @@ Usage example (TDD anchor)::
     )
     assert done.returncode == 0, done.stdout + done.stderr
 
-The pre-push tier runs the full suite with coverage plus `mypy --strict`.
-Measured on this repository on 2026-08-01: 12.1 minutes for the suite
-alone, 12.5 to 13 for the whole hook, against about 16 seconds for the
-commit tier, and CI then runs the same suite on three legs. The receipt
-(kit 0.2.15) stops it re-running on content that already passed it.
+The pre-push tier runs the suite MINUS the `guardproof` guard proofs, with
+coverage, plus `mypy --strict`. Measured on this repository on 2026-08-01,
+BEFORE that split: 12.1 minutes for the suite alone, 12.5 to 13 for the
+whole hook, against about 16 seconds for the commit tier, and CI then runs
+the same suite on three legs. The receipt (kit 0.2.15) stops it re-running
+on content that already passed it.
+
+Those minutes are what the receipt was built for and they are no longer
+what the tier costs: the `guardproof` split of 2026-08-11 moved about
+twelve minutes of mutation proofs into CI, and the tier is now about five
+minutes. The 2026-08-01 figure is kept rather than replaced because it is
+the measurement that JUSTIFIED this artifact; the receipt is not less
+useful at five minutes, and a reader comparing the two should know which
+tier each was measured on.
 
 THE REASON IS NOT THE DUPLICATION, it is the fragility. In two lanes the
 push step failed five separate ways and none was about the code. A step

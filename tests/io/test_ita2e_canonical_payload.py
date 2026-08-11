@@ -228,7 +228,7 @@ class TestCanonicalFraming:
         ``mode`` is a plain str and decides the digest, so
         ``mode="Production"`` would otherwise produce a perfectly well
         formed 64-hex value that no frame ever reproduces. Registered by
-        QA in round two as a behaviour change with no test, which is the
+        QA in round two as a behavior change with no test, which is the
         same category as the finding the commit that added it closed.
         """
         from itaca.core.errors import ProvenanceError

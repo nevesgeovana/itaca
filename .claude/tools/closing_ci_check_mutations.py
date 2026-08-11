@@ -78,6 +78,21 @@ MUTANTS: list[tuple[str, str, str, str, int, tuple[str, ...], int, int]] = [
         RED,
         GREEN,
     ),
+    # THE DEFAULT, mutated separately from the mapping. The mutant above
+    # replaces the whole expression, so it never proves the DEFAULT arm is
+    # load-bearing: `EXIT.get(state, 0)` would have kept every other mutant
+    # green. Only `ci_state.py`'s own CONFIG state reaches that arm, since
+    # CONFIG is not a key of EXIT. A QA lens found the gap in round two.
+    (
+        "the fallback for a state outside EXIT returns success",
+        "        return EXIT.get(state, CONFIG)",
+        "        return EXIT.get(state, 0)",
+        "pushed",
+        CONFIG,
+        WF,
+        CONFIG,
+        GREEN,
+    ),
     (
         "the unpushed precondition is dropped, so a local commit reads green",
         "        if unpushed:",
@@ -110,11 +125,14 @@ MUTANTS: list[tuple[str, str, str, str, int, tuple[str, ...], int, int]] = [
     # That is two guards defending one property, which is fine and is why the
     # message is the thing worth testing rather than the exit code. The
     # positional case is pinned by its MESSAGE in
-    # `tests/test_closing_ci_check.py`, by the parametrized case named
-    # `test_an_argument_it_cannot_read_refuses_instead_of_answering_about
-    # _head`. Keeping a mutant here that "passes" only because a
-    # neighbour catches it is precisely the false confidence the absent-body
-    # mutant below was already corrected for once.
+    # `tests/test_closing_ci_check.py`, by the parametrized case whose name
+    # begins `test_an_argument_it_cannot_read_refuses_`. That name is given
+    # as a prefix rather than in full because the full identifier does not
+    # fit the line limit, and wrapping it across a comment break once made
+    # it ungreppable, which is the same defect as naming it wrongly.
+    # Keeping a mutant here that "passes" only because a neighbor catches it
+    # is precisely the false confidence the absent-body mutant below was
+    # already corrected for once.
     (
         "the parser stops refusing an unknown option and falls back to HEAD",
         "        if name not in KNOWN_OPTIONS:",

@@ -2748,3 +2748,71 @@ claims stronger than their mechanisms. None of those is a decision; all are
 defects in how the decisions were carried out, and all are fixed in the
 round that found them, per the review policy's rule that a round-two finding
 about a round-one fix is the fix not being done.
+
+---
+
+## DD-56: Three corrections to DD-55, which repeated the defect it was written to correct
+
+**Date:** 2026-08-11
+**Status:** confirmed
+**Context:** Lane ITA-15, round TWO of role review over `3f57527`.
+Supersedes three statements inside DD-55. Its four corrections to DD-54
+stand; what is corrected here is DD-55's own carelessness with the same
+class of claim.
+**Supersedes:** DD-55, in the three respects below only.
+**Related:** DD-30, DD-51, DD-53. This is the fourth time this instrument
+has been needed and the first time it has been needed twice in one lane.
+
+**THE PATTERN IS THE FINDING.** DD-54 recorded a measurement without its
+invocation and environment; DD-55 corrected that and then recorded its own
+measurement without the commit it was taken at, on a tree that its own
+commit was about to change. An entry written to fix a defect reproduced
+that defect one entry later, inside the same lane, which is the shape lane
+ITA-4 recorded for code fixes and which this lane has now met in prose.
+
+**1. DD-55's pass count was stale at the commit that shipped it.** It
+records "1688 passed" for the pre-push tier as the reproducible figure.
+That number was measured BEFORE the round-one repairs added cases to
+`tests/test_closing_ci_check.py`, and the commit that published DD-55 is
+the commit that added them. A V and V lens measured 1699 at `3f57527`
+itself. DD-55 also names no commit for its figure, which is precisely the
+omission it faults DD-54 for.
+
+**The measurement, stated the way both previous entries should have
+stated it.** At commit `3f57527`, with `ITACA_MANAGEMENT_ROOT`,
+`ITACA_PLAN_VALIDATOR` and `COORD_INCIDENT_LEDGER` all set, invocation
+`python -m pytest -m "not guardproof" -p no:cacheprovider`: 1699 passed, 4
+skipped, 11 deselected, 2 xfailed, 306.47s wall, coverage 96.45 percent.
+Counts move whenever tests are added, so this figure is true of that
+commit and of no other, which is the whole reason the commit is named.
+
+**2. DD-55's explanation of the coverage gap is FALSIFIED, and is
+withdrawn rather than replaced.** It stated that the 96.28 against 96.45
+difference comes from the locator variables being unset in a detached
+worktree. A V and V lens set both variables and still measured 96.28 in a
+worktree at the same commit, and noted that environment variables are
+inherited by a worktree anyway. So the diagnosis was wrong. THE CAUSE IS
+NOT ESTABLISHED and this entry does not offer a replacement: the honest
+record is that two environments differ by 0.17 points for a reason nobody
+has measured. Anyone quoting either figure should quote its environment.
+
+**3. DD-55 item 3 undercounted the British spellings by one, and said
+"three editable files" when there were four.** `tests/io/test_ita2e_canonical_payload.py`
+carried `behaviour` and was missed by both round-one measurements, which
+had concluded that every remaining instance sat in a vendored kit body. An
+architect lens found it in round two. It is corrected, and the structural
+half is what matters: the rule had NO MECHANISM, so it was enforced by
+whoever read the diff, which is how the lane that corrected three files
+introduced `neighbour` twice while doing it.
+`tests/test_house_style.py::test_no_british_spelling_in_a_repository_owned_file`
+is the guard, proven to fail on a planted word and to pass once removed.
+It carries a stated exemption list, and the largest entry is the vendored
+kit, which really does ship `recognise`, `behaviour` and `neighbour`
+across nine bodies; that is routed to the coordination level rather than
+hand-edited.
+
+**What this entry does NOT correct.** DD-55's four corrections to DD-54
+were each re-verified in round two and stand. The five calls of DD-54
+stand. No decision in this lane has been reversed by either superseding
+entry; every correction in both is a claim about a measurement or a
+mechanism, never about a choice.

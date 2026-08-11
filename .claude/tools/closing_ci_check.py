@@ -449,6 +449,16 @@ def main(argv: list[str]) -> int:
                 "resolves in minutes. Wait for the run to conclude and re-run "
                 "this check; that is the cheapest path to a legitimate close."
             ),
+            # CONFIG is `ci_state.py` failing to run, not a CI verdict, so
+            # it gets its own remedy rather than the UNKNOWN default. A QA
+            # lens measured the first version printing "UNKNOWN is refused
+            # rather than assumed benign" under a `closing-ci: CONFIG`
+            # verdict, which names a state the run did not report.
+            "CONFIG": (
+                f"Repair the vendored {CI_STATE_NAME} or the way this check "
+                "invokes it, then re-run. A checker that cannot run is not a "
+                "clean answer, so this is refused rather than skipped."
+            ),
         }.get(
             state,
             "Run `gh auth status` and `gh run list --commit "

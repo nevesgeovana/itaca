@@ -140,7 +140,7 @@ The push gate and the attestation belong to `role-review` and to the
 moment of the push. This skill does not write an attestation, and a
 session that reviews without pushing records its review where the next
 session will find it, in the resolved root, and says plainly that the
-full suite has not yet run over those commits.
+pre-push tier has not yet run over those commits.
 
 ## 8. Close the item
 

@@ -9,7 +9,7 @@ convention: `import itaca as itc`. Tagline: From data to wisdom.
 
 ## Authority chain
 
-1. `docs/srs/` is the authoritative specification (document 0.2.13,
+1. `docs/srs/` is the authoritative specification (document 0.2.14,
    2026-08-11; baseline 0.1.0 was the first workspace-tracked
    version). The SRS describes desired
    behavior; code is verified against the SRS, and the SRS is changed only
@@ -111,7 +111,8 @@ never in the room.
   whole of the rule: the kit's `version-control` skill does not carry it
   and this repository may not add it there, since that body is
   drift-pinned. Vendoring kit 0.2.20's `execution_guard.py` is what would
-  make it a mechanism, and it is registered rather than done.
+  make it a mechanism, registered as
+  `ITC-20260811-2110-vendor-execution-guard-and-detached-gate`.
 - **A completion claim carries fresh command output in the same message.**
   No "done", "passing" or "ready to push" without the evidence a reader
   can see, and no closure claim at all while CI is not green. NO MECHANISM

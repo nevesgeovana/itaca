@@ -132,8 +132,21 @@ _UNREACHED_AT_LANE_CLOSE: frozenset[str] = frozenset(
         # now asserts that hook does NOT pass `--no-cov`. That is a real
         # check of the requirement rather than a mention of it, which is
         # exactly the line this file draws everywhere else.
+        #
+        # REQ-87, the English and American-spelling rule, LEFT this set on
+        # 2026-08-11 and the ratchet noticed again, in the same shape. It
+        # was here because the rule was enforced by whoever read the diff:
+        # `tests/test_house_style.py` checked the dash half and nothing
+        # checked the spelling half. An architect lens measured the cost in
+        # lane ITA-15: one British form sat undetected in a tracked test
+        # file, and the lane correcting three other files introduced a
+        # second one twice while doing it.
+        # `test_house_style.py::test_no_british_spelling_in_a_repository_owned_file`
+        # is the carrier it now has. The offending words are NOT quoted
+        # here, deliberately: that guard reads this file, so naming them
+        # would redden the check this comment is about, which is the same
+        # self-reference `tests/test_kit_drift.py` records for the em dash.
         "REQ-09",
-        "REQ-87",
         "REQ-93",
         "REQ-94",
         "REQ-97",

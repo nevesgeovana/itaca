@@ -181,6 +181,120 @@ def test_no_em_or_en_dashes_anywhere() -> None:
     assert not offenders, f"forbidden dash characters found: {offenders}"
 
 
+#: British spellings this repository has actually written, with the
+#: American form the rule requires. It is a MEASURED list and not an
+#: attempt at completeness: every entry below is a word that reached a
+#: tracked file here and had to be corrected by hand.
+#:
+#: WHY IT EXISTS AT ALL. `CLAUDE.md` and REQ-87 both require American
+#: English with Z, and until lane ITA-15 nothing checked it. An architect
+#: lens measured the consequence: the rule was enforced by whoever
+#: happened to read the diff, `behaviour` sat in a tracked test file
+#: undetected, and the same lane that corrected three files introduced
+#: `neighbour` twice while doing it. The dash rule beside this one has had
+#: a mechanism since the beginning; this one had prose.
+#:
+#: A LIST IS THE WRONG SHAPE FOR A LANGUAGE and the right shape for this
+#: guard, which is worth stating because the repository prefers discovery
+#: to enumeration elsewhere. There is no way to decide Britishness by
+#: rule: `analyses` is correct American English and `licence` appears here
+#: only as the name of a kit fixture. So this enumerates what has bitten,
+#: and grows when something new does, rather than pretending to a coverage
+#: it cannot have. It is a floor, and it is stated as one.
+BRITISH_SPELLINGS = {
+    "behaviour": "behavior",
+    "neighbour": "neighbor",
+    "colour": "color",
+    "organise": "organize",
+    "organisation": "organization",
+    "visualisation": "visualization",
+    "initialise": "initialize",
+    "normalise": "normalize",
+    "serialise": "serialize",
+    "recognise": "recognize",
+    "summarise": "summarize",
+}
+
+
+#: Paths this spelling guard does NOT read, each with its reason. Unlike
+#: the dash walk, which reaches everything, this one cannot: four
+#: categories of file legitimately contain a British spelling, and a guard
+#: that demanded an impossible edit in any of them would be turned off.
+#: Every exemption below is a file this repository may not, or must not,
+#: hand-edit for this reason.
+SPELLING_EXEMPT = (
+    # DERIVED COPIES. Their standard is the kit master's, and hand-editing
+    # one breaks its drift pin with no in-repo remedy, which is the same
+    # rule the ruff exclusion states. MEASURED on 2026-08-11: the kit ships
+    # `recognise`, `behaviour` and `neighbour` across nine vendored bodies,
+    # so this is not a hypothetical exemption. Routed to the coordination
+    # level rather than absorbed.
+    ".claude/kit/",
+    ".claude/hooks/",
+    ".claude/skills/version-control/",
+    # THE REQUIREMENT THAT FORBIDS THEM. REQ-87 enumerates the British
+    # forms in order to reject them ("organize (not organise)"), so a guard
+    # reading it finds every word it is looking for, by design.
+    "docs/srs/chapters/07_non_functional_requirements.tex",
+    # FROZEN AND APPEND-ONLY. A decision entry freezes at the commit that
+    # ships it, so the remedy for a British spelling inside one is a
+    # superseding entry, never an edit. DD-55 records exactly that for
+    # DD-54's own instance.
+    "docs/DECISIONS.md",
+    # THIS MODULE, which has to name the words it forbids. The same
+    # self-reference the dash note in `tests/test_kit_drift.py` records for
+    # the em dash it deliberately does not quote.
+    "tests/test_house_style.py",
+)
+
+
+def test_no_british_spelling_in_a_repository_owned_file() -> None:
+    """American English with Z, mechanically, for the words that have bitten.
+
+    `CLAUDE.md` states the rule and REQ-87 makes it normative. This is the
+    mechanism, added by lane ITA-15 after an architect lens measured that
+    there was none: the rule was enforced by whoever happened to read the
+    diff, `behaviour` sat undetected in a tracked test file, and the lane
+    that corrected three files introduced `neighbour` twice while doing it.
+
+    WHAT IT DOES NOT COVER is `SPELLING_EXEMPT` above, and the largest
+    entry there is the vendored kit, which really does ship these words.
+    So this guard is a floor over the files this repository OWNS, and it is
+    stated as one rather than described as a house-wide rule it does not
+    enforce.
+
+    Case-insensitive, because the two that bit here were `BEHAVIOUR` in
+    upper case and `neighbour` in lower.
+    """
+    offenders: list[str] = []
+    scanned = [
+        (relative, path)
+        for relative, path in _walk(TEXT_SUFFIXES)
+        if not relative.startswith(SPELLING_EXEMPT)
+    ]
+    for relative, path in scanned:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            lowered = line.lower()
+            for british, american in BRITISH_SPELLINGS.items():
+                if british in lowered:
+                    offenders.append(
+                        f"{relative}:{lineno}: {british!r}, write {american!r}"
+                    )
+    # The walk must still have reached a real tree; the exemptions above
+    # remove specific paths, not the repository.
+    assert len(scanned) >= 50, (
+        f"the spelling walk scanned {len(scanned)} files after exemptions, "
+        f"which is too few to be reading the repository at all."
+    )
+    assert not offenders, (
+        f"British spellings found in repository-owned files: {offenders}. "
+        f"CLAUDE.md and REQ-87 require American English with Z. If you believe "
+        f"the file is exempt, add it to SPELLING_EXEMPT with its reason rather "
+        f"than widening the word list."
+    )
+
+
 # Every cross-reference in the SRS opens a brace on a labeled target.
 # The failure this catches is a substitution that wrote "\ref" into a
 # non-raw Python string: "\r" is a carriage return, so the command

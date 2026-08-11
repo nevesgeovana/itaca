@@ -335,10 +335,13 @@ markers = [
   # WHAT STANDS BEHIND IT, because a marker with no blocking tier behind it
   # is an exemption and this repository already says so about `slow`. CI
   # runs a bare `pytest` on three legs, so every marked test runs there on
-  # every push and every pull request. And since this lane, a red CI also
-  # stops the lane CLOSING: `.claude/tools/closing_ci_check.py` refuses to
-  # let a session report work closed while CI is red, running or unknown
-  # (INC-20260811-1745-itaca). That mechanism is what makes moving these
+  # every push and every pull request. And since this lane, a lane closing
+  # its work runs `.claude/tools/closing_ci_check.py`, which refuses to let
+  # the work be reported closed while CI is red, running or unknown
+  # (INC-20260811-1745-itaca). Stated at its real strength: that is an
+  # instruction whose ANSWER is mechanical, and NOT an enforcement that a
+  # session ran it; nothing makes a red CI block a push. That is what makes
+  # moving these
   # tests to CI a routing decision rather than a hole, and it did not exist
   # when the pre-push tier was last argued about.
   "guardproof: proves a guard's own machinery, not behavior; runs in CI, not at pre-push",

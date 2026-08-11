@@ -163,7 +163,7 @@ def test_the_closing_check_can_still_fail() -> None:
     DECISION to return green. The positional-argument branch has no mutant
     at all, because removing it leaves the unknown-option guard to refuse
     the same token, so the companion says so in place rather than carrying a
-    mutant that passes on a neighbour's work.
+    mutant that passes on a neighbor's work.
 
     THE COMPANION'S OWN BLIND SPOT WAS THE FINDING THAT GREW IT. Round one
     measured that every stub here ignores argv, so deleting the
@@ -178,7 +178,7 @@ def test_the_closing_check_can_still_fail() -> None:
         env=child_env(),
     )
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "8/8 mutants confirmed" in done.stdout, done.stdout
+    assert "9/9 mutants confirmed" in done.stdout, done.stdout
 
 
 def test_a_green_run_lets_the_lane_report_closed(repo: Path) -> None:
@@ -207,6 +207,13 @@ def test_a_green_run_lets_the_lane_report_closed(repo: Path) -> None:
         (RED, RED, "RED"),
         (RUNNING, RUNNING, "RUNNING"),
         (UNKNOWN, UNKNOWN, "UNKNOWN"),
+        # CONFIG is `ci_state.py` running and reporting that IT could not
+        # answer, which is distinct from this checker failing to find it.
+        # It reaches the refusal through the `EXIT.get(state, CONFIG)`
+        # DEFAULT rather than through the mapping, so without this case that
+        # default could be changed to 0 and every other case would stay
+        # green. A QA lens measured exactly that gap in round two.
+        (CONFIG, CONFIG, "CONFIG"),
     ],
 )
 def test_every_non_green_state_refuses_the_claim(
@@ -220,12 +227,17 @@ def test_every_non_green_state_refuses_the_claim(
     called three red pushes clean without asking.
     """
     stub_ci_state(repo, ci_exit, f"{word}, stubbed")
-    code, out = check(repo)
+    code, out = check(repo, "--workflow", "CI")
     assert code == expected, out
     assert f"closing-ci: {word}" in out, out
     assert "may NOT report itself closed" in out, out
     # The remedy must name what to write instead, or the lane invents one.
     assert "CI state NOT VERIFIED" in out, out
+    # And the remedy must not name a state this run did not report: the
+    # UNKNOWN default once printed "UNKNOWN is refused rather than assumed
+    # benign" under a CONFIG verdict.
+    if word != "UNKNOWN":
+        assert "UNKNOWN is refused" not in out, out
 
 
 def test_the_refusal_forbids_the_synonyms_too(repo: Path) -> None:
@@ -322,7 +334,14 @@ def test_an_argument_it_cannot_read_refuses_instead_of_answering_about_head(
     That is the exact failure this whole file exists to prevent, one level
     up: a success sentence over a question that was never asked. The stub
     answers GREEN in every case below, so a regression here does not merely
-    change a message, it returns exit 0 and lets a lane report closed.
+    change a message, it lets the checker answer about the wrong commit.
+
+    A regression would surface as exit 4 rather than 0 today, because none
+    of these cases names a `--workflow` and the workflow downgrade landed in
+    the same commit as the parser. That is a second guard catching the same
+    class, not a reason to write the weaker assertion: `assert code ==
+    CONFIG` distinguishes "refused the argument" from "fell through to
+    HEAD and then tripped over something else".
 
     The equals form is ACCEPTED and refused on the sha's merits (it does not
     resolve), rather than refused as a form; the other four are refused as
@@ -348,20 +367,51 @@ def test_the_unpushed_exit_code_does_not_collide_with_the_kit_contract() -> None
     point: a renumbering upstream that the vendored body adopts breaks this
     test rather than a close.
     """
-    body = CHECK.read_text(encoding="utf-8")
-    contract = re.search(r"CI_EXIT_STATE = \{([^}]*)\}", body)
-    assert contract is not None, (
-        f"could not find CI_EXIT_STATE in {CHECK}; this guard cannot say "
-        f"whether the UNPUSHED code collides with the kit contract."
+    # READ FROM THE AUTHORITY, which is the vendored `ci_state.py` and not
+    # this repository's restatement of it. The first version of this guard
+    # parsed `CI_EXIT_STATE` out of `closing_ci_check.py`, which is a
+    # hand-written second copy of the same fact, so it compared a literal
+    # against a copy of itself and could not see the upstream renumbering
+    # its own docstring claims it catches. A QA lens measured that in round
+    # two. `.claude/hooks/ci_state.py` is drift-pinned by
+    # `tests/test_kit_drift.py`, so it cannot change without a re-vendor.
+    authority = _ROOT / ".claude" / "hooks" / "ci_state.py"
+    assert authority.is_file(), (
+        f"the vendored ci_state.py is missing at {authority}; this guard "
+        f"cannot read the exit contract it is checking against."
     )
-    codes = {int(code) for code in re.findall(r"(\d+):", contract.group(1))}
-    assert codes, f"CI_EXIT_STATE parsed as empty from {CHECK}"
+    body = authority.read_text(encoding="utf-8")
+    contract = re.search(r"\nEXIT = \{([^}]*)\}", body)
+    assert contract is not None, (
+        f"could not find the EXIT mapping in {authority}; this guard cannot "
+        f"say whether the UNPUSHED code collides with the kit contract."
+    )
+    codes = {int(code) for code in re.findall(r":\s*(\d+)", contract.group(1))}
+    assert codes, f"the EXIT mapping parsed as empty from {authority}"
+    # CONFIG is declared beside it rather than inside it, and it is part of
+    # the same published contract, so read it too.
+    config = re.search(r"\nCONFIG = (\d+)", body)
+    if config:
+        codes.add(int(config.group(1)))
     assert UNPUSHED not in codes, (
         f"exit {UNPUSHED} (UNPUSHED, this repository's own) is now also in "
-        f"ci_state.py's contract {sorted(codes)}. Two vocabularies share one "
-        f"number, so a caller cannot tell a local precondition from a CI "
-        f"state. Renumber UNPUSHED in .claude/tools/closing_ci_check.py and "
-        f"in this module's constants."
+        f"the vendored ci_state.py's published contract {sorted(codes)}. Two "
+        f"vocabularies share one number, so a caller cannot tell a local "
+        f"precondition from a CI state. Renumber UNPUSHED in "
+        f".claude/tools/closing_ci_check.py and in this module's constants."
+    )
+    # And the restatement inside the checker must still agree with the
+    # authority, or the checker maps upstream codes to the wrong states
+    # while this guard reads the right file and passes.
+    restated = re.search(
+        r"CI_EXIT_STATE = \{([^}]*)\}", CHECK.read_text(encoding="utf-8")
+    )
+    assert restated is not None, f"could not find CI_EXIT_STATE in {CHECK}"
+    mirrored = {int(code) for code in re.findall(r"(\d+):", restated.group(1))}
+    assert mirrored == codes, (
+        f"{CHECK} restates ci_state.py's exit contract as {sorted(mirrored)} "
+        f"while the vendored body publishes {sorted(codes)}. The restatement "
+        f"is a second copy of one fact and has drifted; make them equal."
     )
 
 
@@ -495,12 +545,20 @@ def test_the_handoff_skill_actually_runs_this_check() -> None:
     skill names the checker by path, so deleting the step from the skill
     reddens the suite.
 
-    It is a PROSE check and its limit is stated rather than hidden: it
-    proves the instruction is present, never that a session obeyed it. What
-    makes obedience cheap is that the checker exits nonzero, so a lane that
-    runs it cannot misread the answer. Closing that gap properly needs the
-    close itself to be a mechanism rather than a report, which is registered
-    and not done here.
+    PRESENCE IS NOT ENOUGH, and the first version of this test proved it.
+    It asserted only that the path appeared SOMEWHERE in the skill, and it
+    passed at `b82fe2b` with the step sitting in item 1, ABOVE the closing
+    commit and push that the same skill makes, so the check answered about
+    the state BEFORE the handoff's own push. An api-designer lens found the
+    placement in round one and a QA lens found that this test could not see
+    it in round two. So placement and arguments are asserted here too.
+
+    It is still a PROSE check and its limit is stated rather than hidden: it
+    proves the instruction is present, correctly placed and correctly
+    parameterized, never that a session obeyed it. What makes obedience
+    cheap is that the checker exits nonzero, so a lane that runs it cannot
+    misread the answer. Closing that gap properly needs the close itself to
+    be a mechanism rather than a report, which is registered and not done.
     """
     skill = _ROOT / ".claude" / "skills" / "handoff" / "SKILL.md"
     text = skill.read_text(encoding="utf-8")
@@ -508,4 +566,29 @@ def test_the_handoff_skill_actually_runs_this_check() -> None:
         f"{skill} does not name the closing CI check, so the guard for "
         f"INC-20260811-1745-itaca is vendored but not wired. Add the step "
         f"back to the closing sequence."
+    )
+    # PLACEMENT: after the instruction that pushes. Compared by offset
+    # rather than by section heading, because a heading can be renamed
+    # while the order stays wrong, and the order is the property.
+    check_at = text.index(".claude/tools/closing_ci_check.py")
+    push_at = text.index("commit the\nrepository-side changes of the session")
+    assert check_at > push_at, (
+        f"{skill} names the closing CI check at offset {check_at}, BEFORE the "
+        f"closing commit and push at {push_at}. It then verifies the state "
+        f"the handoff's own push is about to change, which is the defect "
+        f"round one found. Move the step to the end of `out`."
+    )
+    # ARGUMENTS: without a named workflow the checker downgrades every green
+    # to UNKNOWN, so a prescription that omits it makes the step unusable
+    # and invites a session to ignore the answer.
+    prescribed = text[check_at : check_at + 200]
+    assert "--workflow" in prescribed, (
+        f"{skill} prescribes the closing check without `--workflow`. A green "
+        f"over no named workflow is downgraded to UNKNOWN by design, so the "
+        f"step would never pass and would be routed around."
+    )
+    assert "--sha" in prescribed, (
+        f"{skill} prescribes the closing check without `--sha`. It would then "
+        f"answer about HEAD, which after a session-document commit is not the "
+        f"commit that was pushed."
     )

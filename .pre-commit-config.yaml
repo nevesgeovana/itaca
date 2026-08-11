@@ -26,9 +26,11 @@
 #
 # The `guardproof` split (2026-08-11, her answer to BRF-076) moved eleven
 # tests off the PUSH and into CI, which does NOT block a push. That is a
-# weaker claim and it is stated as one: what makes it a routing decision
-# rather than an exemption is that a red CI now blocks the lane CLOSING,
-# through `.claude/tools/closing_ci_check.py`. See the pytest-full entry.
+# weaker claim and it is stated as one: what compensates is that a lane
+# closing its work runs `.claude/tools/closing_ci_check.py`, which refuses
+# to let the work be reported closed over a red, running or unknown CI.
+# That is an instruction with a mechanical ANSWER, not an enforcement that
+# a session ran it. See the pytest-full entry.
 #
 # WHY. The hook below was named `pytest-fast` and ran `pytest -x -q
 # --no-cov` with `always_run`, which is the entire suite; the separate
@@ -130,22 +132,30 @@ repos:
       # with its full reasoning; what belongs here is what it costs and what
       # stands behind it.
       #
-      # MEASURED on 2026-08-11 by the coordination level, by running the
-      # suite rather than reading the stale figure this file used to carry:
-      # 937.17s, 1678 passed, and FIVE tests were 718.5s of it. Four are
-      # mutation proofs and the fifth asserts that the commit tier is fast,
-      # for 25.5s, at the gate the commit tier is not.
+      # MEASURED on 2026-08-11 by the coordination level, on the tree BEFORE
+      # this lane added its own tests, by running the suite rather than
+      # reading the stale figure this file used to carry: 937.17s, 1678
+      # passed, and FIVE tests were 718.5s of it. Four are mutation proofs
+      # and the fifth asserts that the commit tier is fast, for 25.5s, at
+      # the gate the commit tier is not.
+      #
+      # The "before this lane's own tests" clause is load-bearing, not
+      # hedging: this tier now passes MORE tests than that 1678, because the
+      # lane added a module. A later figure that looks impossible beside
+      # this one is that, and DD-56 carries the reconciliation.
       #
       # NOTHING STOPPED BEING MANDATORY, which is the same sentence the
       # `slow` split earned and this one has to earn separately, because it
       # is a weaker claim: `slow` moves a test to a tier that BLOCKS, and
-      # this moves it to one that does not. What makes it a routing decision
-      # anyway is that a red CI now blocks the lane CLOSING, through
-      # `.claude/tools/closing_ci_check.py` (INC-20260811-1745-itaca). Before
-      # this lane that mechanism did not exist and this split would have been
-      # a hole.
+      # this moves it to one that does not. What compensates is that a lane
+      # closing its work runs `.claude/tools/closing_ci_check.py`, which
+      # refuses to let the work be reported closed over a red, running or
+      # unknown CI (INC-20260811-1745-itaca). Stated at its real strength:
+      # that is an instruction whose ANSWER is mechanical, and NOT an
+      # enforcement that a session ran it. Nothing here makes a red CI block
+      # a push.
       - id: pytest-full
-        name: pytest (FULL suite with coverage, minus guard proofs; blocks the push)
+        name: pytest (suite minus guard proofs, with coverage; blocks the push)
         entry: python .claude/kit/prepush_receipt.py guard --label pytest-full -- pytest -m "not guardproof"
         language: system
         always_run: true

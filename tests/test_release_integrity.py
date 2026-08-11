@@ -56,7 +56,9 @@ from packaging.version import Version
 # is not reducible here, so it moves to the tier that can afford it.
 #
 # NOT weakened by the marker, and the distinction is the whole design: the
-# pre-push hook runs the full suite with coverage and BLOCKS, and CI runs
+# pre-push hook runs the suite minus `guardproof` with coverage and BLOCKS,
+# and CI runs everything. The `guardproof` split moved four of this module's
+# own mutation companions into CI; nothing here stopped being mandatory. CI runs
 # it on every pull request. ITACA-006's checker still gates every push.
 pytestmark = pytest.mark.slow
 

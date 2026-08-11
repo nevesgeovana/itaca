@@ -437,10 +437,21 @@ changes when the guard changes.
 
 This exception is WEAKER than the first and the difference is the point.
 The first moves a check nowhere local; the second moves it to a tier that
-does not block the push. What keeps it a routing decision rather than an
-exemption is that a red CI now blocks the lane CLOSING, through
-\code{.claude/tools/closing\_ci\_check.py} (INC-20260811-1745-itaca). The
-mirror claim in this requirement was itself proven incomplete by
+does not block the push.
+
+WHAT COMPENSATES, STATED AT THE STRENGTH IT ACTUALLY HAS. A lane closing
+its work runs \code{.claude/tools/closing\_ci\_check.py}, which refuses to
+let the work be reported closed while CI is red, running or unknown
+(INC-20260811-1745-itaca). That is an INSTRUCTION in the closing skill
+with a mechanical ANSWER: the checker's verdict cannot be misread, because
+it exits non-zero and prints the sentence to write instead. It is NOT an
+enforcement that a session ran it, and nothing in this repository makes a
+red CI block a push or a commit. An earlier draft of this paragraph said a
+red CI "blocks the lane CLOSING"; a V and V review measured that claim as
+stronger than the mechanism, and it is corrected rather than left to be
+relied on.
+
+The mirror claim in this requirement was itself proven incomplete by
 ITC-20260802-2300, where three lanes ran a green local suite over a test
 red on every CI run, so CI is the authority and the local tiers are a fast
 pre-flight.

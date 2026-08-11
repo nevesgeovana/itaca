@@ -10,6 +10,22 @@
 \textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Summary}\\
 \midrule
 \midrule
+0.2.14 & 2026-08-11 & Geovana Neves &
+REQ-96's compensating claim is stated at the strength its mechanism
+actually has. A MINOR revision adding no requirement and withdrawing none,
+WEAKENING one sentence of the requirement amended at 0.2.13 hours earlier.
+That sentence said a red CI "blocks the lane CLOSING". A V and V reviewer
+lens measured that nothing makes it block: the closing check is invoked by
+an instruction in the `handoff` skill, no hook runs it, no test asserts it
+ran, and the gate's CI arm fires on version tags only. The requirement now
+says what is true, that the check is an INSTRUCTION with a mechanical
+ANSWER, whose verdict cannot be misread because it exits non-zero and
+prints the sentence to write instead. The distinction is the whole
+justification for the second exception, so a requirement overstating it
+was the more dangerous half of the amendment. Its own document version
+rather than an edit to 0.2.13, because 0.2.13 shipped in the commit that
+published it.\\
+\midrule
 0.2.13 & 2026-08-11 & Geovana Neves &
 REQ-96 states a SECOND deliberate exception to the CI mirror. A MINOR
 revision adding no requirement and withdrawing none, WIDENING the stated
