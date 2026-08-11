@@ -2570,3 +2570,110 @@ touched. Both are the same shape: the entry recorded the intent of the
 change instead of its measured extent. A decision record about a deletion
 should name every branch deleted and show the measurement for each, and
 `git show <commit>:<path>` is the cheapest way to enumerate them.
+
+---
+
+## DD-54: Five calls lane ITA-15 took around two decisions that were not its own
+
+**Date:** 2026-08-11
+**Status:** confirmed
+**Context:** Lane ITA-15, the kit 0.2.18/0.2.19/0.2.20 re-vendor, closing
+`INC-20260810-2350-itaca` (the tag half) and `INC-20260811-1745-itaca`
+(the branch half) together.
+**Requirements:** REQ-96
+**Related:** DD-50, which is the same shape one kit promotion earlier.
+
+TWO DECISIONS IN THIS LANE WERE THE AUTHOR'S AND ARE NOT RECORDED HERE AS
+CHOICES, because the lane applied them rather than taking them. The
+retirement of the `disable-model-invocation` requirement is hers, decided
+2026-08-11, with her reasoning and the objection put to her before she
+decided in `BRF-079`. The pre-push tier policy is hers too, answering
+`BRF-076`: a push must not be allowed to carry a change that breaks
+BEHAVIOUR, and proving that a guard is well built answers a different
+question, which only changes when the guard changes. What follows are the
+five calls the lane had to make around them.
+
+**1. `ci_state.py` is vendored into `.claude/hooks`, beside the gate, and
+this is not cosmetic.** The 0.2.18 gate resolves it as
+`Path(__file__).parent / "ci_state.py"` FIRST and only then walks a search
+list, and it treats an ABSENT body as a refusal rather than a skip. Beside
+the gate is therefore the one location whose correctness does not depend on
+that list being right about this repository. The consequence that had to be
+measured rather than assumed: because the resolution is relative to the
+gate's own file, a test that drives the REAL gate against a scratch
+repository gets the REAL `ci_state.py`, which asks `gh` about a local bare
+remote and answers UNKNOWN. Five existing cases in `tests/test_push_gate.py`
+began denying `[ci-unknown]` the moment the arm landed, and the failure was
+indistinguishable from a release-attestation defect. The fixture now copies
+the gate into the scratch repository so a stub sits beside it.
+
+**2. The closing guard is REPOSITORY-OWNED, and that is not the same
+compromise route 1 of `INC-20260810-2350-itaca` described.** That record
+offered vendoring a bridge hook as the fast, duplicating option, and the
+lane did not take it: the tag half was closed by the kit body alone. The
+branch half is different in kind. The kit already ships the DECISION TABLE,
+`ci_state.py`, and names the close as its post-push caller; what no kit
+body can own is which commit a given repository's close is about. So
+`.claude/tools/closing_ci_check.py` delegates every CI judgment and adds
+only the two facts local to a close: the sha, and whether that sha is on a
+remote at all. There is no second decision table, which is what route 1
+would have created.
+
+**3. UNPUSHED is a state of this repository's own and not a CI state.** It
+gets its own exit code, 5, outside `ci_state.py`'s contract. Asking CI about
+a commit that never left the machine returns "no run is visible", which is
+UNKNOWN and reads as a network problem, and the remedy is entirely
+different: push first. Conflating them would have sent a lane to `gh auth
+status` for a commit it simply had not pushed.
+
+**4. `guardproof` implements the tier policy, and the CI trigger is a FULL
+run rather than path-based.** The marker admits a test whose subject is a
+guard's own machinery, which is the policy's own line and not a cost line;
+`slow` already routes by cost. Path-based triggering was rejected for a
+reason this repository has already paid for once: it needs a maintained map
+from guard body to proving test, that map is a second copy of a fact, and
+the failure recorded in `tests/test_kit_drift.py` is precisely a
+guard-on-a-guard going stale while both halves stayed self-consistent. CI
+already runs a bare `pytest` on three legs, so a full run costs nothing
+extra and cannot go stale.
+
+**WHAT MAKES THAT A ROUTING DECISION RATHER THAN AN EXEMPTION, and it did
+not exist before this lane.** `slow` was defensible because everything it
+moved still ran at a gate that BLOCKS. `guardproof` moves tests to CI,
+which does not block a push. What now blocks is the CLOSE: decision 2's
+checker refuses to let a lane report work closed while CI is red, running
+or unknown. The two halves of this lane are load-bearing for each other,
+and splitting them across lanes would have shipped the weaker half alone.
+`tests/test_tooling_config.py::test_the_guardproof_marker_has_a_tier_behind_it`
+pins that CI still runs everything.
+
+Measured, both sides: the pre-push tier is **208.5s** with coverage at
+**96.45%** and 1689 passed, against the **937.17s** the coordination level
+measured on 2026-08-11 for the whole suite. The arithmetic prediction in the
+lane brief was 218.7s.
+
+**5. The vendored `version-control` skill was SPLIT, and the kit defect
+behind it is routed rather than absorbed.** Kit 0.2.19 refuses a skill that
+declares nothing, and the deployed `SKILL.md` was the STAMPED copy, so its
+frontmatter began on line 11 and the guard read it as silent. The adoption
+brief predicted this half would find nothing to fix; measured first run,
+`5 declaring, 1 undeclared`, exit 1, on a body this repository is forbidden
+to hand-edit. The repair is the arrangement this repository already uses for
+`incident-analyst.md`: the stamp lives at `.claude/kit/version-control.md`
+and the deployed file is the body alone, neither edited, both reproducing
+the same pinned hash.
+
+THE UNDERLYING CONTRADICTION IS THE KIT'S. It prescribes prepending a
+provenance header to a vendored copy AND ships a guard requiring frontmatter
+on line 1, and those cannot both hold for any artifact that is both stamped
+and deployed. Every consumer will meet it. Routed to the coordination level;
+the arrangement above is a local answer and not the fix.
+
+**Not done in this lane, and named so it is not mistaken for done.** Kit
+0.2.20's `execution_guard.py` was NOT vendored. The brief made it optional
+and rideable on a later lane, and wiring a second `PreToolUse` hook that
+refuses command shapes, in the same lane whose commands close two blocking
+incidents, trades a real risk for a benefit that waits at no cost.
+`detached_gate.py` is not vendored either, so the closing check polls and
+reports rather than waiting detached: a close over a still-queued run says
+NOT VERIFIED instead of waiting. Both are registered rather than silent.

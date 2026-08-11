@@ -1,10 +1,9 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.7
+# kit-version: 0.2.18
 # artifact: check_shipped_surface.py
-# body-sha256: 6fbbdbce007e8acff486f8fc28cd23d3e0f81023d808d70cd7fe13ce91a6d4ba
-# canonical-source: BUILT for the kit (0.2.7), starting from itaca's tests/identifiers.py and the two test halves that call it. The rule and both boundaries are promoted rather than redesigned; the total accounting, and the archive floors being required by the boundary that uses them rather than at config load, both came out of two independent reviews of the first candidate. It is guard 1 of INC-20260729-0854-shared: a claim verified by measuring a MENTION of the thing instead of the artifact that carries it.
+# body-sha256: f5dffb534da98061352a941cf5e9ca1de907afc4b0fcf059a7fe7d0a4b33a49b
+# canonical-source: BUILT for the kit (0.2.7), starting from itaca's tests/identifiers.py and the two test halves that call it. The rule and both boundaries are promoted rather than redesigned; the total accounting, and the archive floors being required by the boundary that uses them rather than at config load, both came out of two independent reviews of the first candidate. It is guard 1 of INC-20260729-0854-shared: a claim verified by measuring a MENTION of the thing instead of the artifact that carries it. 0.2.18 widens ONE DERIVED_METADATA pattern (COORD-17): the egg-info exemption was anchored at the archive root, so a src-layout project's src/<name>.egg-info/PKG-INFO missed it and one real repository carried 7 permanent false findings in a set that is deliberately not narrowable by an adopting repository. What moved is where that directory may SIT, never what may sit under it.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
-# 
 # END KIT PROVENANCE (body verbatim below)
 #!/usr/bin/env python3
 """Identifiers that must not travel to a user's machine, and the scan.
@@ -129,6 +128,13 @@ repository. A file placed inside a wheel's ``.dist-info/licenses/`` directory is
 exempt, and only at one level: an earlier pattern ended in ``.+``, which matches
 a separator, so it exempted arbitrary nested content under that directory.
 
+The egg-info exemption is the one place depth is ALLOWED, and the asymmetry is
+deliberate. A ``.dist-info`` directory is always at the root of a wheel, so a
+copy of it anywhere else is a misplacement and stays a finding; an
+``.egg-info`` directory sits wherever the package tree does, which under a
+src-layout is ``src/<name>.egg-info/``. What is widened is where that directory
+may BE, never what may sit under it.
+
 A surname is also a citation risk. If a docstring ever cites a paper by an
 author of that name, the right move is to widen the exemption with the reason
 stated, not to drop the citation.
@@ -173,7 +179,17 @@ FORBIDDEN: tuple[tuple[re.Pattern[str], str], ...] = (
 #: shapes are packaging's, not any repository's.
 DERIVED_METADATA: tuple[re.Pattern[str], ...] = (
     re.compile(r"PKG-INFO"),
-    re.compile(r"[^/]+\.egg-info/PKG-INFO"),
+    # AT ANY DEPTH, widened at 0.2.18 (COORD-17). The pattern was
+    # `[^/]+\.egg-info/PKG-INFO`, applied with fullmatch, so it assumed the
+    # egg-info directory sits at the archive root. A src-layout project puts
+    # it at `src/<name>.egg-info/PKG-INFO`, where `[^/]+` cannot span the
+    # separator, and the exemption missed: 7 permanent false findings measured
+    # on one real repository, in a set this file deliberately does not let a
+    # repository narrow. The leading group matches whole path SEGMENTS only, so
+    # the widening is to the LOCATION of the egg-info directory and not to what
+    # may sit under it: an arbitrary path ending in PKG-INFO is still a
+    # finding, because `.egg-info/` must still be the last segment before it.
+    re.compile(r"(?:[^/]+/)*[^/]+\.egg-info/PKG-INFO"),
     re.compile(r"[^/]+\.dist-info/METADATA"),
     re.compile(r"[^/]+\.dist-info/licenses/[^/]+"),
 )

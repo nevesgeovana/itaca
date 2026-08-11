@@ -1,3 +1,12 @@
+<!--
+ITACA / pyflightstream shared process kit
+kit-version: 0.2.15
+artifact: version-control.md
+body-sha256: b8119d989a4b1acf9f3913e4f478a643f34ed1506ff4552c9518ffeb49594a0b
+canonical-source: BUILT for the kit (0.2.15, HUB-11) from the author's proposal of 2026-08-01. In two lanes the push step failed five separate ways and none of them was about the code; three of the five are addressed by carrying the correct sequence as a template so an operator does not reconstruct it, at a fraction of the cost of the two the pre-push receipt addresses. Records: ITC-20260801-2330, ITC-20260801-0900, coordination/DESIGN_HUB-11_kit_batch.md item 2.
+note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
+END KIT PROVENANCE (body verbatim below)
+-->
 ---
 name: version-control
 description: The correct sequence for committing, attesting and pushing in a repository carrying the shared push gate, with the verification step that does not trust an exit code. Use whenever work is about to be committed or pushed, when a push was denied and the reason is not obvious, when a push appeared to fail but may have succeeded, or when staging a change that other sessions may share the tree with. It carries the sequence as a template so it is not reconstructed from memory.

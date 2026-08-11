@@ -205,6 +205,7 @@ def test_the_round_cap_checker_refuses_a_bad_invocation() -> None:
 
 
 @pytest.mark.slow
+@pytest.mark.guardproof
 def test_the_round_cap_checker_can_still_fail() -> None:
     """The mutation companion proves the round-cap rules still bite.
 

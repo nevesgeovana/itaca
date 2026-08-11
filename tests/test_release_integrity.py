@@ -145,6 +145,7 @@ def test_the_vendored_release_checkers_are_present() -> None:
         assert checker.is_file(), f"vendored kit checker missing at {checker}"
 
 
+@pytest.mark.guardproof
 def test_the_release_gate_checker_can_still_fail() -> None:
     """The mutation companion proves the release-gate checker still refuses.
 
@@ -193,6 +194,7 @@ def test_the_release_gate_checker_can_still_fail() -> None:
     )
 
 
+@pytest.mark.guardproof
 def test_the_version_identity_checker_can_still_fail() -> None:
     """The mutation companion proves the version-identity rule still bites.
 
@@ -883,16 +885,24 @@ class TestIncident0854Guards:
         assert "scanned" in done.stdout, done.stdout
         assert "unreadable 0" in done.stdout, done.stdout
 
+    @pytest.mark.guardproof
     def test_guard_1_can_still_fail(self) -> None:
         """The mutation companion proves the shipped-surface rule still bites.
 
-        28 mutants, each a narrowing that turned a leaking artifact
+        30 mutants, each a narrowing that turned a leaking artifact
         green, plus control pairs proving each narrowing is caught by its
         own detector rather than by a neighbor.
+
+        The count moved from 28 to 30 with the kit 0.2.18 re-vendor (lane
+        ITA-15), whose COORD-17 change widened one DERIVED_METADATA pattern
+        so an `egg-info` directory is exempt at any depth. The number is
+        asserted rather than merely "some mutants" for the reason this file
+        asserts every other accounting line: a companion that silently
+        stopped building half its mutants would still exit 0.
         """
         done = _run(str(_SHIPPED_SURFACE_MUTATIONS))
         assert done.returncode == 0, done.stdout + done.stderr
-        assert "all 28 mutants denied" in done.stdout, done.stdout
+        assert "all 30 mutants denied" in done.stdout, done.stdout
 
     def test_guard_3_every_closed_probe_reproduced_against_the_base(self) -> None:
         """The probe-closure rule over CHK-1's own ledger.
@@ -906,6 +916,7 @@ class TestIncident0854Guards:
         assert done.returncode == 0, done.stdout + done.stderr
         assert "probe(s)" in done.stdout, done.stdout
 
+    @pytest.mark.guardproof
     def test_guard_3_can_still_fail(self) -> None:
         """The mutation companion proves the probe-closure rule still bites."""
         done = _run(str(_PROBE_CLOSURE_MUTATIONS))

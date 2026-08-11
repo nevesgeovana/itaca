@@ -76,6 +76,50 @@ tagged stable may proceed.
   repository, in any form. `_private/` is gitignored for local staging;
   see "Where the session documents live" below.
 
+## Execution rules (adopted 2026-08-11)
+
+These are POINTERS, not the reasoning. Each rule's mechanism is written
+once, in the file named beside it, and restating it here would create the
+second copy the authority chain forbids. They live here because of what
+was measured on 2026-08-11: every one of them was already written down,
+and this file carried three mentions of a pipe or an exit status across
+422 lines, none of which was a rule (two are about the plan checker's
+exit code and the third is the word "pipeline"). A skill loads when it is
+invoked; this file loads always. The rules were not failing, they were
+never in the room.
+
+- **Never read an exit status through a pipe.** PowerShell 5.1 wraps a
+  native command's stderr into an ErrorRecord and sets `$?` to false even
+  on exit 0, and `git push` writes progress to stderr, so a SUCCESSFUL
+  push reads as a failure. A piped command's status is the pipeline's,
+  not the checker's. Mechanism: `.claude/skills/version-control/SKILL.md`,
+  steps 3 and 5.
+- **Verify a push on the REMOTE, never by its exit code.** Mechanism: the
+  same file, step 5, which names itself the step most often skipped.
+- **Verify that it BUILDS, which no git command can tell you.** A close
+  that checked `git ls-remote` or `git rev-list HEAD --not --remotes` has
+  proved the commits ARRIVED and nothing about whether they build.
+  Mechanism: `.claude/tools/closing_ci_check.py`, wired into the `handoff`
+  skill's `out` sequence; `INC-20260811-1745-itaca` is why.
+- **Author backslash and control-byte content with Write or Edit.**
+  Heredocs are not banned, but a heredoc carrying a backslash or a
+  non-printable byte has corrupted files here more than once, and a
+  mangled regex returns zero matches and reads as absence. Mechanism:
+  `.claude/skills/version-control/SKILL.md`.
+- **Write the attestation and the push as SEPARATE commands.** The gate
+  inspects the whole command string, so a combined command is seen as a
+  push and denied before the attestation runs. Mechanism: the "Role
+  passes" section below, and the same skill, steps 3 and 4.
+- **One tree, one session.** Never revert, restore, checkout, stash or
+  commit a change you did not make, and never run a long suite, build or
+  gate in a tree another session is working in. A test failure born that
+  way looks exactly like a real one, which is the expensive part.
+  Mechanism: the same skill, step 2, and the `review_runner.py` worktree
+  isolation the `role-review` skill uses.
+- **A completion claim carries fresh command output in the same message.**
+  No "done", "passing" or "ready to push" without the evidence a reader
+  can see, and no closure claim at all while CI is not green.
+
 ## Role passes (adopted 2026-07-23)
 
 Before a work item closes, the `role-review` skill has run its
@@ -117,6 +161,19 @@ tag clear the gate. Push forms whose scope cannot be resolved offline
 denied rather than guessed at; name the branch or tag. An explicit
 version tag additionally requires the release attestation (full-scope
 review of the release diff).
+
+Since kit 0.2.18, adopted 2026-08-11, an explicit version tag ALSO
+requires that the commit the tag names has a CONCLUDED, SUCCESSFUL CI
+result on the remote. RED, RUNNING, UNKNOWN and a query that could not be
+made all deny, on the same rule `COORD_INCIDENT_LEDGER` already follows: a
+guard that reads its own missing information as permission is not a guard.
+The gate does not hold that decision table; it runs
+`.claude/hooks/ci_state.py`, and an ABSENT `ci_state.py` is a REFUSAL
+rather than a skip, so the two bodies are one vendoring and never separate
+ones. `INC-20260810-2350-itaca` is why, and it covers the TAG only: an
+ordinary branch push is not asked, deliberately. What covers the branch is
+`.claude/tools/closing_ci_check.py` at the CLOSE, under "Execution rules"
+above (`INC-20260811-1745-itaca`).
 
 What the mechanism enforces is exactly this: an attestation exists
 naming every commit in scope. It does not prove the agents ran, and

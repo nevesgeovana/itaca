@@ -375,6 +375,7 @@ def test_a_receipt_that_exists_records_what_it_claims_and_no_more(
 
 
 @pytest.mark.slow
+@pytest.mark.guardproof
 def test_the_receipt_can_still_fail() -> None:
     """The mutation companion proves every unknown state still RUNS.
 

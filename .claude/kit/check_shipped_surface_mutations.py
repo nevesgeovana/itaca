@@ -1,10 +1,9 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.7
+# kit-version: 0.2.18
 # artifact: check_shipped_surface_mutations.py
-# body-sha256: 517fa0746254857ab5ce7319e3010aa87cd0a15ebfaa3ee5b32a6570391bf3b8
-# canonical-source: BUILT for the kit (0.2.7): the mutation companion for check_shipped_surface.py. Its fixtures are deliberately awkward because a review demonstrated that eight dangerous mutants survived a flat, all-committed, all-ASCII fixture tree. Two control PAIRS carry the defences that cannot be observed alone.
+# body-sha256: 09b94846024e803116f2308a6aecccc6d70e91da021104fa459ef06c0d486daa
+# canonical-source: BUILT for the kit (0.2.7): the mutation companion for check_shipped_surface.py. Its fixtures are deliberately awkward because a review demonstrated that eight dangerous mutants survived a flat, all-committed, all-ASCII fixture tree. Two control PAIRS carry the defences that cannot be observed alone. 0.2.18 adds the src-layout case, its over-widened twin, and one mutant for each direction, so neither anchoring the exemption at the root again nor exempting anything whose name ends in PKG-INFO can survive.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
-# 
 # END KIT PROVENANCE (body verbatim below)
 #!/usr/bin/env python3
 """Prove check_shipped_surface.py can still refuse, on real archives.
@@ -365,6 +364,25 @@ CASES: list[tuple[str, str, int, str]] = [
         1,
         "licenses/notes/secret.py",
     ),
+    # COORD-17, added at 0.2.18. The measured shape: a src-layout project's
+    # egg-info sits at src/<name>.egg-info/, the root-anchored pattern could
+    # not span the separator, and one real repository carried 7 permanent
+    # false findings in a set it is not allowed to narrow locally.
+    (
+        "a src-layout egg-info is exempt at its own depth",
+        "src_layout_egg_info",
+        0,
+        "no forbidden identifier",
+    ),
+    # The other side of the same widening, so nobody widens it further on
+    # principle: what moved is where the egg-info DIRECTORY may sit, not what
+    # a path may end in.
+    (
+        "an arbitrary path ending in PKG-INFO is still a finding",
+        "misplaced_pkg_info",
+        1,
+        "sdist: tests/PKG-INFO",
+    ),
     (
         "the sdist root prefix is stripped, so exemptions still match",
         "clean",
@@ -539,6 +557,24 @@ def build_case(name: str, tmp: Path) -> list[str]:
             tmp, _with(CLEAN_WHEEL, **{named: CLEAN_TEXT.encode()}), CLEAN_SDIST
         )
         return ["--config", str(config), "--dist", str(dist)]
+    if name == "src_layout_egg_info":
+        # Exactly what `python -m build` leaves in the sdist of a src-layout
+        # project, identifier and all: the metadata is DERIVED from the
+        # authorship files, which is what the exemption is for.
+        member = "src/pkg.egg-info/PKG-INFO"
+        dist = make_dist(
+            tmp, CLEAN_WHEEL,
+            _with(CLEAN_SDIST, **{member: f"Author: {_GIVEN} {_FAMILY}\n".encode()}),
+        )
+        return ["--config", str(config), "--dist", str(dist)]
+    if name == "misplaced_pkg_info":
+        dist = make_dist(
+            tmp, CLEAN_WHEEL,
+            # NOT under docs/, which this config exempts as a tree: the case
+            # has to reach the pattern rather than the exemption set.
+            _with(CLEAN_SDIST, **{"tests/PKG-INFO": DIRTY_PROSE.encode()}),
+        )
+        return ["--config", str(config), "--dist", str(dist)]
     if name == "nested_license":
         nested = "pkg-1.0.0.dist-info/licenses/notes/secret.py"
         dist = make_dist(
@@ -696,6 +732,35 @@ def _licenses_reach_nested(src: str) -> str:
     return src.replace(
         r'    re.compile(r"[^/]+\.dist-info/licenses/[^/]+"),',
         r'    re.compile(r"[^/]+\.dist-info/licenses/.+"),',
+        1,
+    )
+
+
+def _egg_info_at_root_only(src: str) -> str:
+    """Anchor the egg-info exemption at the archive root again.
+
+    This is COORD-17 itself, restored: `[^/]+` cannot span a separator, so a
+    src-layout project's `src/<name>.egg-info/PKG-INFO` is scanned and every
+    build reports the same finding for ever.
+    """
+    return src.replace(
+        r'    re.compile(r"(?:[^/]+/)*[^/]+\.egg-info/PKG-INFO"),',
+        r'    re.compile(r"[^/]+\.egg-info/PKG-INFO"),',
+        1,
+    )
+
+
+def _egg_info_over_wide(src: str) -> str:
+    """Widen the same exemption to anything ending in PKG-INFO.
+
+    The opposite failure, and the one a reader is most likely to introduce
+    while fixing the first: dropping the `.egg-info/` segment exempts any file
+    with that basename anywhere, which is the exempt-by-name shape this table
+    is written by SHAPE to avoid.
+    """
+    return src.replace(
+        r'    re.compile(r"(?:[^/]+/)*[^/]+\.egg-info/PKG-INFO"),',
+        r'    re.compile(r".*PKG-INFO"),',
         1,
     )
 
@@ -947,6 +1012,8 @@ MUTANTS = {
     "match only the run-together institution spelling": _institution_exact_only,
     "exempt derived metadata by basename instead of by shape": _exempt_by_basename,
     "let the licenses exemption reach nested content": _licenses_reach_nested,
+    "anchor the egg-info exemption at the archive root": _egg_info_at_root_only,
+    "exempt anything whose name ends in PKG-INFO": _egg_info_over_wide,
     "leave the distribution root on sdist member paths": _keep_the_sdist_prefix,
     "satisfy a floor by presence instead of by having read it": _floor_is_presence,
     "examine only the first line of every file": _first_line_only,

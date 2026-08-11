@@ -294,6 +294,40 @@ markers = [
   # per-test cost guard at all. A 3.5 s probe passed the tier in 3.83 s
   # with no refusal. The exemption now reads `slow` AND NOT `fast`.
   "fast: cheap enough for the commit tier despite a module-level slow mark",
+  # `guardproof` is the THIRD routing marker and the only one whose reason
+  # is not cost. The author's decision of 2026-08-11, answering BRF-076: a
+  # push must not be allowed to carry a change that breaks BEHAVIOUR;
+  # proving that a GUARD IS WELL BUILT answers a different question, and it
+  # only changes when the guard changes. So a mutation proof runs in CI and
+  # not at pre-push, whatever it costs.
+  #
+  # Read the marker by its REASON and not by its price, because that is what
+  # keeps it from becoming an exemption. It admits a test whose subject is a
+  # guard's own machinery (a mutation companion asserting the guard can still
+  # fail, or the tier-speed assertion, whose subject is the tier). It does
+  # NOT admit a test that is merely slow: `slow` already routes those, to a
+  # tier that still blocks. Marking a behavior test `guardproof` to get a
+  # red push through is the failure this marker's existence makes easy, and
+  # tests/test_tooling_config.py refuses an undeclared use for that reason.
+  #
+  # THE COST IS WHAT MADE IT URGENT AND NOT WHAT DECIDES IT. Measured by the
+  # coordination level on 2026-08-11: the full suite is 937.17s, and five
+  # tests are 718.5s of it, seventy-seven percent. Four of the five are
+  # mutation proofs. `test_the_receipt_can_still_fail` spent 71.8s on every
+  # push proving the mechanism that exists to make pushes cheap, and
+  # `test_the_commit_tier_subset_is_actually_fast` spent 25.5s asserting
+  # that the commit tier is fast. Both are correct tests in the wrong tier.
+  #
+  # WHAT STANDS BEHIND IT, because a marker with no blocking tier behind it
+  # is an exemption and this repository already says so about `slow`. CI
+  # runs a bare `pytest` on three legs, so every marked test runs there on
+  # every push and every pull request. And since this lane, a red CI also
+  # stops the lane CLOSING: `.claude/tools/closing_ci_check.py` refuses to
+  # let a session report work closed while CI is red, running or unknown
+  # (INC-20260811-1745-itaca). That mechanism is what makes moving these
+  # tests to CI a routing decision rather than a hole, and it did not exist
+  # when the pre-push tier was last argued about.
+  "guardproof: proves a guard's own machinery, not behavior; runs in CI, not at pre-push",
 ]
 
 [tool.coverage.run]

@@ -154,6 +154,7 @@ def test_the_plan_checker_is_readable_when_configured() -> None:
     )
 
 
+@pytest.mark.guardproof
 def test_the_plan_checker_can_still_fail() -> None:
     """Run the kit plan checker's mutation companion when it is configured."""
     resolved = _resolve()

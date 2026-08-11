@@ -1,8 +1,8 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.16
+# kit-version: 0.2.17
 # artifact: review_runner.py
-# body-sha256: bedd5c3957850d4ddb236efec4ade6f6e9f81412df9ab612eb8247aeeab12474
-# canonical-source: BUILT for the kit (0.2.11, HUB-9, BRF-061 item 15, author decision 7) from two recorded failures with one structural cause: a reviewer ran git restore in the live tree and destroyed a lane's edits, and two Bash-holding lenses shared one worktree and corrupted each other's measurements (ITC-20260730-0250). One detached worktree per lens, diff and paths only, findings collected at close, worktree removed; a reviewer never receives the live tree as cwd. The charters' restore-prohibition paragraphs shrink to a pointer at each repository's next re-vendor, now that the mechanism they asked for exists. 0.2.15 fixes two defects both measured by lanes: ITC-20260801-0130, close aborting on the first worktree it cannot remove, stranding the rest AND destroying their findings files; and ITC-20260801-1600, the three RR_ files sitting inside the worktree where a house-style walk scans them, reddening every Bash lens. It also fixes a third defect found by executing this promotion's own contract fixture rather than by reading: the shared temp root was keyed on the repository's directory NAME alone, so two checkouts with the same basename shared one root and one repository's close enumerated the other's worktrees. See coordination/DESIGN_HUB-11_kit_batch.md item 7. 0.2.16 fixes ITC-20260802-0010, close force-deletes a worktree a lens is still using: the rmtree fallback is gated on git no longer registering the path, and the sidecar is re-read immediately before removal so a finding written AFTER collection is collected and that sidecar is kept. See coordination/DESIGN_HUB-12_kit_batch.md item 4.
+# body-sha256: f906c6c92b3b504ade3e4defcfe03803925b33f66128acf35101800bfab0025c
+# canonical-source: BUILT for the kit (0.2.11, HUB-9, BRF-061 item 15, author decision 7) from two recorded failures with one structural cause: a reviewer ran git restore in the live tree and destroyed a lane's edits, and two Bash-holding lenses shared one worktree and corrupted each other's measurements (ITC-20260730-0250). One detached worktree per lens, diff and paths only, findings collected at close, worktree removed; a reviewer never receives the live tree as cwd. The charters' restore-prohibition paragraphs shrink to a pointer at each repository's next re-vendor, now that the mechanism they asked for exists. 0.2.15 fixes two defects both measured by lanes: ITC-20260801-0130, close aborting on the first worktree it cannot remove, stranding the rest AND destroying their findings files; and ITC-20260801-1600, the three RR_ files sitting inside the worktree where a house-style walk scans them, reddening every Bash lens. It also fixes a third defect found by executing this promotion's own contract fixture rather than by reading: the shared temp root was keyed on the repository's directory NAME alone, so two checkouts with the same basename shared one root and one repository's close enumerated the other's worktrees. See coordination/DESIGN_HUB-11_kit_batch.md item 7. 0.2.16 fixes ITC-20260802-0010, close force-deletes a worktree a lens is still using: the rmtree fallback is gated on git no longer registering the path, and the sidecar is re-read immediately before removal so a finding written AFTER collection is collected and that sidecar is kept. See coordination/DESIGN_HUB-12_kit_batch.md item 4. 0.2.17 fixes BRF-077: `close` printed `len(collected)`, which counts WORKTREES, so it printed the same number whether five lenses reported or none did. It now counts lenses that actually WROTE and NAMES the silent ones. The trap the fix had to clear is that `cmd_open` seeds every findings file with a heading, measured at 68 bytes on the fixture, so a byte-length test would have counted a lens that never wrote. See coordination/DESIGN_HUB-13_kit_0217.md item 7.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # END KIT PROVENANCE (body verbatim below)
 #!/usr/bin/env python3
@@ -183,6 +183,39 @@ def _registered_worktrees(repo: Path) -> set[str] | None:
     return paths
 
 
+def _reported(lens: str, text: str) -> bool:
+    """Did this lens actually write anything, beyond what ``open`` seeded?
+
+    THREE SHAPES OF NOTHING, and only the first is obvious. `close` used to
+    count all three as a reported finding (BRF-077, HUB-13 item 7).
+
+    1. NO FILE AT ALL. Collection substitutes the literal
+       ``(no findings file)``, which is this module's own placeholder and
+       never a lens's words.
+    2. AN EMPTY OR WHITESPACE-ONLY FILE.
+    3. THE SEEDED HEADING, UNTOUCHED, and this is the one a byte-length test
+       gets wrong. ``cmd_open`` writes ``# Findings: <lens> lens, <range>``
+       into every findings file before any lens runs, so a lens that never
+       wrote leaves a file that is 68 bytes on the measured fixture and
+       non-empty by every naive test. Counting that as a report is exactly
+       the defect: a number that reads as confirmation and cannot fail.
+
+    The range is not available here, so the seeded line is matched by its
+    prefix rather than reconstructed. A lens that wrote its own heading and
+    nothing else is therefore ALSO counted as silent, which is correct: a
+    heading is not a finding.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if stripped == "(no findings file)":
+        return False
+    seed = f"# Findings: {lens} lens,"
+    remainder = [line for line in stripped.splitlines()
+                 if line.strip() and not line.strip().startswith(seed)]
+    return bool(remainder)
+
+
 def _deliver(out: Path | None, lens: str, text: str) -> None:
     """Hand one lens's findings to the caller, by file or by stdout."""
     if out:
@@ -283,6 +316,13 @@ def cmd_close(repo: Path, out: Path | None) -> int:
     for wt, lens, text in collected:
         _deliver(out, lens, text)
 
+    # The text each lens is FINALLY credited with. It starts as what phase 1
+    # collected and is replaced if phase 3 finds newer bytes, so the count
+    # printed at the end describes what was actually delivered rather than
+    # what was read first. A lens that wrote only after collection would
+    # otherwise be reported as silent when its finding WAS collected.
+    final: dict[str, str] = {lens: text for _, lens, text in collected}
+
     # PHASE 2: REMOVE, continuing past every failure. A lens still running
     # inside its worktree is the ordinary case.
     failures: list[tuple[Path, str]] = []
@@ -371,6 +411,7 @@ def cmd_close(repo: Path, out: Path | None) -> int:
                 continue
             if latest != text:
                 _deliver(out, lens, latest)
+                final[lens] = latest
                 superseded.append(
                     f"{lens}: wrote to its findings file AFTER it was "
                     "collected. The newer content was collected in its "
@@ -388,8 +429,27 @@ def cmd_close(repo: Path, out: Path | None) -> int:
             pass
     _git_try(repo, "worktree", "prune")
 
-    print(f"collected {len(collected)} findings file(s); "
-          f"removed {removed} of {len(collected)} review worktree(s)")
+    # THE COUNT NAMES WHAT IT COUNTED, 0.2.17, from BRF-077 and HUB-13 item
+    # 7. Through 0.2.16 this printed `len(collected)`, which is the number of
+    # WORKTREES and not the number of lenses that reported: it printed the
+    # same number whether five lenses wrote findings or none did, because a
+    # lens that never wrote still leaves the heading `cmd_open` seeded and a
+    # lens with no file at all still gets the `(no findings file)`
+    # placeholder counted. A number that reads as confirmation and cannot
+    # fail is the same shape as a guard proven only green.
+    silent = sorted(lens for lens, text in final.items()
+                    if not _reported(lens, text))
+    reported = len(final) - len(silent)
+    print(f"collected {reported} findings file(s) with content, of "
+          f"{len(final)} lens(es); removed {removed} of {len(collected)} "
+          "review worktree(s)")
+    if silent:
+        print(f"{len(silent)} lens(es) wrote NOTHING: {', '.join(silent)}")
+        print("  An empty findings file is not a clean review; it is a lens "
+              "that did not write. A lens with no writing tool cannot write "
+              "one at all, and returns its findings as final text that a "
+              "human must absorb. Read the transcript for these before "
+              "treating the review as complete.")
     if superseded:
         print(f"{len(superseded)} lens(es) wrote after collection; their "
               "newer findings were collected and their sidecars kept:")

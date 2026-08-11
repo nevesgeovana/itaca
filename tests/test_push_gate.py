@@ -131,8 +131,51 @@ def _resolve_ledger(repo: Path, ledger: str | None | object) -> str | None:
     return ledger
 
 
+#: `ci_state.py` exit codes, from the contract its own docstring publishes
+#: and the gate reads: 0 GREEN, 1 RED, 3 RUNNING, 4 UNKNOWN, 2 CONFIG.
+CI_GREEN, CI_RED, CI_CONFIG, CI_RUNNING, CI_UNKNOWN = 0, 1, 2, 3, 4
+
+
+def install_gate(repo: Path, ci_state_exit: int | None = CI_GREEN) -> Path:
+    """Copy the gate into ``repo`` with a stub ``ci_state.py`` beside it.
+
+    THE ONLY WAY TO CONTROL THE CI ARM HERMETICALLY, and it is worth saying
+    why the obvious alternatives do not work. Kit 0.2.18's gate resolves the
+    CI body as ``Path(__file__).parent / "ci_state.py"`` FIRST and only then
+    walks its search list, so a stub dropped into the fixture repository is
+    never reached while the gate runs from its real vendored path: the real
+    body answers, `gh` is asked about a scratch repository with a local bare
+    remote, and every tag case denies ``[ci-unknown]``.
+
+    That is not hypothetical. It is what five existing cases in this file did
+    the moment 0.2.18 landed, and the failure was indistinguishable from a
+    release-attestation defect. Copying the gate moves ``__file__`` into the
+    fixture, so the stub beside it is the body the gate binds.
+
+    ``ci_state_exit`` of None writes NO stub, which is the ``[ci-config]``
+    case: the fixture then has the body nowhere the gate looks, since the
+    first search entry and the beside-the-gate path are the same directory
+    here.
+    """
+    hooks = repo / ".claude" / "hooks"
+    hooks.mkdir(parents=True, exist_ok=True)
+    gate = hooks / "role_review_gate.py"
+    gate.write_bytes(HOOK.read_bytes())
+    if ci_state_exit is not None:
+        (hooks / "ci_state.py").write_text(
+            "import sys\n"
+            f"print('ci-state: stub answering exit {ci_state_exit}')\n"
+            f"sys.exit({ci_state_exit})\n",
+            encoding="utf-8",
+        )
+    return gate
+
+
 def judge(
-    repo: Path, command: str, ledger: str | None | object = _CLEAN
+    repo: Path,
+    command: str,
+    ledger: str | None | object = _CLEAN,
+    hook: Path | None = None,
 ) -> tuple[str, str]:
     """Run the hook on ``command`` and return (decision, reason).
 
@@ -141,10 +184,14 @@ def judge(
     case depend on state outside the repository, and a real open incident
     would fail tests that are not about incidents at all. Pass ``None``
     explicitly to test the unset variable, which is a denial in its own right.
+
+    ``hook`` overrides which copy of the gate runs, which is what
+    ``install_gate`` returns. It defaults to the real vendored body, so every
+    case that never reaches the CI arm is unchanged.
     """
     env = hook_env(_resolve_ledger(repo, ledger))
     done = subprocess.run(
-        [sys.executable, str(HOOK)],
+        [sys.executable, str(hook or HOOK)],
         input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}}),
         capture_output=True,
         text=True,
@@ -157,9 +204,14 @@ def judge(
     return str(out["permissionDecision"]), str(out.get("permissionDecisionReason", ""))
 
 
-def decide(repo: Path, command: str, ledger: str | None | object = _CLEAN) -> str:
+def decide(
+    repo: Path,
+    command: str,
+    ledger: str | None | object = _CLEAN,
+    hook: Path | None = None,
+) -> str:
     """Run the hook on ``command`` and return its permission decision."""
-    return judge(repo, command, ledger)[0]
+    return judge(repo, command, ledger, hook)[0]
 
 
 def stderr_of(repo: Path, command: str, ledger: str | None | object = _CLEAN) -> str:
@@ -284,10 +336,15 @@ def test_tag_push_needs_the_release_attestation_when_the_branch_is_pushed(
     git(repo, "fetch", "-q", "origin")
     git(repo, "tag", "v9.9.9")
     assert git(repo, "rev-list", "HEAD", "--not", "--remotes") == ""
+    # CI GREEN, so this case still measures the RELEASE ATTESTATION and not
+    # the CI arm that kit 0.2.18 put in front of it. Without the stub the
+    # final assertion fails `[ci-unknown]`, which is the arm working and this
+    # case no longer testing what it names.
+    gate = install_gate(repo, CI_GREEN)
     # Review-attested but not release-attested: the release gate holds.
-    assert decide(repo, f"{PUSH} origin v9.9.9") == "deny"
+    assert decide(repo, f"{PUSH} origin v9.9.9", hook=gate) == "deny"
     attest(repo, [head], kind="release")
-    assert decide(repo, f"{PUSH} origin v9.9.9") == "allow"
+    assert decide(repo, f"{PUSH} origin v9.9.9", hook=gate) == "allow"
 
 
 def test_a_configured_but_unreadable_ledger_blocks(repo: Path, tmp_path: Path) -> None:
@@ -648,9 +705,12 @@ def test_a_tag_written_as_a_refspec_is_still_release_grade(
     head = add_commit(repo, "one")
     attest(repo, [head])
     git(repo, "tag", "v9.9.9")
-    assert decide(repo, f"{PUSH} origin {spec}") == "deny", spec
+    # CI GREEN: this case is about CLASSIFICATION, so the arm in front of
+    # the release attestation is held constant rather than measured here.
+    gate = install_gate(repo, CI_GREEN)
+    assert decide(repo, f"{PUSH} origin {spec}", hook=gate) == "deny", spec
     attest(repo, [head], kind="release")
-    assert decide(repo, f"{PUSH} origin {spec}") == "allow", spec
+    assert decide(repo, f"{PUSH} origin {spec}", hook=gate) == "allow", spec
 
 
 def test_a_configured_push_refspec_makes_a_bare_push_unscopable(repo: Path) -> None:
@@ -973,7 +1033,12 @@ def test_a_multi_tag_release_deny_names_every_tag(repo: Path) -> None:
     attest(repo, [head])
     git(repo, "tag", "v9.9.8")
     git(repo, "tag", "v9.9.9")
-    decision, reason = judge(repo, f"{PUSH} origin v9.9.8 v9.9.9")
+    # CI GREEN on both tags, so the [release] deny below is reached. The CI
+    # arm runs BEFORE the release attestation and per tag, so without this
+    # the reason is [ci-unknown] naming the FIRST tag alone and the
+    # both-tags-named property this case exists for is never measured.
+    gate = install_gate(repo, CI_GREEN)
+    decision, reason = judge(repo, f"{PUSH} origin v9.9.8 v9.9.9", hook=gate)
     assert decision == "deny"
     assert "role-review gate: [release]" in reason
     assert "RELEASE GATE" not in reason
@@ -981,6 +1046,122 @@ def test_a_multi_tag_release_deny_names_every_tag(repo: Path) -> None:
     # The prescribed writer command must carry both tags, not just one.
     writer = reason[reason.index("write_attestation.py release") :]
     assert "v9.9.8" in writer and "v9.9.9" in writer
+
+
+# ---------------------------------------------------------------------------
+# THE CI-GREEN RELEASE ARM (kit 0.2.18), and `INC-20260810-2350-itaca`.
+#
+# The record's own words for what must exist here: "driving the adopted hook
+# with a release-grade push naming a tag on a commit whose CI is red or
+# pending, in itaca". These cases are the hermetic half of that, one per
+# state; the live half, against this repository's real remote and a commit CI
+# genuinely reported RED on, is recorded in the incident itself because it
+# cannot be re-run from a clone with no network and no `gh`.
+#
+# EVERY NON-GREEN STATE DENIES, which is the whole rule. They are written one
+# per case rather than parametrized because the sub-kind and the remedy differ
+# per state, and a parametrized case that asserted only "deny" would pass
+# while the operator was told the wrong thing to do.
+# ---------------------------------------------------------------------------
+
+
+def _release_ready(repo: Path) -> str:
+    """A repository where only the CI arm stands between a tag and allow.
+
+    Both attestations cover the tagged commit and the branch is already
+    pushed, so the tag's own range is empty. Anything this fixture denies is
+    the CI arm and nothing else, which is what makes the assertions below
+    about CI rather than about attestation.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    attest(repo, [head], kind="release")
+    git(repo, "push", "-q", "origin", "HEAD:refs/heads/main")
+    git(repo, "fetch", "-q", "origin")
+    git(repo, "tag", "v9.9.9")
+    return head
+
+
+def test_a_release_push_is_allowed_when_ci_is_green(repo: Path) -> None:
+    """The control, and it is what makes every denial below meaningful.
+
+    Without a passing case the four refusals could all be produced by a gate
+    that denies every tag, which would be a gate nobody could release
+    through and a suite that could not tell the difference.
+    """
+    _release_ready(repo)
+    gate = install_gate(repo, CI_GREEN)
+    assert decide(repo, f"{PUSH} origin v9.9.9", hook=gate) == "allow"
+
+
+@pytest.mark.parametrize(
+    "exit_code,kind,phrase",
+    [
+        (CI_RED, "[ci-red]", "CI FAILED on the remote"),
+        (CI_RUNNING, "[ci-running]", "CI has NOT CONCLUDED"),
+        (CI_UNKNOWN, "[ci-unknown]", "CI could not be established"),
+        (CI_CONFIG, "[ci-config]", "could not run"),
+    ],
+)
+def test_a_release_push_is_refused_on_anything_but_green(
+    repo: Path, exit_code: int, kind: str, phrase: str
+) -> None:
+    """RED, RUNNING, UNKNOWN and CONFIG all deny, each saying which it is.
+
+    This is `INC-20260810-2350-itaca`'s guard, exercised on the exact
+    fixture where nothing else can deny. RUNNING is the state that published
+    pyflightstream's v0.7.0 tag and UNKNOWN is the fail-closed half: a guard
+    that reads its own missing information as permission is not a guard.
+    """
+    _release_ready(repo)
+    gate = install_gate(repo, exit_code)
+    decision, reason = judge(repo, f"{PUSH} origin v9.9.9", hook=gate)
+    assert decision == "deny", reason
+    assert kind in reason, reason
+    assert phrase in reason, reason
+    # The state must reach the operator, not just the refusal: a denial that
+    # does not say what CI said sends them to the wrong remedy.
+    assert "ci_state.py said:" in reason, reason
+
+
+def test_an_absent_ci_state_body_denies_rather_than_skipping(repo: Path) -> None:
+    """The one the adoption brief warns about, pinned so it cannot regress.
+
+    Vendoring the 0.2.18 gate WITHOUT `ci_state.py` makes every
+    release-grade push deny `[ci-config]`, and the message must say so, or
+    the cause reads as a gate defect and someone turns the gate off. This is
+    also the fail-closed direction: an absent checker is a refusal, never a
+    skip, on the same precedent COORD_INCIDENT_LEDGER already sets here.
+    """
+    _release_ready(repo)
+    gate = install_gate(repo, None)
+    decision, reason = judge(repo, f"{PUSH} origin v9.9.9", hook=gate)
+    assert decision == "deny", reason
+    assert "[ci-config]" in reason, reason
+    assert "not vendored" in reason, reason
+    # It must not offer switching the gate off as the way past this.
+    assert "author decision, not a workaround" in reason, reason
+
+
+def test_an_ordinary_branch_push_is_not_this_arms_business(repo: Path) -> None:
+    """THE LINE BETWEEN THE TWO ITACA INCIDENTS, and it is deliberate.
+
+    `INC-20260810-2350-itaca` is the TAG half and this arm covers it.
+    `INC-20260811-1745-itaca` is the BRANCH half and this arm CANNOT cover
+    it: an ordinary push to `main` on a commit CI is red on is allowed here,
+    by design, because the arm asks only about the commit a version TAG
+    names. The three red pushes that produced 1745 had no tag in sight.
+
+    So this case asserts the ALLOW, which is the opposite of what a reader
+    skimming for "the CI guard" would expect, and it is what stops anyone
+    closing 1745 on the strength of this file. What covers the branch half
+    is `tests/test_closing_ci_check.py`.
+    """
+    head = add_commit(repo, "one")
+    attest(repo, [head])
+    # ci_state stubbed RED, and the push is still allowed: no tag, no arm.
+    gate = install_gate(repo, CI_RED)
+    assert decide(repo, f"{PUSH} origin main", hook=gate) == "allow"
 
 
 def test_a_push_with_no_resolvable_repo_denies_with_the_repo_kind(

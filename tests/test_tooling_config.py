@@ -452,21 +452,83 @@ def test_the_push_tier_runs_the_whole_suite_and_blocks() -> None:
     # it: the tier would collect and run nothing while a guard whose whole
     # purpose is "the blocking tier runs the WHOLE suite" stayed green.
     # Enumerating the ways to run less is a denylist, and this file already
-    # states one level up why an allowlist is the only safe shape. Coverage
-    # and marker selection are covered by this too, since neither
-    # `--no-cov` nor `-m` can appear in a command that is exactly `pytest`.
+    # states one level up why an allowlist is the only safe shape.
     #
-    # An addition here is not forbidden, it is a DECISION: change this
-    # literal and say in the same edit why the addition does not reduce
-    # what the blocking tier sees.
-    assert argv == ["pytest"], (
+    # An addition here is not forbidden, it is a DECISION, and the previous
+    # version of this comment said so and asked the next editor to give the
+    # reason in the same edit. This is that edit and this is that reason.
+    #
+    # THE ONE NARROWING, `-m "not guardproof"`, is the author's decision of
+    # 2026-08-11 answering BRF-076: a push must not be allowed to carry a
+    # change that breaks BEHAVIOUR, and proving that a guard is well built
+    # answers a different question, which only changes when the guard
+    # changes. It DOES reduce what this tier sees, and pretending otherwise
+    # would be the dishonest way to write this. What it does not reduce is
+    # what a push is allowed to carry: every marked test is a mutation
+    # proof or the tier-speed assertion, none of them exercises library
+    # behavior, and all of them run in CI on three legs on every push.
+    #
+    # AND CI IS NO LONGER ADVISORY, which is the half that makes this a
+    # routing decision rather than an exemption: since ITA-15 a red CI
+    # blocks the lane CLOSING, through `.claude/tools/closing_ci_check.py`
+    # (INC-20260811-1745-itaca). `test_the_marker_has_a_tier_behind_it`
+    # below is what keeps that true.
+    #
+    # Everything else stays refused by the same equality. Coverage cannot be
+    # dropped, because `--no-cov` is not in this list; `-k`, `-x` and `--co`
+    # are not either. The literal is an allowlist and adding to it is again
+    # a decision that has to be argued in this comment.
+    assert argv == ["pytest", "-m", "not guardproof"], (
         f"the pre-push hook's effective command is {argv!r} and not exactly "
-        f"['pytest']. This is the only local gate that sees the slow tests "
-        f"and the only one that enforces the 90 percent floor (REQ-75), so "
-        f"it runs the whole suite with nothing added: no marker selection, "
-        f"no -k, no -x, no --co, no --no-cov. If an argument is genuinely "
-        f"needed, add it here with the reason it does not narrow the run."
+        f"['pytest', '-m', 'not guardproof']. This is the only local gate "
+        f"that sees the slow tests and the only one that enforces the 90 "
+        f"percent floor (REQ-75). The single permitted narrowing is the "
+        f"`guardproof` marker, and it is permitted because a red CI now "
+        f"blocks the close. Nothing else may be added: no -k, no -x, no "
+        f"--co, no --no-cov, no second marker. If an argument is genuinely "
+        f"needed, add it here with the reason it does not narrow what a push "
+        f"is allowed to carry."
     )
+
+
+def test_the_guardproof_marker_has_a_tier_behind_it() -> None:
+    """A marker with no tier behind it is an exemption, not a routing call.
+
+    The exact argument this file already makes for `slow`, applied to the
+    marker that carries a weaker claim and therefore needs it more. `slow`
+    moves a test to pre-push, which BLOCKS; `guardproof` moves it to CI,
+    which does not block the push. So the thing that must be true is that CI
+    actually runs it: every leg must run a bare `pytest`, with no marker
+    selection of its own. If a leg ever narrowed its run the same way the
+    pre-push tier now does, a `guardproof` test would run NOWHERE and the
+    marker would silently become an exemption.
+
+    That is not hypothetical here. It is one string edit away in a file this
+    lane also touched, and nothing else in the suite would notice.
+    """
+    workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    gates: list[str] = []
+    for job in workflow["jobs"].values():
+        raw = (job.get("with") or {}).get("gates")
+        if not raw:
+            continue
+        gates.extend(gate["run"] for gate in json.loads(raw))
+    pytest_gates = [run for run in gates if "pytest" in run]
+    assert pytest_gates, (
+        "no CI gate runs pytest at all, so nothing runs the tests the "
+        "`guardproof` marker removed from the pre-push tier. Either restore "
+        "them to pre-push or give CI a pytest gate; a marker with no tier "
+        "behind it is an exemption."
+    )
+    for run in pytest_gates:
+        assert run.strip() == "pytest", (
+            f"a CI pytest gate runs {run!r} rather than a bare `pytest`. The "
+            f"`guardproof` marker is only legitimate because CI runs "
+            f"everything the pre-push tier now skips. A marker selection "
+            f"here would leave those tests running nowhere."
+        )
 
 
 @pytest.mark.parametrize(
@@ -906,6 +968,7 @@ def test_no_undeclared_test_uses_the_fast_marker() -> None:
 
 
 @pytest.mark.slow
+@pytest.mark.guardproof
 def test_the_commit_tier_subset_is_actually_fast() -> None:
     """Measure the aggregate, because no per-test rule can see it.
 

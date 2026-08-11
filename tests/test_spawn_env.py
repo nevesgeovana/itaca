@@ -425,6 +425,7 @@ def test_every_spawn_in_the_suite_passes_the_stripping_helper() -> None:
 
 
 @pytest.mark.slow
+@pytest.mark.guardproof
 def test_the_spawn_checker_can_still_fail() -> None:
     """The mutation companion proves the guard still bites.
 

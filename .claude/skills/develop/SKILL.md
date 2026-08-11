@@ -4,7 +4,6 @@ description: Execute one itaca work item end to end, in the repository's own ord
 argument-hint: "<plan ledger id | REQ/DD/OQ id | one sentence naming the item>"
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Skill
 side-effects: writes source, tests and docs in this repository; writes plan ledger entries and session records under the resolved management root; makes commits
-disable-model-invocation: true
 ---
 
 Work item: `$ARGUMENTS`

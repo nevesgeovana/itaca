@@ -3,7 +3,6 @@ name: handoff
 description: Session closure documentation for itaca. Writes the outgoing session handoff under the management root's handoffs/, refreshes its NEXT_SESSION.md forward prompt, and can also ingest an incoming capture. Use at the end of every working session, when a session must hand its context to an integrator who was not in the room, or when a capture from another session or a web thread needs to be folded into itaca's state.
 argument-hint: "[out|in <file>]"
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
-disable-model-invocation: true
 side-effects: writes handoff briefs into another workspace           # handoff
 ---
 
@@ -59,6 +58,21 @@ with:
 1. State, checked and not assumed: where `origin/main` is, whether the
    tree is clean, what is unpushed, and which commits shipped this
    session. Verify with git; do not assume.
+
+   **Then verify it BUILDS, which git cannot tell you.** Run
+
+       python .claude/tools/closing_ci_check.py
+
+   after the push and read its exit status. Only exit 0, GREEN, permits
+   this handoff to call the work closed, successful, clean, or done. On
+   RED, RUNNING, UNKNOWN or UNPUSHED, write the state the checker names:
+   the work is PUSHED with CI state NOT VERIFIED, naming the sha and the
+   reason. This is not optional and it is not satisfied by `git ls-remote`
+   or `git rev-list HEAD --not --remotes`: both answer questions about
+   REFS and neither can go red when the build does, which is
+   `INC-20260811-1745-itaca`. CI was red on `main` for three consecutive
+   pushes and every one of those sessions had checked that its push
+   landed.
 2. Context: the session objective as stated at the start, and what
    actually happened, in one paragraph.
 3. Decisions, each marked decided or proposed, with who decided.

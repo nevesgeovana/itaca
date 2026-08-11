@@ -275,9 +275,82 @@ MANIFEST: dict[str, Pin] = {
     # and `tests/test_review_gate.py` are unchanged in verdict across this
     # row.
     #
+    # 0.2.18 is the THIRD change to this body that removes a way for a push
+    # to escape a question, and the first that asks a question of something
+    # outside this machine. A release-grade push is REFUSED unless the commit
+    # each version tag names has a concluded, successful CI result on the
+    # remote; RED, RUNNING, UNKNOWN and a query that could not be made all
+    # DENY. `INC-20260810-2140-shared` is what paid for it next door, a v0.7.0
+    # tag published fifteen seconds after its branch with seven of eight jobs
+    # still running and five of them red, and `INC-20260810-2350-itaca` is
+    # this repository's own half of the same cause, which this row closes.
+    #
+    # THE DECISION TABLE IS NOT IN THIS BODY, which is why the row below it
+    # exists and why the two must be vendored together. The gate SHELLS OUT to
+    # `ci_state.py`, reads its documented exit contract, and maps anything
+    # outside that contract to UNKNOWN. An ABSENT `ci_state.py` is a REFUSAL
+    # with `[ci-config]` and never a skip, so vendoring this row without the
+    # next one denies every release-grade push and does it with a message
+    # that reads like a gate defect.
+    #
+    # 0.2.18 adds three arms and NO test in this repository reaches two of
+    # them, which is stated here rather than left for a reader to assume
+    # coverage: `[ci-budget]` and `[ci-tag]`. The gate's own companion prints
+    # them as unreached rather than counting them denied, and `[ci-tag]` is
+    # marked unreachable-today in the master's own comment because `[scope]`
+    # refuses first. `tests/test_push_gate.py` reaches `[ci-config]`,
+    # `[ci-unknown]` and the release-grade classification, and says so.
+    #
+    # MEASURED HERE against this repository's own deployed body, before and
+    # after: on the 0.2.16 body a release-grade push naming a tag on a commit
+    # with no CI result was ALLOWED through this arm entirely, because the arm
+    # did not exist; on the 0.2.18 body the same push denies. That run is the
+    # guard evidence in `INC-20260810-2350-itaca` and is not restated here.
+    #
+    # NO DENY PROSE THAT THIS REPOSITORY PINS BY HAND MOVED at 0.2.18: the
+    # `[review]`, `[release]`, `[config]`, `[ledger]` and `[incident]`
+    # messages `tests/test_push_gate.py` and `tests/test_review_gate.py`
+    # assert on are unchanged in verdict and in the fragments those tests
+    # quote.
     # The declared value agreed with the master body on recomputation.
     "role_review_gate.py": Pin(
-        "8dd77671321f5d4f76d44ee9ae5ff5eb72288586ba20a31251039fc5e28d8f3a", "0.2.16"
+        "acd1766cc0425036a96ec825ecf0f1e50660101d7763f97639e31dd088314ada", "0.2.18"
+    ),
+    # 0.2.18, NEW, and the row whose ABSENCE the row above turns into a
+    # refusal. `ci_state.py` answers one question about one SHA in four
+    # states, RUNNING, GREEN, RED and UNKNOWN, with UNKNOWN never green:
+    # no network, no `gh`, an expired token, no run found yet, a conclusion
+    # it does not recognize, a full page that may be truncated, and any
+    # exception raised inside the mechanism are all UNKNOWN. It shells out
+    # to `gh`, whose absence is UNKNOWN rather than an error.
+    #
+    # IT HAS TWO CALLERS ON OPPOSITE SIDES OF THE PUSH, and this repository
+    # now wires BOTH, which is the whole of lane ITA-15. The gate above calls
+    # it BEFORE a release-grade push and denies on anything but GREEN. The
+    # closing sequence calls it AFTER an ordinary push and refuses to say
+    # closed on anything but GREEN, which is `INC-20260811-1745-itaca`, the
+    # BRANCH half that the gate arm cannot reach: that arm's own companion
+    # passes on `an ordinary branch push on a RED commit is not this arm's
+    # business`, and the three red pushes to `main` that produced the record
+    # had no tag in sight.
+    #
+    # It is vendored into `.claude/hooks` and not `.claude/kit` because
+    # `_ci_state_body` looks BESIDE THE GATE first and only then walks its
+    # search list, so the pair sits together and the resolution never depends
+    # on that list being right about this repository.
+    #
+    # WHAT THIS REPOSITORY DOES NOT DO WITH IT, said once so a reader does
+    # not go looking: `detached_gate.py` is NOT vendored, so the closing
+    # sequence runs `poll` and reports, rather than `await` run detached.
+    # A close over a still-queued run therefore reports NOT VERIFIED instead
+    # of waiting, which is the strict half of the contract without the half
+    # that makes waiting affordable. Registered rather than done here.
+    # Both declared values agreed with the master bodies on recomputation.
+    "ci_state.py": Pin(
+        "39977e44aae1cb4116fb2bce3b672ac21b03ec3a5d75f64244eb70eb2f89b3ab", "0.2.18"
+    ),
+    "ci_state_mutations.py": Pin(
+        "7e1135337732252f7afffc5c7367769035e54bbe06a7d31df7dcfd7e2a362746", "0.2.18"
     ),
     # 0.2.9, the INC-20260729-2355 guard: the attestation refuses while
     # TRACKED files carry uncommitted changes, and reports untracked paths
@@ -406,12 +479,10 @@ MANIFEST: dict[str, Pin] = {
     # two shipped-surface bodies changed three times during the
     # promotion. The recomputation agreed with all nineteen declared
     # entries, which is the check having been run, not skipped.
-    "check_shipped_surface.py": Pin(
-        "6fbbdbce007e8acff486f8fc28cd23d3e0f81023d808d70cd7fe13ce91a6d4ba", "0.2.7"
-    ),
-    "check_shipped_surface_mutations.py": Pin(
-        "517fa0746254857ab5ce7319e3010aa87cd0a15ebfaa3ee5b32a6570391bf3b8", "0.2.7"
-    ),
+    #
+    # The two shipped-surface rows have since moved to 0.2.18 and sit
+    # below with their own entry; the probe-closure pair is what remains
+    # of this promotion at 0.2.7.
     "check_probe_closure.py": Pin(
         "5b4a76ea8e94d6185cd200d0f0324e6501967d1d959c94e5a0e0f31019c142a2", "0.2.7"
     ),
@@ -731,15 +802,94 @@ MANIFEST: dict[str, Pin] = {
     # running lens, and nothing portable can detect that. The operator rule
     # "do not close until every lens has reported" is NOT retired; it is
     # reduced from protecting findings to protecting a working directory.
+    # 0.2.17 fixes BRF-077 and moves nothing else: `close` printed
+    # `len(collected)`, which counts WORKTREES, so it printed the same number
+    # whether five lenses reported or none did. It now counts the lenses that
+    # actually WROTE and NAMES the silent ones. The trap the fix had to clear
+    # is that `open` seeds every findings file with a heading, so a byte-length
+    # test would have counted a lens that never wrote a finding.
+    #
+    # ON THE RUN-CLOSE-FIRST PRECAUTION the 0.2.15 paragraph above records,
+    # stated as what was actually done rather than as the ritual: `close` was
+    # NOT run with the old body here, because there was nothing to close.
+    # `git worktree list` at the moment of the re-vendor reported the main
+    # checkout alone, so no worktree could be stranded by the body changing
+    # under it. The precaution the 0.2.15 entry describes is specific to a
+    # change in the TEMP-ROOT scheme, which 0.2.17 does not touch; it changes
+    # what `close` COUNTS and prints. Recorded this way because "ran close
+    # first" would have been a false claim and the reader of the next
+    # re-vendor needs to know which of the two situations they are in.
     # The declared value agreed with the master body on recomputation.
     "review_runner.py": Pin(
-        "bedd5c3957850d4ddb236efec4ade6f6e9f81412df9ab612eb8247aeeab12474", "0.2.16"
+        "f906c6c92b3b504ade3e4defcfe03803925b33f66128acf35101800bfab0025c", "0.2.17"
     ),
+    # 0.2.19, and it is a POLICY change rather than a fix, which is why this
+    # entry says who decided it. The author RETIRED the requirement that a
+    # skill declaring `side-effects` must also set
+    # `disable-model-invocation: true`, for all skills and with no exception,
+    # on 2026-08-11. Her reasoning, recorded in `BRF-079`, is that the
+    # verification stages downstream carry the safety level she requires for
+    # more autonomy; the objection was put to her before she decided and she
+    # decided with it on the table. This lane APPLIES the decision and does
+    # not weigh it.
+    #
+    # WHAT THE GUARD ASSERTS NOW is strictly less than before and in one
+    # direction only: every skill must CARRY a `side-effects` declaration,
+    # with `none` a valid answer and SILENCE the thing refused. The
+    # implication is gone; the declaration requirement, which is the half
+    # that replaced a hardcoded allowlist, is untouched.
+    #
+    # THE ADOPTION BRIEF SAID THIS HALF WOULD FIND NOTHING TO FIX AND THAT
+    # WAS FALSE HERE, measured rather than trusted, and the correction is
+    # kept because it is the whole reason the row above this one moved. The
+    # brief's claim was that all six skills already declare `side-effects`,
+    # so 0.2.19 is a pure removal. The FIRST run of the 0.2.19 body in this
+    # tree, before anything was edited, was
+    #
+    #     UNDECLARED .claude\skills\version-control\SKILL.md: carries no
+    #     side-effects declaration
+    #     checked 6 skill(s), 5 declaring, 1 undeclared          EXIT 1
+    #
+    # and `test_no_side_effecting_skill_is_model_invocable` asserts exit 0,
+    # so adopting this row alone would have reddened CI. The skill DOES
+    # declare `side-effects: none`; it was unreadable, not silent, because
+    # the deployed file was the STAMPED copy and `_frontmatter` reads
+    # frontmatter only when `---` is line 1. The 0.2.2 body never saw it,
+    # since under the implication form a skill declaring nothing was not the
+    # guard's business, which is precisely the hole 0.2.19's docstring says
+    # it closes. The repair is the incident-analyst arrangement, applied by
+    # `test_the_runtime_skill_body_matches_the_of_record_copy`.
+    #
+    # MEASURED on adoption, in both directions, because a policy relaxation
+    # is exactly the shape whose adoption can be vacuous. After the split and
+    # the five removals, the 0.2.19 body reports `checked 6 skill(s), 6
+    # declaring, 0 undeclared`, EXIT 0. The 0.2.2 body run against that SAME
+    # tree refuses all five with `declares side-effects but does not set
+    # disable-model-invocation: true`, EXIT 1, which is what says the removal
+    # was gated on this row moving and is not free.
+    # Both declared values agreed with the master bodies on recomputation.
     "check_side_effect_guard.py": Pin(
-        "ba9007941dcc44887e31d70dc74be8efe409f51a249d2b79398e66c276e9810c", "0.2.2"
+        "0e8c7315dd316570e44a294faefabda7971c9c7a228e5c7ac4b48dbee7aec30e", "0.2.19"
     ),
     "check_side_effect_guard_mutations.py": Pin(
-        "af5674911c06e5c67c5a178374c6c79245be25c8e9d1eb742667fc2f4bd8decb", "0.2.2"
+        "67321ce237a4314a988424cff2b7bac22bc9eba6db9862806c66127c606b7bc9", "0.2.19"
+    ),
+    # 0.2.18, COORD-17, and it changes WHERE a directory may sit and never
+    # what may sit under it: the `egg-info` exemption was anchored at the
+    # archive root, so a src-layout project's `src/<name>.egg-info/PKG-INFO`
+    # missed it and one real repository carried seven permanent false
+    # findings. itaca is not src-layout in the way that triggers it, so this
+    # row is expected to cost nothing here and is vendored because the body
+    # drifted anyway rather than because this repository needed it.
+    #
+    # MEASURED, so "costs nothing" is not a prediction: the checker's verdict
+    # over this repository's own artifact is unchanged across the row.
+    # Both declared values agreed with the master bodies on recomputation.
+    "check_shipped_surface.py": Pin(
+        "f5dffb534da98061352a941cf5e9ca1de907afc4b0fcf059a7fe7d0a4b33a49b", "0.2.18"
+    ),
+    "check_shipped_surface_mutations.py": Pin(
+        "09b94846024e803116f2308a6aecccc6d70e91da021104fa459ef06c0d486daa", "0.2.18"
     ),
     "check_incidents.py": Pin(
         "f6d3430a6d0ee44b4843f7d297a3454ce40d34cd83dc182a2ef840952c5c9c0a", "0.1.0"
@@ -779,6 +929,11 @@ MANIFEST: dict[str, Pin] = {
 COMMITTED: list[tuple[str, str]] = [
     ("role_review_gate.py", ".claude/hooks/role_review_gate.py"),
     ("write_attestation.py", ".claude/hooks/write_attestation.py"),
+    # Beside the gate, which is where `_ci_state_body` looks first. The
+    # gate treats an absent body as a REFUSAL rather than a skip, so these
+    # two rows and the gate row above are one vendoring and not three.
+    ("ci_state.py", ".claude/hooks/ci_state.py"),
+    ("ci_state_mutations.py", ".claude/hooks/ci_state_mutations.py"),
     ("incident-analyst.md", ".claude/kit/incident-analyst.md"),
     ("check_side_effect_guard.py", ".claude/kit/check_side_effect_guard.py"),
     (
@@ -824,13 +979,15 @@ COMMITTED: list[tuple[str, str]] = [
         "check_spawn_env_mutations.py",
         ".claude/kit/check_spawn_env_mutations.py",
     ),
-    # The one committed copy outside `.claude/hooks` and `.claude/kit`. A
-    # skill BODY is deployed where its loader looks for it, so this row is
-    # what drift-checks it; the vendored-directory sweep below cannot see
-    # `.claude/skills` and must not be widened to it, because the skills
-    # this repository writes itself live there too and pinning them would
-    # be false.
-    ("version-control.md", ".claude/skills/version-control/SKILL.md"),
+    # The STAMPED copy, and it moved here in lane ITA-15 from the deployed
+    # path. It is the incident-analyst arrangement applied one artifact
+    # over, for the same reason and now with a measurement behind it: a
+    # DEPLOYED file whose reader expects frontmatter on line 1 cannot carry
+    # a prepended provenance header. `test_the_runtime_skill_body_matches_
+    # the_of_record_copy` ties the two, exactly as the agent charter's test
+    # does, so the runtime copy still cannot be edited without this test
+    # catching it.
+    ("version-control.md", ".claude/kit/version-control.md"),
 ]
 
 
@@ -969,6 +1126,68 @@ def test_the_runtime_agent_body_matches_the_of_record_copy() -> None:
         f"{MANIFEST['incident-analyst.md'].body_sha256}. The runtime charter "
         f"has drifted from kit incident-analyst.md; re-vendor from the kit, "
         f"do not hand-edit the copy."
+    )
+
+
+def test_the_runtime_skill_body_matches_the_of_record_copy() -> None:
+    """The deployed version-control skill must not drift from its record.
+
+    The same arrangement as the agent charter above and adopted for the
+    same structural reason, which lane ITA-15 measured rather than
+    predicted. The deployed ``SKILL.md`` used to BE the stamped copy, so
+    its first line was ``<!--`` and its frontmatter began on line 11. Kit
+    0.2.19's ``check_side_effect_guard.py`` reads frontmatter only when
+    ``---`` is the first line, so it read an empty map, and under 0.2.19
+    an empty map is a REFUSAL where under 0.2.2 it was silently not the
+    guard's business. Measured on adoption: ``5 declaring, 1 undeclared``,
+    exit 1, on a body this repository is forbidden to hand-edit.
+
+    So the stamp moved to ``.claude/kit/version-control.md`` and the
+    deployed file became the body alone. Neither file was edited: both
+    still reproduce the same pinned hash, which is what the assertions
+    below check in both directions.
+
+    THE UNDERLYING DEFECT IS THE KIT'S AND IS NOT FIXED BY THIS, which is
+    said here so the next reader does not mistake a local arrangement for
+    a repair. The kit prescribes prepending a provenance header to a
+    vendored copy AND ships a guard that requires frontmatter on line 1;
+    those two conventions contradict each other for any artifact that is
+    both stamped and deployed, and every consumer will meet it. Routed to
+    the coordination level rather than absorbed silently.
+    """
+    runtime = _ROOT / ".claude" / "skills" / "version-control" / "SKILL.md"
+    of_record = _ROOT / ".claude" / "kit" / "version-control.md"
+    assert runtime.is_file(), (
+        f"the runtime version-control skill is missing at {runtime}; the "
+        f"skill will not load. Materialize it from the of-record copy at "
+        f"{of_record} (its body, with the header dropped)."
+    )
+    assert of_record.is_file(), (
+        f"the drift-of-record copy is missing at {of_record}; the runtime "
+        f"skill has nothing to be checked against. Re-vendor it from the kit."
+    )
+    runtime_body = _normalize(runtime.read_text(encoding="utf-8"))
+    of_record_body = _kit_body(of_record.read_text(encoding="utf-8"))
+    assert runtime_body == of_record_body, (
+        f"{runtime} has drifted from its drift-of-record copy {of_record}. "
+        f"The runtime skill is a DERIVED kit copy, not a source: the fix is "
+        f"to re-vendor {of_record} from the kit and rewrite the runtime file "
+        f"from that body. Do not hand-edit either, and do not sync the "
+        f"of-record copy to the runtime one, which would defeat the pin."
+    )
+    assert runtime_body.startswith("---\n"), (
+        f"{runtime} must open with its frontmatter on line 1, and starts "
+        f"{runtime_body[:20]!r} instead. A prepended provenance header puts "
+        f"the frontmatter out of reach of both the skill loader and kit "
+        f"check_side_effect_guard.py, which reads a header-first file as "
+        f"declaring nothing and refuses it. The stamped copy belongs at "
+        f"{of_record}, not here."
+    )
+    assert _sha256(runtime_body) == MANIFEST["version-control.md"].body_sha256, (
+        f"{runtime} body sha256 {_sha256(runtime_body)} != pinned "
+        f"{MANIFEST['version-control.md'].body_sha256}. The runtime skill has "
+        f"drifted from kit version-control.md; re-vendor from the kit, do not "
+        f"hand-edit the copy."
     )
 
 

@@ -111,9 +111,32 @@ repos:
       # byte-identical command a second time. Giving that duplicate a
       # mechanism of its own would make the registered item harder to act
       # on, not easier.
+      #
+      # `-m "not guardproof"` is the ONE narrowing this tier carries, and it
+      # is the author's decision of 2026-08-11 answering BRF-076: a push must
+      # not be allowed to carry a change that breaks BEHAVIOUR, and proving
+      # that a guard is well built answers a different question, which only
+      # changes when the guard changes. The marker is defined in pyproject
+      # with its full reasoning; what belongs here is what it costs and what
+      # stands behind it.
+      #
+      # MEASURED on 2026-08-11 by the coordination level, by running the
+      # suite rather than reading the stale figure this file used to carry:
+      # 937.17s, 1678 passed, and FIVE tests were 718.5s of it. Four are
+      # mutation proofs and the fifth asserts that the commit tier is fast,
+      # for 25.5s, at the gate the commit tier is not.
+      #
+      # NOTHING STOPPED BEING MANDATORY, which is the same sentence the
+      # `slow` split earned and this one has to earn separately, because it
+      # is a weaker claim: `slow` moves a test to a tier that BLOCKS, and
+      # this moves it to one that does not. What makes it a routing decision
+      # anyway is that a red CI now blocks the lane CLOSING, through
+      # `.claude/tools/closing_ci_check.py` (INC-20260811-1745-itaca). Before
+      # this lane that mechanism did not exist and this split would have been
+      # a hole.
       - id: pytest-full
-        name: pytest (FULL suite with coverage; blocks the push)
-        entry: python .claude/kit/prepush_receipt.py guard --label pytest-full -- pytest
+        name: pytest (FULL suite with coverage, minus guard proofs; blocks the push)
+        entry: python .claude/kit/prepush_receipt.py guard --label pytest-full -- pytest -m "not guardproof"
         language: system
         always_run: true
         pass_filenames: false
