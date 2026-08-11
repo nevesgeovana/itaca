@@ -115,9 +115,9 @@ error message, the import policy, Conventional Commits: all of it is in
 **Run the repository's own gate rather than a command written here.** The
 gate is `.pre-commit-config.yaml`, and it moves: naming its commands in
 this file would make the skill stale the week the tiers change again.
-Committing runs the commit tier; pushing runs the full suite with
-coverage. Both are hooks, so `pre-commit install` once per clone installs
-every type it declares.
+Committing runs the commit tier; pushing runs the suite with coverage
+minus the `guardproof` guard proofs, which run in CI. Both are hooks, so
+`pre-commit install` once per clone installs every type it declares.
 
 ## 7. Commit, and only then review
 

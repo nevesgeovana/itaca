@@ -48,11 +48,13 @@ runs as a subprocess through ``child_env`` so a child never starts coverage
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
 from conftest import child_env  # tests/ is on sys.path under pytest prepend mode
 
 # Process-level: every case spawns the checker, and several spawn git as
@@ -154,11 +156,20 @@ def test_the_closing_check_can_still_fail() -> None:
     other than the line believed to be doing the work. The companion removes
     each load-bearing decision and requires the refusal to become a PASS.
 
-    It carries its own trap, worth knowing before reading its output: the
-    first version of its absent-body mutant deleted the BRANCH, and the
-    mutant still refused, because a body named "None" fails to run. A
-    refusal that becomes a differently labeled refusal proves nothing about
-    failing closed, so the mutation now makes that branch return green.
+    It carries its own traps, worth knowing before reading its output, and
+    both were found by running mutants rather than by reasoning about them.
+    The absent-body mutant first deleted the BRANCH, and the mutant still
+    refused, because a body named "None" fails to run; it now mutates the
+    DECISION to return green. The positional-argument branch has no mutant
+    at all, because removing it leaves the unknown-option guard to refuse
+    the same token, so the companion says so in place rather than carrying a
+    mutant that passes on a neighbour's work.
+
+    THE COMPANION'S OWN BLIND SPOT WAS THE FINDING THAT GREW IT. Round one
+    measured that every stub here ignores argv, so deleting the
+    `--workflow` pass-through left this suite green AND the companion still
+    printed a full score. The `recording` fixture answers according to its
+    argv, which is the only shape that can see a pass-through.
     """
     done = subprocess.run(
         [sys.executable, str(MUTATIONS)],
@@ -167,7 +178,7 @@ def test_the_closing_check_can_still_fail() -> None:
         env=child_env(),
     )
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "5/5 mutants confirmed" in done.stdout, done.stdout
+    assert "8/8 mutants confirmed" in done.stdout, done.stdout
 
 
 def test_a_green_run_lets_the_lane_report_closed(repo: Path) -> None:
@@ -176,9 +187,14 @@ def test_a_green_run_lets_the_lane_report_closed(repo: Path) -> None:
     Four refusals prove nothing on their own: a checker that refused every
     state would produce all of them and would be a checker no lane could
     ever close through.
+
+    It names a workflow, and must: since round one a GREEN over no named
+    workflow is downgraded to UNKNOWN, so this case would otherwise measure
+    the downgrade rather than the pass. That property has its own case in
+    `test_a_green_with_no_named_workflow_is_downgraded`.
     """
     stub_ci_state(repo, GREEN, "GREEN, all runs concluded successfully")
-    code, out = check(repo)
+    code, out = check(repo, "--workflow", "CI")
     assert code == GREEN, out
     assert "closing-ci: GREEN" in out, out
     # The refusal sentence must NOT appear on the one state that permits it.
@@ -273,6 +289,188 @@ def test_an_exit_code_outside_the_contract_is_unknown(repo: Path) -> None:
     assert code == UNKNOWN, out
     assert "outside its documented contract" in out, out
     assert "may NOT report itself closed" in out, out
+
+
+@pytest.mark.parametrize(
+    "args,phrase",
+    [
+        # The equals form: parsed as the option `sha=<value>` by the first
+        # version, leaving no `sha` at all.
+        (("--sha=deadbeefdeadbeef",), "does not resolve"),
+        # An unknown option: recorded as an option name by the first
+        # version, which then ate `--sha` as its VALUE.
+        (("--verbose", "--sha", "HEAD"), "not an option"),
+        # A positional: silently dropped by the first version.
+        (("HEAD",), "no positional arguments"),
+        # An option with no value at all.
+        (("--sha",), "no value"),
+        # An option whose value is another option.
+        (("--sha", "--repo"), "another option"),
+    ],
+)
+def test_an_argument_it_cannot_read_refuses_instead_of_answering_about_head(
+    repo: Path, args: tuple[str, ...], phrase: str
+) -> None:
+    """THE WORST DEFECT ROUND ONE FOUND, and it was in the parser.
+
+    Three reviewer lenses found the same shape independently. The first
+    `_parse` recorded any `--` token as an option name and ignored anything
+    else, so `--sha=abc`, `--verbose --sha abc` and a bare `abc` all left
+    `opts` with no `sha`. The caller then fell back to HEAD and printed a
+    GREEN verdict about a commit nobody asked about.
+
+    That is the exact failure this whole file exists to prevent, one level
+    up: a success sentence over a question that was never asked. The stub
+    answers GREEN in every case below, so a regression here does not merely
+    change a message, it returns exit 0 and lets a lane report closed.
+
+    The equals form is ACCEPTED and refused on the sha's merits (it does not
+    resolve), rather than refused as a form; the other four are refused as
+    arguments. Both outcomes are non-zero, which is what matters.
+    """
+    stub_ci_state(repo, GREEN, "GREEN, and reaching this is the defect")
+    code, out = check(repo, *args)
+    assert code == CONFIG, out
+    assert phrase in out, out
+    assert "closing-ci: GREEN" not in out, out
+
+
+def test_the_unpushed_exit_code_does_not_collide_with_the_kit_contract() -> None:
+    """5 must stay free upstream, or two vocabularies collide silently.
+
+    UNPUSHED is this repository's own state, added on top of `ci_state.py`'s
+    published exit contract. That reuse is deliberate (DD-54 item 3), and it
+    carries one one-directional trap: if the kit ever assigns 5 to a CI
+    state, this checker would map that state onto a local meaning and the
+    collision would be invisible.
+
+    Reading the contract out of the checker rather than restating it is the
+    point: a renumbering upstream that the vendored body adopts breaks this
+    test rather than a close.
+    """
+    body = CHECK.read_text(encoding="utf-8")
+    contract = re.search(r"CI_EXIT_STATE = \{([^}]*)\}", body)
+    assert contract is not None, (
+        f"could not find CI_EXIT_STATE in {CHECK}; this guard cannot say "
+        f"whether the UNPUSHED code collides with the kit contract."
+    )
+    codes = {int(code) for code in re.findall(r"(\d+):", contract.group(1))}
+    assert codes, f"CI_EXIT_STATE parsed as empty from {CHECK}"
+    assert UNPUSHED not in codes, (
+        f"exit {UNPUSHED} (UNPUSHED, this repository's own) is now also in "
+        f"ci_state.py's contract {sorted(codes)}. Two vocabularies share one "
+        f"number, so a caller cannot tell a local precondition from a CI "
+        f"state. Renumber UNPUSHED in .claude/tools/closing_ci_check.py and "
+        f"in this module's constants."
+    )
+
+
+def test_a_repository_that_does_not_resolve_refuses(tmp_path: Path) -> None:
+    """One of the five advertised fail-closed paths, previously untested.
+
+    Round one found that two of the five paths the module docstring
+    advertises had no case at all. This is the cheaper of the two: a
+    directory under the OS temp root is inside no checkout, so git resolves
+    no repository and the check must refuse rather than proceed against
+    some ambient tree.
+    """
+    outside = tmp_path / "not_a_repo"
+    outside.mkdir()
+    code, out = check(outside)
+    assert code == CONFIG, out
+    assert "no git repository resolves" in out, out
+    assert "closing-ci: GREEN" not in out, out
+
+
+def test_a_green_with_no_named_workflow_is_downgraded(repo: Path) -> None:
+    """A verdict over whatever happened to be indexed is not a verdict.
+
+    The QA and V and V lenses found this together and it falsified the
+    module docstring's strongest sentence. `ci_state.py` applies its "a
+    named workflow that has not appeared is UNKNOWN, not absent" rule ONLY
+    to names it is given, so with none, a workflow that has not been indexed
+    yet or that stopped triggering is invisible, and every other run being
+    green reads as GREEN forever.
+
+    The stub answers GREEN in both halves below; the only difference is
+    whether a workflow was named, which is exactly the property under test.
+    """
+    stub_ci_state(repo, GREEN, "GREEN, stubbed")
+    code, out = check(repo)
+    assert code == UNKNOWN, out
+    assert "NO required workflow was named" in out, out
+    assert "may NOT report itself closed" in out, out
+    # And naming one restores the green, so the downgrade is the named
+    # condition and not a checker that can no longer pass at all.
+    code, out = check(repo, "--workflow", "CI")
+    assert code == GREEN, out
+
+
+def test_the_named_workflows_reach_ci_state(repo: Path) -> None:
+    """The pass-through must actually be passed through.
+
+    A gap the mutation companion could not see when it was written: every
+    other case stubs `ci_state.py` with a body that ignores argv, so
+    deleting the `--workflow` expansion in `_ask_ci` left the whole suite
+    green. This stub records its argv instead, which is the only way to
+    assert the flag survives the call boundary.
+    """
+    hooks = repo / ".claude" / "hooks"
+    hooks.mkdir(parents=True, exist_ok=True)
+    record = repo / "argv.txt"
+    (hooks / "ci_state.py").write_text(
+        "import sys, pathlib\n"
+        f"pathlib.Path({str(record)!r}).write_text(' '.join(sys.argv[1:]))\n"
+        "print('ci-state: GREEN, stubbed')\nsys.exit(0)\n",
+        encoding="utf-8",
+    )
+    code, out = check(repo, "--workflow", "CI", "--workflow", "SRS build")
+    assert code == GREEN, out
+    argv = record.read_text(encoding="utf-8")
+    assert "--workflow CI" in argv, argv
+    assert "--workflow SRS build" in argv, argv
+
+
+def test_the_handoff_skill_names_a_workflow_that_actually_exists() -> None:
+    """The prescribed call must name workflows this repository really runs.
+
+    The checker is stdlib-only and cannot parse the workflow files, so the
+    required names live in the skill's prescribed command. That makes them a
+    second copy of a fact, and this test is what stops the copy from
+    drifting: every `--workflow` name the skill prescribes must be the
+    `name:` of a workflow in `.github/workflows` that triggers on push.
+
+    Discovery rather than enumeration, deliberately: a workflow renamed in
+    `.github/workflows` reddens this rather than silently making the closing
+    check ask about a workflow that no longer exists, which `ci_state.py`
+    would answer UNKNOWN forever.
+    """
+    skill = (_ROOT / ".claude" / "skills" / "handoff" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    prescribed = set(re.findall(r"--workflow (\w[\w ]*?)(?= --|\n|$)", skill))
+    assert prescribed, (
+        "the handoff skill prescribes no --workflow, so its closing check "
+        "downgrades every green to UNKNOWN and the step is unusable."
+    )
+    on_push: set[str] = set()
+    for workflow in sorted((_ROOT / ".github" / "workflows").glob("*.yml")):
+        text = workflow.read_text(encoding="utf-8")
+        loaded = yaml.safe_load(text)
+        if not isinstance(loaded, dict):
+            continue
+        # PyYAML reads a bare `on:` key as the boolean True.
+        triggers = loaded.get("on", loaded.get(True)) or {}
+        if isinstance(triggers, dict) and "push" in triggers:
+            on_push.add(str(loaded.get("name", "")))
+    unknown = sorted(prescribed - on_push)
+    assert not unknown, (
+        f"the handoff skill prescribes --workflow {unknown}, which is not the "
+        f"name of any push-triggered workflow in .github/workflows "
+        f"({sorted(on_push)}). ci_state.py answers UNKNOWN forever for a "
+        f"workflow that never appears, so the closing check would never go "
+        f"green. Fix the name in the skill, or the workflow's `name:`."
+    )
 
 
 def test_a_named_sha_that_does_not_resolve_is_a_config_error(repo: Path) -> None:

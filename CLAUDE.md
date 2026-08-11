@@ -9,8 +9,8 @@ convention: `import itaca as itc`. Tagline: From data to wisdom.
 
 ## Authority chain
 
-1. `docs/srs/` is the authoritative specification (document 0.2.12,
-   2026-08-02; baseline 0.1.0 was the first workspace-tracked
+1. `docs/srs/` is the authoritative specification (document 0.2.13,
+   2026-08-11; baseline 0.1.0 was the first workspace-tracked
    version). The SRS describes desired
    behavior; code is verified against the SRS, and the SRS is changed only
    when a requirement itself is wrong or ambiguous, with the revision
@@ -88,37 +88,35 @@ exit code and the third is the word "pipeline"). A skill loads when it is
 invoked; this file loads always. The rules were not failing, they were
 never in the room.
 
-- **Never read an exit status through a pipe.** PowerShell 5.1 wraps a
-  native command's stderr into an ErrorRecord and sets `$?` to false even
-  on exit 0, and `git push` writes progress to stderr, so a SUCCESSFUL
-  push reads as a failure. A piped command's status is the pipeline's,
-  not the checker's. Mechanism: `.claude/skills/version-control/SKILL.md`,
-  steps 3 and 5.
+- **Never read an exit status through a pipe, and never trust `$?` after
+  a native command in PowerShell.** Mechanism:
+  `.claude/skills/version-control/SKILL.md`, steps 3 and 5.
 - **Verify a push on the REMOTE, never by its exit code.** Mechanism: the
   same file, step 5, which names itself the step most often skipped.
-- **Verify that it BUILDS, which no git command can tell you.** A close
-  that checked `git ls-remote` or `git rev-list HEAD --not --remotes` has
-  proved the commits ARRIVED and nothing about whether they build.
-  Mechanism: `.claude/tools/closing_ci_check.py`, wired into the `handoff`
-  skill's `out` sequence; `INC-20260811-1745-itaca` is why.
-- **Author backslash and control-byte content with Write or Edit.**
-  Heredocs are not banned, but a heredoc carrying a backslash or a
-  non-printable byte has corrupted files here more than once, and a
-  mangled regex returns zero matches and reads as absence. Mechanism:
-  `.claude/skills/version-control/SKILL.md`.
-- **Write the attestation and the push as SEPARATE commands.** The gate
-  inspects the whole command string, so a combined command is seen as a
-  push and denied before the attestation runs. Mechanism: the "Role
-  passes" section below, and the same skill, steps 3 and 4.
+- **Verify that it BUILDS, which no git command can tell you.** Mechanism:
+  `.claude/tools/closing_ci_check.py`, run as the LAST step of the
+  `handoff` skill's `out`, after its own closing push;
+  `INC-20260811-1745-itaca` is why.
+- **Write the attestation and the push as SEPARATE commands.** Mechanism:
+  "Role passes" below, and the same skill, steps 3 and 4.
 - **One tree, one session.** Never revert, restore, checkout, stash or
   commit a change you did not make, and never run a long suite, build or
-  gate in a tree another session is working in. A test failure born that
-  way looks exactly like a real one, which is the expensive part.
-  Mechanism: the same skill, step 2, and the `review_runner.py` worktree
-  isolation the `role-review` skill uses.
+  gate in a tree another session is working in. Mechanism: the same
+  skill, step 2, and the `review_runner.py` worktree isolation the
+  `role-review` skill uses.
+- **Author backslash and control-byte content with Write or Edit, not a
+  heredoc.** A heredoc carrying a backslash or a non-printable byte has
+  corrupted files here more than once, and a mangled regex returns zero
+  matches and reads as absence. NO MECHANISM FILE, and this bullet is the
+  whole of the rule: the kit's `version-control` skill does not carry it
+  and this repository may not add it there, since that body is
+  drift-pinned. Vendoring kit 0.2.20's `execution_guard.py` is what would
+  make it a mechanism, and it is registered rather than done.
 - **A completion claim carries fresh command output in the same message.**
   No "done", "passing" or "ready to push" without the evidence a reader
-  can see, and no closure claim at all while CI is not green.
+  can see, and no closure claim at all while CI is not green. NO MECHANISM
+  beyond the closing check above, which covers only the CI half; the rest
+  is a convention, and this sentence is all of it.
 
 ## Role passes (adopted 2026-07-23)
 
@@ -174,6 +172,18 @@ ones. `INC-20260810-2350-itaca` is why, and it covers the TAG only: an
 ordinary branch push is not asked, deliberately. What covers the branch is
 `.claude/tools/closing_ci_check.py` at the CLOSE, under "Execution rules"
 above (`INC-20260811-1745-itaca`).
+
+The sub-kinds this arm can print, listed because the `version-control`
+skill's "If the push is denied" section predates them and is a vendored
+body this repository cannot extend: `[ci-red]` CI failed, `[ci-running]`
+CI has not concluded, `[ci-unknown]` CI could not be established (which
+includes an unreachable network and an unauthenticated `gh`),
+`[ci-config]` `ci_state.py` is not vendored or could not run,
+`[ci-budget]` the gate ran out of its own 50 second allowance, and
+`[ci-tag]` the tagged commit-ish does not resolve. The last two are
+reached by no test here and the gate's companion prints them as unreached;
+do not claim coverage for them. The stale skill section is routed to the
+coordination level rather than patched here.
 
 What the mechanism enforces is exactly this: an attestation exists
 naming every commit in scope. It does not prove the agents ran, and

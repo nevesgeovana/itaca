@@ -10,6 +10,23 @@
 \textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Summary}\\
 \midrule
 \midrule
+0.2.13 & 2026-08-11 & Geovana Neves &
+REQ-96 states a SECOND deliberate exception to the CI mirror. A MINOR
+revision adding no requirement and withdrawing none, WIDENING the stated
+exception list of one \stable{} requirement. Tests marked
+\code{guardproof}, mutation companions proving a checker can still fail,
+run in CI and not in the local pre-push tier, on the author's decision of
+2026-08-11 answering BRF-076: a push must not carry a change that breaks
+behavior, and proving a guard is well built is a different question. The
+amendment exists because REQ-96 said "ONE DELIBERATE EXCEPTION" and its
+own sentence promises that an exception is stated rather than left as a
+silent gap; a V and V lens in lane ITA-15 measured the second one going
+in unstated. The requirement also now records that its mirror claim was
+itself proven incomplete (ITC-20260802-2300), so CI is the authority and
+the local tiers are a fast pre-flight. Its own document version rather
+than an edit to 0.2.12, because 0.2.12 shipped in the commit that
+published it.\\
+\midrule
 0.2.12 & 2026-08-02 & Geovana Neves &
 REQ-24 stops stating the withdrawn refusal. A MINOR revision adding no
 requirement and withdrawing none, NARROWING REQ-24 and CORRECTING

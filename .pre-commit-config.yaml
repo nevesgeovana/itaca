@@ -10,18 +10,25 @@
 # a silent hole, because the missing tier is indistinguishable from a
 # passing one; the fix is this key rather than a warning nobody reads.
 #
-# | tier     | when         | runs                               | budget         |
-# |----------|--------------|------------------------------------|----------------|
-# | commit   | every commit | ruff, mypy, the fast test subset   | p95 under 30 s |
-# | pre-push | every push   | the full suite WITH coverage, mypy | minutes, once  |
-# | PR       | CI           | the matrix, three interpreters     | CI's problem   |
-# | release  | tag          | artifact, examples, the full panel | once           |
+# | tier     | when         | runs                                | budget         |
+# |----------|--------------|-------------------------------------|----------------|
+# | commit   | every commit | ruff, mypy, the fast test subset    | p95 under 30 s |
+# | pre-push | every push   | suite minus guardproof, +cov, mypy  | minutes, once  |
+# | PR       | CI           | EVERYTHING, three interpreters      | CI's problem   |
+# | release  | tag          | artifact, examples, the full panel  | once           |
 #
-# WHAT MOVED, AND WHAT DID NOT. Nothing stopped being mandatory. The full
-# suite with coverage still blocks every push and still runs on every pull
-# request; it no longer runs on every COMMIT. Whether the full suite stops
-# blocking anywhere is the author's gate-policy sitting, not this file's to
-# decide (BRF-063).
+# WHAT MOVED, AND WHAT DID NOT. Nothing stopped being mandatory, and that
+# claim now has to be made twice because two different splits made it.
+#
+# The `slow` split moved tests off every COMMIT and onto every PUSH, where
+# they still block. Whether the full suite stops blocking anywhere is the
+# author's gate-policy sitting, not this file's to decide (BRF-063).
+#
+# The `guardproof` split (2026-08-11, her answer to BRF-076) moved eleven
+# tests off the PUSH and into CI, which does NOT block a push. That is a
+# weaker claim and it is stated as one: what makes it a routing decision
+# rather than an exemption is that a red CI now blocks the lane CLOSING,
+# through `.claude/tools/closing_ci_check.py`. See the pytest-full entry.
 #
 # WHY. The hook below was named `pytest-fast` and ran `pytest -x -q
 # --no-cov` with `always_run`, which is the entire suite; the separate
@@ -79,16 +86,19 @@ repos:
       # INTO this tier and never out of it, and the per-test budget in
       # tests/conftest.py reaches it once it is here.
       - id: pytest-fast
-        name: pytest (fast subset, no coverage; pre-push runs the rest)
+        name: pytest (fast subset, no coverage; pre-push runs the rest, CI runs all)
         entry: pytest -m "not slow or fast" -x -q --no-cov
         language: system
         always_run: true
         pass_filenames: false
         stages: [pre-commit]
-      # The BLOCKING tier: the whole suite, coverage floor included, once
-      # per push rather than once per commit. Everything the `slow` marker
-      # moved out of the commit tier lands here, which is what makes the
-      # marker a statement about WHERE a test runs and never about whether.
+      # The BLOCKING tier: the suite minus `guardproof`, coverage floor
+      # included, once per push rather than once per commit. Everything the
+      # `slow` marker moved out of the commit tier lands here, which is what
+      # makes THAT marker a statement about WHERE a test runs and never
+      # about whether. What `guardproof` removes lands in CI instead; the
+      # entry's own comment below carries that argument and does not repeat
+      # it here.
       #
       # WRAPPED IN THE PRE-PUSH RECEIPT (kit 0.2.15). The suite still runs
       # and still blocks; what the wrapper removes is running it a second
@@ -114,7 +124,7 @@ repos:
       #
       # `-m "not guardproof"` is the ONE narrowing this tier carries, and it
       # is the author's decision of 2026-08-11 answering BRF-076: a push must
-      # not be allowed to carry a change that breaks BEHAVIOUR, and proving
+      # not be allowed to carry a change that breaks BEHAVIOR, and proving
       # that a guard is well built answers a different question, which only
       # changes when the guard changes. The marker is defined in pyproject
       # with its full reasoning; what belongs here is what it costs and what

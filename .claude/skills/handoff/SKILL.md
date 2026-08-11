@@ -3,7 +3,7 @@ name: handoff
 description: Session closure documentation for itaca. Writes the outgoing session handoff under the management root's handoffs/, refreshes its NEXT_SESSION.md forward prompt, and can also ingest an incoming capture. Use at the end of every working session, when a session must hand its context to an integrator who was not in the room, or when a capture from another session or a web thread needs to be folded into itaca's state.
 argument-hint: "[out|in <file>]"
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
-side-effects: writes handoff briefs into another workspace           # handoff
+side-effects: writes handoff briefs, the forward prompt and plan ledger entries under the management root; MAKES A COMMIT in this repository
 ---
 
 Operation: `$ARGUMENTS`
@@ -59,20 +59,11 @@ with:
    tree is clean, what is unpushed, and which commits shipped this
    session. Verify with git; do not assume.
 
-   **Then verify it BUILDS, which git cannot tell you.** Run
-
-       python .claude/tools/closing_ci_check.py
-
-   after the push and read its exit status. Only exit 0, GREEN, permits
-   this handoff to call the work closed, successful, clean, or done. On
-   RED, RUNNING, UNKNOWN or UNPUSHED, write the state the checker names:
-   the work is PUSHED with CI state NOT VERIFIED, naming the sha and the
-   reason. This is not optional and it is not satisfied by `git ls-remote`
-   or `git rev-list HEAD --not --remotes`: both answer questions about
-   REFS and neither can go red when the build does, which is
-   `INC-20260811-1745-itaca`. CI was red on `main` for three consecutive
-   pushes and every one of those sessions had checked that its push
-   landed.
+   Verifying that it BUILDS is a separate step and it runs LAST, after
+   this skill's own closing push; see "Closing CI check" below. Do not
+   answer it here with `git ls-remote` or `git rev-list HEAD --not
+   --remotes`: both answer questions about REFS and neither can go red
+   when the build does.
 2. Context: the session objective as stated at the start, and what
    actually happened, in one paragraph.
 3. Decisions, each marked decided or proposed, with who decided.
@@ -92,6 +83,38 @@ Then refresh the root's `NEXT_SESSION.md` from the window proposed by
 next session opens against a current forward prompt, and commit the
 repository-side changes of the session (the session documents themselves
 are not committed).
+
+### Closing CI check (the LAST step, after the closing push)
+
+**Run this after the closing commit has been pushed, never before**, and
+name the commit that was actually pushed:
+
+    python .claude/tools/closing_ci_check.py --workflow CI --sha <pushed tip>
+
+Placement is the whole point and it was wrong once: this used to sit in
+item 1, above a closing commit and push that this skill itself makes, so
+it answered about the state BEFORE the handoff's own push and a closing
+commit that reddened CI was never asked about. Run last, or it verifies
+the wrong tree.
+
+`--workflow CI` is not optional and `--sha` is not decoration. With no
+workflow named the checker downgrades a green to UNKNOWN, deliberately,
+because a verdict over whatever runs happen to be indexed is not a
+verdict; and with no `--sha` it answers about HEAD, which after a
+session-document commit is not the commit that was pushed.
+
+Read the EXIT STATUS, not the wording. Only 0, GREEN, permits this
+handoff to call the work closed, successful, clean, or done. On RED (1),
+RUNNING (3), UNKNOWN (4) or UNPUSHED (5), write what the checker names:
+the work is PUSHED with CI state NOT VERIFIED, naming the sha and the
+reason. RUNNING is the ordinary state right after a push and it resolves
+in minutes, so waiting and re-running is usually the cheapest honest
+path to a close; reporting NOT VERIFIED is the correct outcome, not a
+failure of the session.
+
+`INC-20260811-1745-itaca` is why this step exists: CI was red on `main`
+for three consecutive pushes and every one of those sessions had checked
+that its push landed.
 
 ### Public-surface pause point (confirm before the closing commit)
 

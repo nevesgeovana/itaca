@@ -3,7 +3,7 @@ name: audit
 description: Retrospective repository health audit for itaca. Sweeps committed files for staleness against the SRS, checks the repo against its adopted external guides, reviews shipped code for structural improvement, and turns every finding into an update, a deletion, or a registered plan item. Use periodically, before every release, and whenever drift is suspected between the SRS, the code, and the public pages.
 argument-hint: "[docs|code|full]"
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
-side-effects: writes audit reports                                    # audit
+side-effects: writes audit reports under the management root; EDITS AND DELETES committed files in this repository and MAKES COMMITS, one per concern
 ---
 
 Scope: `$ARGUMENTS` (default `full`). `docs` runs pause points 1 to 3,

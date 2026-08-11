@@ -3,7 +3,7 @@ name: role-review
 description: Run the role-based reviewer passes (architect, QA, V&V, tech writer, API designer) on a work item's diff and drive every finding to fixed or registered. Use before closing any work item; the development rules cite this skill.
 argument-hint: "[git range | staged | last-commit]"
 allowed-tools: Task, Bash, Read, Write, Edit, Grep, Glob
-side-effects: creates and removes review worktrees; writes findings  # role-review
+side-effects: creates and removes review worktrees; writes findings and a round ledger under the management root; WRITES THE PUSH-GATE ATTESTATION, which is what authorizes a push
 ---
 
 Role-based review per the team-role model adopted 2026-07-23 (DD-23

@@ -419,11 +419,31 @@ A \code{.pre-commit-config.yaml} mirrors the CI checks (\code{ruff check},
 locally on every commit. The local pre-commit configuration is a hard
 requirement of the contribution workflow.
 
-ONE DELIBERATE EXCEPTION to the mirror: the specification build REQ-95
-requires is NOT mirrored here. It needs a TeX distribution, which is not a
-contribution prerequisite, and a hook a contributor cannot run is a hook
-that gets skipped. The exception is stated rather than left as a silent
-gap between the two requirements.
+TWO DELIBERATE EXCEPTIONS to the mirror, and they are stated rather than
+left as silent gaps between requirements.
+
+FIRST, the specification build REQ-95 requires is NOT mirrored here. It
+needs a TeX distribution, which is not a contribution prerequisite, and a
+hook a contributor cannot run is a hook that gets skipped.
+
+SECOND, since 2026-08-11, tests marked \code{guardproof} run in CI and NOT
+in the local pre-push tier, which runs \code{-m "not guardproof"}. The
+marker admits a test whose subject is a guard's own machinery, a mutation
+companion proving a checker can still fail, rather than the library's
+behavior. The author's decision answering BRF-076 is the authority: a push
+must not be allowed to carry a change that breaks behavior, and proving
+that a guard is well built answers a different question, which only
+changes when the guard changes.
+
+This exception is WEAKER than the first and the difference is the point.
+The first moves a check nowhere local; the second moves it to a tier that
+does not block the push. What keeps it a routing decision rather than an
+exemption is that a red CI now blocks the lane CLOSING, through
+\code{.claude/tools/closing\_ci\_check.py} (INC-20260811-1745-itaca). The
+mirror claim in this requirement was itself proven incomplete by
+ITC-20260802-2300, where three lanes ran a green local suite over a test
+red on every CI run, so CI is the authority and the local tiers are a fast
+pre-flight.
 \end{reqbox}
 
 \begin{reqbox}{REQ-97}{\draft}

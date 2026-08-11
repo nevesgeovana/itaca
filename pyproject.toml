@@ -253,9 +253,14 @@ testpaths = ["tests"]
 addopts = "-ra --strict-markers --cov=itaca --cov-report=term-missing --cov-fail-under=90"
 markers = [
   # The COMMIT tier runs `-m "not slow or fast"`. A marked module does not stop
-  # being mandatory: the pre-push hook runs the whole suite with coverage
-  # and blocks, and CI runs it on every pull request. What the marker
-  # changes is WHERE it runs, never WHETHER.
+  # being mandatory: the pre-push hook runs the suite MINUS `guardproof`
+  # with coverage and blocks, and CI runs everything on every pull request.
+  # What this marker changes is WHERE a test runs, never WHETHER.
+  #
+  # The "minus `guardproof`" clause is not this marker's doing and is stated
+  # here only so the sentence stays true: see the `guardproof` entry below
+  # for what that removes and what stands behind it. `slow` itself still
+  # routes to a tier that BLOCKS, which is what makes it a routing decision.
   #
   # Measured 2026-07-30 on the tree that introduced this, with --no-cov:
   # test_release_integrity.py 539 s and test_push_gate.py 108 s, against
@@ -296,7 +301,7 @@ markers = [
   "fast: cheap enough for the commit tier despite a module-level slow mark",
   # `guardproof` is the THIRD routing marker and the only one whose reason
   # is not cost. The author's decision of 2026-08-11, answering BRF-076: a
-  # push must not be allowed to carry a change that breaks BEHAVIOUR;
+  # push must not be allowed to carry a change that breaks BEHAVIOR;
   # proving that a GUARD IS WELL BUILT answers a different question, and it
   # only changes when the guard changes. So a mutation proof runs in CI and
   # not at pre-push, whatever it costs.
@@ -308,7 +313,16 @@ markers = [
   # NOT admit a test that is merely slow: `slow` already routes those, to a
   # tier that still blocks. Marking a behavior test `guardproof` to get a
   # red push through is the failure this marker's existence makes easy, and
-  # tests/test_tooling_config.py refuses an undeclared use for that reason.
+  # tests/test_tooling_config.py::test_no_undeclared_test_uses_the_guardproof_marker
+  # refuses an undeclared use for that reason, in both directions, against
+  # the `_GUARD_PROOF_TESTS` registry.
+  #
+  # THAT SENTENCE WAS FALSE WHEN IT WAS FIRST WRITTEN, and it is corrected
+  # here rather than quietly repaired because the correction is the lesson.
+  # The marker shipped claiming a refusal that did not exist, and four of
+  # the five reviewer lenses found it independently in round one. A claimed
+  # guard that does not exist is worse than an absent one: it is the
+  # sentence the next editor leans on before marking a behavior test.
   #
   # THE COST IS WHAT MADE IT URGENT AND NOT WHAT DECIDES IT. Measured by the
   # coordination level on 2026-08-11: the full suite is 937.17s, and five

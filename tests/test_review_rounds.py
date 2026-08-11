@@ -139,7 +139,11 @@ _ROUNDS_MUTATIONS = _KIT / "check_review_rounds_mutations.py"
 #: silent direction it was written for was silent for exactly one lane,
 #: which is the shortest useful life a guard can have and is the evidence
 #: that the floor is worth its cost.
-_LANE = "ITA-2D"
+#: MOVED FROM `ITA-2D` BY LANE ITA-15, and this time the move was made
+#: BEFORE the guard fired, because the previous entry said it would. That
+#: is the whole return on writing the failure down: the constant is now a
+#: known step of closing a lane rather than a surprise in a pre-commit run.
+_LANE = "ITA-15"
 
 #: The convention the kit writes down at 0.2.16. ONE copy of the fact:
 #: both the glob and the per-lane filename derive from it, because two

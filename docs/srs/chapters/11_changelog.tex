@@ -12,6 +12,37 @@ Versions are listed in reverse chronological order. This chapter tracks the
 version onward, every entry lists the requirement(s) and design decision(s)
 it adds or modifies.
 
+\section*{Document 0.2.13, 2026-08-11, REQ-96 States a Second CI-Mirror Exception}
+
+A MINOR revision adding no requirement and withdrawing none, WIDENING the
+stated exception list of one \stable{} requirement.
+
+\paragraph{Changed.} REQ-96 said "ONE DELIBERATE EXCEPTION" to the
+claim that the local pre-commit configuration mirrors CI. There are now
+TWO. Since 2026-08-11 the local pre-push tier runs \code{-m "not
+guardproof"}, so mutation companions proving a checker can still fail run
+in CI and not locally. The authority is the author's decision answering
+BRF-076: a push must not be allowed to carry a change that breaks
+behavior, and proving that a guard is well built answers a different
+question, which only changes when the guard changes.
+
+\paragraph{Why it is an amendment and not a note.} REQ-96's own sentence
+promises that an exception is "stated rather than left as a silent gap
+between the two requirements". Lane ITA-15 introduced the second exception
+in \code{.pre-commit-config.yaml} and cited REQ-96 in its commit without
+touching the SRS; a V and V reviewer lens measured that gap. The SRS is
+the top of the authority chain, so the configuration was in violation of a
+\stable{} requirement rather than merely undocumented.
+
+\paragraph{Also recorded in REQ-96.} The mirror claim was itself proven
+incomplete by ITC-20260802-2300, where three lanes ran a green local suite
+over a test that was red on every CI run. CI is the authority; the local
+tiers are a fast pre-flight. The second exception is weaker than the
+first, because it moves a check to a tier that does not block the push,
+and what keeps it a routing decision rather than an exemption is that a
+red CI now blocks the lane CLOSING through
+\code{.claude/tools/closing\_ci\_check.py} (INC-20260811-1745-itaca).
+
 \section*{Document 0.2.12, 2026-08-02, REQ-24 Stops Stating the Withdrawn Refusal}
 
 A MINOR revision adding no requirement and withdrawing none, NARROWING

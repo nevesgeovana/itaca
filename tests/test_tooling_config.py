@@ -460,7 +460,7 @@ def test_the_push_tier_runs_the_whole_suite_and_blocks() -> None:
     #
     # THE ONE NARROWING, `-m "not guardproof"`, is the author's decision of
     # 2026-08-11 answering BRF-076: a push must not be allowed to carry a
-    # change that breaks BEHAVIOUR, and proving that a guard is well built
+    # change that breaks BEHAVIOR, and proving that a guard is well built
     # answers a different question, which only changes when the guard
     # changes. It DOES reduce what this tier sees, and pretending otherwise
     # would be the dishonest way to write this. What it does not reduce is
@@ -471,8 +471,11 @@ def test_the_push_tier_runs_the_whole_suite_and_blocks() -> None:
     # AND CI IS NO LONGER ADVISORY, which is the half that makes this a
     # routing decision rather than an exemption: since ITA-15 a red CI
     # blocks the lane CLOSING, through `.claude/tools/closing_ci_check.py`
-    # (INC-20260811-1745-itaca). `test_the_marker_has_a_tier_behind_it`
-    # below is what keeps that true.
+    # (INC-20260811-1745-itaca).
+    # `test_the_guardproof_marker_has_a_tier_behind_it` below is what keeps
+    # that true, and `test_no_undeclared_test_uses_the_guardproof_marker`
+    # is what keeps the marker from being reached for to make a red push
+    # green.
     #
     # Everything else stays refused by the same equality. Coverage cannot be
     # dropped, because `--no-cov` is not in this list; `-k`, `-x` and `--co`
@@ -964,6 +967,97 @@ def test_no_undeclared_test_uses_the_fast_marker() -> None:
         f"`@pytest.mark.fast`: {missing}. The sibling contract check may pass "
         f"anyway if their module stops being slow, which would make this list "
         f"silently inert."
+    )
+
+
+#: Every test admitted to the `guardproof` marker, with what it proves.
+#: The marker REMOVES a test from the only local tier that blocks a push, so
+#: admission is a decision that is written down, exactly as
+#: `_COMMIT_TIER_GUARD_TESTS` above records admission in the other direction.
+#:
+#: WHY THIS LIST EXISTS AT ALL, recorded because the omission is the finding:
+#: `pyproject.toml` claimed "tests/test_tooling_config.py refuses an
+#: undeclared use for that reason" from the moment the marker was created,
+#: and no such refusal existed. FOUR of the five reviewer lenses in round one
+#: found it independently. A claimed guard that does not exist is worse than
+#: an absent one, because it is the sentence the next editor leans on before
+#: marking a behavior test. The claim is now true.
+#:
+#: THE RULE FOR ADDING A ROW: the test's subject must be a GUARD'S OWN
+#: MACHINERY, not behavior. A mutation companion asserting that a checker can
+#: still fail qualifies. A slow behavior test does not, whatever it costs;
+#: `slow` is the marker for cost, and it routes to a tier that still blocks.
+_GUARD_PROOF_TESTS = (
+    # The mutation companions: each runs a checker's own mutants.
+    "tests/test_closing_ci_check.py::test_the_closing_check_can_still_fail",
+    "tests/test_plan_validator.py::test_the_plan_checker_can_still_fail",
+    "tests/test_prepush_receipt.py::test_the_receipt_can_still_fail",
+    "tests/test_release_integrity.py::test_the_release_gate_checker_can_still_fail",
+    "tests/test_release_integrity.py::test_the_version_identity_checker_can_still_fail",
+    "tests/test_release_integrity.py::TestIncident0854Guards::test_guard_1_can_still_fail",
+    "tests/test_release_integrity.py::TestIncident0854Guards::test_guard_3_can_still_fail",
+    "tests/test_review_rounds.py::test_the_round_cap_checker_can_still_fail",
+    "tests/test_side_effect_guard.py::test_the_side_effect_guard_can_still_fail",
+    "tests/test_spawn_env.py::test_the_spawn_checker_can_still_fail",
+    # Not a mutation companion, and admitted on the same rule rather than an
+    # exception to it: its subject is the TIER, which is machinery. It also
+    # cannot run in the tier it measures without recursing.
+    "tests/test_tooling_config.py::test_the_commit_tier_subset_is_actually_fast",
+)
+
+
+def test_no_undeclared_test_uses_the_guardproof_marker() -> None:
+    """Collected-by-`guardproof` must equal the declared list, both ways.
+
+    The exact shape of `test_no_undeclared_test_uses_the_fast_marker` above,
+    pointed at the marker that needs it MORE. `fast` admits a test to a tier
+    that costs developers time; `guardproof` removes one from the only local
+    tier that blocks a push, so an undeclared use is not a cost mistake, it
+    is a test that stops gating.
+
+    Both directions, for the reasons the sibling states: collected minus
+    declared catches a behavior test being marked to get a red push through,
+    which is the failure `pyproject.toml` calls "the failure this marker's
+    existence makes easy"; declared minus collected catches a row left behind
+    after a test is renamed or the marker dropped, which would make this list
+    silently inert.
+
+    IT RUNS IN THE COMMIT TIER, unmarked, for the sibling's reason: a guard
+    belongs at the gate where the mistake it catches is made, and the mistake
+    is made while editing a test file.
+    """
+    argv = [
+        sys.executable, "-m", "pytest", "--collect-only", "-q", "--no-cov",
+        "-m", "guardproof", "-p", "no:cacheprovider", "tests",
+    ]  # fmt: skip
+    done = subprocess.run(
+        argv, capture_output=True, text=True, cwd=str(ROOT), env=child_env()
+    )
+    assert done.returncode == 0, (
+        f"collecting `-m guardproof` failed, so this guard cannot say which "
+        f"tests carry the marker:\n{done.stdout[-2000:]}"
+    )
+    collected = {
+        re.sub(r"\[.*\]$", "", line.strip())
+        for line in done.stdout.replace("\\", "/").splitlines()
+        if "::" in line and line.strip().startswith("tests/")
+    }
+    declared = set(_GUARD_PROOF_TESTS)
+    undeclared = sorted(collected - declared)
+    assert not undeclared, (
+        f"these tests carry `@pytest.mark.guardproof` and are not in "
+        f"_GUARD_PROOF_TESTS: {undeclared}. The marker REMOVES a test from the "
+        f"pre-push tier, the only local gate that blocks, so it must never be "
+        f"reached for to make a red push green. Admit it here with the reason "
+        f"its subject is a guard's machinery rather than behavior, or drop the "
+        f"marker and let it run at pre-push."
+    )
+    missing = sorted(declared - collected)
+    assert not missing, (
+        f"these tests are declared guard proofs but do not carry "
+        f"`@pytest.mark.guardproof`: {missing}. Either the marker was dropped, "
+        f"in which case they now run at pre-push and the row should go, or the "
+        f"test was renamed and this list is silently inert."
     )
 
 

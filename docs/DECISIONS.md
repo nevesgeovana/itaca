@@ -2677,3 +2677,74 @@ incidents, trades a real risk for a benefit that waits at no cost.
 `detached_gate.py` is not vendored either, so the closing check polls and
 reports rather than waiting detached: a close over a still-queued run says
 NOT VERIFIED instead of waiting. Both are registered rather than silent.
+
+---
+
+## DD-55: Four corrections to DD-54, which froze at the commit round one reviewed
+
+**Date:** 2026-08-11
+**Status:** confirmed
+**Context:** Lane ITA-15, round one of role review over `b82fe2b`.
+Supersedes four statements inside DD-54 and nothing else: its five calls
+stand exactly as taken.
+**Supersedes:** DD-54, in the four respects below only.
+**Related:** DD-30, DD-51 and DD-53 record this same instrument being used
+for the same reason.
+
+DD-54 was published by the commit the five reviewer lenses were given,
+`b82fe2b`, and the round found four factual errors in it. An entry freezes
+at the commit that ships it and not at the push, so the instrument is a
+superseding entry rather than an edit.
+
+**1. The pass count is 1688, not 1689, and the coverage figure is not
+reproducible as stated.** DD-54 records "208.5s, coverage 96.45 percent,
+1689 passed" for the pre-push tier. Two lenses re-ran the same selection in
+their own worktrees and measured 1688 passed, with coverage 96.28 percent
+and wall times of 175.32s and 216.56s. The pass count in DD-54 was simply
+wrong. The coverage gap is environmental: `ITACA_PLAN_VALIDATOR` and
+`COORD_INCIDENT_LEDGER` are set on the author's machine and unset in a
+detached worktree, so `tests/test_kit_drift.py` and
+`tests/test_plan_validator.py` take different branches and cover different
+lines. The lesson is the one this repository keeps relearning and which
+DD-52's own correction states: a number recorded without the invocation and
+the environment that produced it cannot be re-run, and a reader who re-runs
+it gets a different figure and cannot tell which of you is wrong.
+
+**The figures that ARE reproducible from a stated environment**, measured on
+the live tree with both locators set: 201.05s, 1688 passed, 4 skipped, 11
+deselected, coverage 96.45 percent. In a clone with neither locator set,
+expect 1688 passed and about 96.28 percent.
+
+**2. The lane is the kit 0.2.17/0.2.18/0.2.19 re-vendor, not
+0.2.18/0.2.19/0.2.20.** DD-54's context line names 0.2.20, which this lane
+deliberately did not vendor, and omits 0.2.17, which it did:
+`review_runner.py` moved to 0.2.17. The accurate phrase is "the kit
+0.2.17/0.2.18/0.2.19 re-vendor, with 0.2.20 considered and not taken". A
+`version-control.md` body at 0.2.15 also moved location in the same commit
+without changing version.
+
+**3. "BEHAVIOUR" is British and the rule is American English with Z.** It
+appears once in DD-54 and appeared in three editable files, which are
+corrected in place because they are not frozen. DD-54's own instance stays
+as written, which is what this entry is for.
+
+**4. DD-54 section 4 claimed a guard that did not exist, and the claim was
+copied from the artifact it describes.** It states that `guardproof` is
+policed and points at `tests/test_tooling_config.py`; `pyproject.toml` said
+the same. No such check existed when either was written. FOUR of the five
+reviewer lenses found it independently, which is the strongest signal any
+round in this repository has produced about a single sentence. The guard now
+exists, `test_no_undeclared_test_uses_the_guardproof_marker`, built in round
+one against a `_GUARD_PROOF_TESTS` registry and refusing in both directions.
+
+**The decisions of DD-54 are unchanged and the measurement is why.** Every
+one of the five calls survived the round: three lenses independently
+confirmed that nothing behavioral left the pre-push tier, that both
+`version-control.md` copies are pinned in both directions, and that the
+`install_gate` fixture change did not weaken the five repaired push-gate
+cases. What the round found was a parser that answered about the wrong
+commit, a green computed over no named workflow, and four documentation
+claims stronger than their mechanisms. None of those is a decision; all are
+defects in how the decisions were carried out, and all are fixed in the
+round that found them, per the review policy's rule that a round-two finding
+about a round-one fix is the fix not being done.

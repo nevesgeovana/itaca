@@ -33,18 +33,38 @@ CHECK = Path(__file__).resolve().parent / "closing_ci_check.py"
 
 GREEN, RED, CONFIG, RUNNING, UNKNOWN, UNPUSHED = 0, 1, 2, 3, 4, 5
 
-#: (label, original fragment, replacement, fixture, baseline, mutated)
+#: (label, original, replacement, fixture, ci_exit, args, baseline, mutated)
 #:
 #: ``fixture`` names which scratch repository the case runs in:
 #: ``pushed`` (HEAD on the remote, stub answers ``ci_exit``), ``local``
-#: (one unpushed commit), or ``bare`` (no ci_state.py vendored anywhere).
-MUTANTS: list[tuple[str, str, str, str, int, int, int]] = [
+#: (one unpushed commit), ``bare`` (no ci_state.py vendored anywhere), or
+#: ``recording`` (the stub answers GREEN only when it was actually GIVEN a
+#: ``--workflow``, which is what makes the pass-through mutable).
+#:
+#: ``args`` are the arguments the checker is called with. Most cases need
+#: ``--workflow CI``, because a GREEN over no named workflow is downgraded
+#: to UNKNOWN and a case that omitted it would measure the downgrade rather
+#: than the line it names.
+#:
+#: THE ARGV MUTANTS BELOW EXIST BECAUSE ROUND ONE MEASURED THIS FILE'S OWN
+#: BLIND SPOT. A QA lens observed that every case in
+#: ``tests/test_closing_ci_check.py`` stubs ``ci_state.py`` with a body that
+#: IGNORES argv, so deleting the ``--workflow`` pass-through in ``_ask_ci``
+#: left the whole suite green AND this companion still printed its full
+#: score. A mutation companion that reports every mutant caught while a
+#: real removal survives is the exact shape it exists to prevent, one level
+#: up. The ``pushed_recording`` fixture writes the child's argv to a file so
+#: the pass-through can be mutated and seen.
+WF = ("--workflow", "CI")
+
+MUTANTS: list[tuple[str, str, str, str, int, tuple[str, ...], int, int]] = [
     (
         "the non-green refusal is removed, so every state reports closed",
         "        if state == GREEN:\n            return EXIT[GREEN]",
         "        if state != 'nothing is ever this':\n            return EXIT[GREEN]",
         "pushed",
         RED,
+        WF,
         RED,
         GREEN,
     ),
@@ -54,6 +74,7 @@ MUTANTS: list[tuple[str, str, str, str, int, int, int]] = [
         "        return 0",
         "pushed",
         RED,
+        WF,
         RED,
         GREEN,
     ),
@@ -63,8 +84,58 @@ MUTANTS: list[tuple[str, str, str, str, int, int, int]] = [
         "        if False:",
         "local",
         GREEN,
+        WF,
         UNPUSHED,
         GREEN,
+    ),
+    (
+        "a green over NO named workflow stops being downgraded to UNKNOWN",
+        "        if state == GREEN and not workflows:",
+        "        if False:",
+        "pushed",
+        GREEN,
+        (),
+        UNKNOWN,
+        GREEN,
+    ),
+    # NO MUTANT FOR THE POSITIONAL BRANCH, and the absence is deliberate
+    # rather than an oversight, so it is written down instead of leaving the
+    # list to look complete. Removing `if not arg.startswith("--")` does NOT
+    # turn the refusal into a pass: the positional then falls through to the
+    # option path, where `"HEAD"[2:]` is `"AD"`, which is not a known option,
+    # so the NEXT guard refuses it and the mutant exits 2 exactly as the
+    # original did. Measured, not reasoned: the mutant was written, run, and
+    # reported `mutated exit=2, expected 0`.
+    #
+    # That is two guards defending one property, which is fine and is why the
+    # message is the thing worth testing rather than the exit code. The
+    # positional case is pinned by its MESSAGE in
+    # `tests/test_closing_ci_check.py`, by the parametrized case named
+    # `test_an_argument_it_cannot_read_refuses_instead_of_answering_about
+    # _head`. Keeping a mutant here that "passes" only because a
+    # neighbour catches it is precisely the false confidence the absent-body
+    # mutant below was already corrected for once.
+    (
+        "the parser stops refusing an unknown option and falls back to HEAD",
+        "        if name not in KNOWN_OPTIONS:",
+        "        if False:",
+        "pushed",
+        GREEN,
+        (*WF, "--verbose", "yes"),
+        CONFIG,
+        GREEN,
+    ),
+    (
+        "the --workflow names never reach ci_state, so it judges over "
+        "whatever happens to be indexed",
+        "                *[arg for name in workflows "
+        'for arg in ("--workflow", name)],\n',
+        "",
+        "recording",
+        GREEN,
+        WF,
+        GREEN,
+        UNKNOWN,
     ),
     (
         "an unrecognized ci_state exit defaults to green instead of UNKNOWN",
@@ -72,6 +143,7 @@ MUTANTS: list[tuple[str, str, str, str, int, int, int]] = [
         "    state = CI_EXIT_STATE.get(done.returncode, GREEN)",
         "pushed",
         99,
+        WF,
         UNKNOWN,
         GREEN,
     ),
@@ -84,16 +156,15 @@ MUTANTS: list[tuple[str, str, str, str, int, int, int]] = [
     # PERMISSION, so the mutation makes that branch return green.
     (
         "an absent ci_state.py is read as permission instead of a refusal",
-        'f"that cannot run is not a clean answer.",\n'
-        "                file=sys.stderr,\n"
+        'f"check that cannot run is not a clean answer."\n'
         "            )\n"
         "            return CONFIG",
-        'f"that cannot run is not a clean answer.",\n'
-        "                file=sys.stderr,\n"
+        'f"check that cannot run is not a clean answer."\n'
         "            )\n"
         "            return EXIT[GREEN]",
         "bare",
         GREEN,
+        WF,
         CONFIG,
         GREEN,
     ),
@@ -135,7 +206,22 @@ def build(root: Path, kind: str, ci_exit: int) -> Path:
     git(work, "fetch", "-q", "origin")
     hooks = work / ".claude" / "hooks"
     hooks.mkdir(parents=True, exist_ok=True)
-    if kind != "bare":
+    if kind == "recording":
+        # ANSWERS ACCORDING TO ITS ARGV, which is the only stub shape that
+        # can see the pass-through. It returns GREEN when it was actually
+        # given a `--workflow` and UNKNOWN when it was not, which is what
+        # `ci_state.py` itself does with a named workflow that has not
+        # appeared. A stub that ignores argv, which is every other stub in
+        # this file and in the test module, cannot distinguish a working
+        # pass-through from a deleted one.
+        (hooks / "ci_state.py").write_text(
+            "import sys\n"
+            "named = '--workflow' in sys.argv\n"
+            "print('ci-state: stub, workflow named=%s' % named)\n"
+            "sys.exit(0 if named else 4)\n",
+            encoding="utf-8",
+        )
+    elif kind != "bare":
         (hooks / "ci_state.py").write_text(
             f"import sys\nprint('ci-state: stub')\nsys.exit({ci_exit})\n",
             encoding="utf-8",
@@ -147,10 +233,10 @@ def build(root: Path, kind: str, ci_exit: int) -> Path:
     return work
 
 
-def run_check(body: Path, repo: Path) -> int:
+def run_check(body: Path, repo: Path, args: tuple[str, ...] = ()) -> int:
     """Run a (possibly mutated) checker body against ``repo``."""
     done = subprocess.run(
-        [sys.executable, str(body), "--repo", str(repo)],
+        [sys.executable, str(body), "--repo", str(repo), *args],
         capture_output=True,
         text=True,
         env=os.environ.copy(),
@@ -164,7 +250,16 @@ def main() -> int:
     source = CHECK.read_text(encoding="utf-8")
     failures = 0
     print(f"mutating {CHECK.name}, {len(MUTANTS)} mutant(s)\n")
-    for label, original, replacement, kind, ci_exit, baseline, expected in MUTANTS:
+    for (
+        label,
+        original,
+        replacement,
+        kind,
+        ci_exit,
+        args,
+        baseline,
+        expected,
+    ) in MUTANTS:
         # ASSERTED PRESENT FIRST. A mutation whose target has been renamed
         # would otherwise apply nothing and "pass" against an unmutated body.
         if original not in source:
@@ -177,7 +272,7 @@ def main() -> int:
         root = Path(tempfile.mkdtemp(prefix="closing_ci_mut_"))
         try:
             repo = build(root, kind, ci_exit)
-            actual_base = run_check(CHECK, repo)
+            actual_base = run_check(CHECK, repo, args)
             if actual_base != baseline:
                 print(
                     f"  [FAIL] {label}\n         the UNMUTATED checker exited "
@@ -190,12 +285,13 @@ def main() -> int:
             mutant.write_text(
                 source.replace(original, replacement, 1), encoding="utf-8"
             )
-            # The mutant must find the same ci_state the original does, and
-            # it is resolved beside the BODY, so the stub is copied next to it.
-            stub = repo / ".claude" / "hooks" / "ci_state.py"
-            if stub.is_file():
-                shutil.copyfile(stub, root / "ci_state.py")
-            actual = run_check(mutant, repo)
+            # The mutant is run from outside the repository and finds the
+            # same `ci_state.py` the original does, because resolution is
+            # relative to the REPOSITORY ROOT and no longer to the body's own
+            # directory. That changed in round one: searching beside the body
+            # let an unpinned copy shadow the vendored one, so the search list
+            # now names only drift-pinned directories.
+            actual = run_check(mutant, repo, args)
             if actual == expected:
                 print(
                     f"  [ok  ] {label}\n         baseline exit={baseline}, "

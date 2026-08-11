@@ -1832,3 +1832,54 @@ disagreeing derivation, and an unreadable input is produced by ordinary
 `combine`. Option 3, carrying the record through the merge, dissolves
 all four at once, which strengthens it relative to the other two.
 DD-53 records the same correction against DD-52.
+
+---
+
+## OQ-56: Where does a vendored artifact that is BOTH stamped and deployed keep its stamp?
+
+**Raised:** 2026-08-11, lane ITA-15, by the V and V lens (no id was
+allocated for the routed defect) and the tech-writer lens (the local
+arrangement is discoverable only from a test docstring).
+**Status:** open. The kit half is routed to the coordination level; the
+local half below is a product-owner call and is why this is an OQ rather
+than a plan item.
+
+**The contradiction, which is the kit's and not this repository's.** The
+kit prescribes PREPENDING a provenance header to every vendored copy, and
+kit 0.2.19's `check_side_effect_guard.py` reads a skill's frontmatter only
+when `---` is the FIRST line. Those two conventions cannot both hold for
+any artifact that is both stamped and deployed. Measured here on
+2026-08-11: the deployed `.claude/skills/version-control/SKILL.md` was the
+stamped copy, its frontmatter began on line 11, and the 0.2.19 guard read
+it as declaring nothing, `5 declaring, 1 undeclared`, exit 1, on a body
+this repository is forbidden to hand-edit. Every consumer of the kit will
+meet this, not only itaca.
+
+**What this lane did, which is an arrangement and not the fix.** The
+stamp moved to `.claude/kit/version-control.md` and the deployed file
+became the body alone, neither hand-edited, both reproducing the same
+pinned hash, tied together by
+`tests/test_kit_drift.py::test_the_runtime_skill_body_matches_the_of_record_copy`.
+It copies what this repository already does for `incident-analyst.md`.
+
+**The question, in two parts.**
+
+1. **Should this be the repository's general rule?** Two artifacts now use
+   the split arrangement and both arrived at it by meeting a defect, not by
+   decision. A third stamped-and-deployed artifact will arrive, and today
+   nothing says which shape it takes.
+2. **Where should the reason live?** A reader who opens either
+   `version-control` file sees nothing pointing at the other, and neither
+   may be hand-edited, so the explanation cannot go in the artifact itself.
+   It currently lives in a test docstring and in DD-54 item 5. The
+   tech-writer lens raised this as a product-owner call rather than
+   prescribing a home, and it is recorded that way.
+
+**Options.** (a) Adopt the split as the stated rule for every
+stamped-and-deployed artifact, with the reason in `CLAUDE.md`. (b) Keep it
+case by case and accept the test docstring as the single home. (c) Wait for
+the kit to resolve the contradiction upstream, which would make the whole
+question moot, and carry the arrangement as a stopgap until then.
+
+**Not blocking.** The suite is green either way and both copies are pinned
+in both directions.
