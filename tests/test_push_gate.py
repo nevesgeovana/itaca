@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -644,6 +645,77 @@ def test_settings_json_wires_the_hook() -> None:
         if any("role_review_gate.py" in h.get("command", "") for h in entry["hooks"])
     ]
     assert any("Bash" in m and "PowerShell" in m for m in matchers), matchers
+
+
+def test_the_wired_timeout_is_not_below_the_gate_s_own_budget() -> None:
+    """The harness deadline must let the gate finish deciding.
+
+    `BRF-089`, found by pyflightstream's `PFS-11` adversarial pass on
+    2026-08-11 and measured in all three trees. The gate bounds its own CI
+    work at `CI_BUDGET_SECONDS`, and the reason is written in its header:
+    a hook killed at its timeout emits NO decision, and no decision is
+    treated as permission. So the body limits itself in order to FINISH.
+
+    itaca deployed it behind a 30 second harness deadline while the body
+    allowed itself 50 plus git calls at 15 each. The body's self-limiting
+    was defeated by the wiring, on the one repository of the three that
+    cuts release tags, so the arm that could be killed was the CI-green arm
+    that stops a tag going onto a commit CI never reported on.
+
+    THE NUMBERS ARE READ, NOT WRITTEN HERE. Both sides come from the files
+    that own them: the budget out of the vendored gate, the deadline out of
+    `.claude/settings.json`. A hardcoded pair would be a third copy of two
+    facts and would go stale the next time the kit raises the budget, which
+    is exactly how this defect arrived: kit 0.2.18 raised the budget and no
+    consumer's timeout moved, because nothing made one move.
+
+    WHAT THIS DOES NOT PROVE, stated because the brief states it: that a
+    killed hook reads as permission is the gate author's claim in prose and
+    no case in any of the three repositories holds it. If it is false the
+    consequence is a confusing refusal rather than a silent allow. This
+    guard is correct either way; it is not evidence for the claim.
+
+    The kit's own fix, a required-timeout field on the manifest row, is
+    registered at the coordination level as `HUB-19`. This is the local
+    guard until it lands, and it will not conflict with it.
+    """
+    body = HOOK.read_text(encoding="utf-8")
+    budget = re.search(r"^CI_BUDGET_SECONDS\s*=\s*([\d.]+)", body, re.MULTILINE)
+    git_timeout = re.search(r"^GIT_TIMEOUT_SECONDS\s*=\s*([\d.]+)", body, re.MULTILINE)
+    assert budget is not None, (
+        f"could not read CI_BUDGET_SECONDS out of {HOOK}; this guard cannot "
+        f"say whether the wired timeout is enough."
+    )
+    required = float(budget.group(1))
+    if git_timeout is not None:
+        # The CI budget does not cover the gate's own git calls, which run
+        # before and around it, so one of them is the honest minimum margin.
+        required += float(git_timeout.group(1))
+    settings = json.loads(
+        (HOOK.parents[1] / "settings.json").read_text(encoding="utf-8")
+    )
+    wired = [
+        hook
+        for entry in settings["hooks"]["PreToolUse"]
+        for hook in entry.get("hooks", [])
+        if "role_review_gate.py" in hook.get("command", "")
+    ]
+    assert wired, "no PreToolUse hook invokes role_review_gate.py"
+    for hook in wired:
+        timeout = hook.get("timeout")
+        assert timeout is not None, (
+            f"the role_review_gate.py hook entry declares no timeout, so it "
+            f"runs under the harness default, which this repository does not "
+            f"control. Declare one of at least {required:.0f}s."
+        )
+        assert float(timeout) >= required, (
+            f"the gate is wired with timeout={timeout}s while its own body "
+            f"allows itself {required:.0f}s (CI_BUDGET_SECONDS plus one "
+            f"GIT_TIMEOUT_SECONDS). The harness can kill it mid-decision, and "
+            f"a hook that emits no decision is not a gate. Raise the timeout "
+            f"in .claude/settings.json; do not lower the body, which is a "
+            f"drift-pinned kit copy (BRF-089)."
+        )
 
 
 def _pushed(repo: Path) -> list[str]:
