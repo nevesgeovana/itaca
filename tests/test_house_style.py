@@ -295,6 +295,69 @@ def test_no_british_spelling_in_a_repository_owned_file() -> None:
     )
 
 
+#: Clauses of the BRF-082 wording, which is shared VERBATIM with the sister
+#: repository. Fragments rather than the whole text: this asserts the rule is
+#: present and un-trimmed, and it is not a second copy of the paragraph.
+_ADVERSARIAL_CLAUSES = (
+    "adversarial pass runs",
+    "BEFORE the claim",
+    "asserted PRESENT and UNIQUE",
+    "go RED when the code it covers is sabotaged",
+    "flags its case needs",
+    "names ONLY properties this run evaluated",
+    "PRINTED as unreached",
+    "TRIED to break and could not",
+)
+
+
+def test_the_adversarial_pass_rule_is_present_in_both_of_its_places() -> None:
+    """BRF-082 lives in two files, and the split is the point.
+
+    The author's decision of 2026-08-11 corrected this brief's own first
+    proposal, which put the rule in the `role-review` skill alone. A skill
+    loads WHEN IT IS INVOKED, which is exactly the load-time failure the
+    same morning had measured: a precondition that only exists once someone
+    remembers to invoke something is not a precondition. So `CLAUDE.md`,
+    which loads always, POINTS, and the skill carries the reasoning.
+
+    This asserts both halves, because either alone fails differently and
+    silently: the pointer without the wording sends a reader nowhere, and
+    the wording without the pointer is never read at the moment it applies.
+
+    ADDED BY THE RULE'S OWN FIRST APPLICATION. Lane ITA-17 ran the hostile
+    pass over its own diff before claiming the work done, and one of the
+    attacks it recorded was deleting this pointer from `CLAUDE.md`, which
+    no test noticed. This is that finding fixed rather than reported.
+
+    The clause list is fragments, not the paragraph. Restating the wording
+    here would create the second copy the brief exists to prevent, and the
+    fragments are what catches a clause quietly trimmed as boilerplate,
+    which is the failure mode the brief names.
+    """
+    charter = (_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    skill = (_ROOT / ".claude" / "skills" / "role-review" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "adversarial pass is a PRECONDITION" in charter, (
+        "CLAUDE.md carries no pointer to the adversarial-pass rule. That file "
+        "loads always and the skill does not, so without the pointer the rule "
+        "only exists once someone invokes role-review, which is the failure "
+        "the author's decision of 2026-08-11 corrected (BRF-082)."
+    )
+    assert "role-review/SKILL.md" in charter, (
+        "the CLAUDE.md pointer does not name the file carrying the wording, so "
+        "a reader who follows it arrives nowhere."
+    )
+    missing = [clause for clause in _ADVERSARIAL_CLAUSES if clause not in skill]
+    assert not missing, (
+        f"the role-review skill is missing {len(missing)} clause(s) of the "
+        f"BRF-082 wording: {missing}. The text is shared VERBATIM with the "
+        f"sister repository and every clause is a defect this project shipped, "
+        f"so none is boilerplate. If it must change, it changes at the "
+        f"coordination level and arrives here by brief."
+    )
+
+
 # Every cross-reference in the SRS opens a brace on a labeled target.
 # The failure this catches is a substitution that wrote "\ref" into a
 # non-raw Python string: "\r" is a carriage return, so the command

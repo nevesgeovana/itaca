@@ -118,6 +118,14 @@ never in the room.
   can see, and no closure claim at all while CI is not green. NO MECHANISM
   beyond the closing check above, which covers only the CI half; the rest
   is a convention, and this sentence is all of it.
+- **The adversarial pass is a PRECONDITION of the completion claim, not a
+  round after it.** Before reporting any implementation, guard, test or
+  script as done, run one hostile pass over your own diff whose success
+  condition is BREAKING the work, and name what you tried to break and
+  could not. Mechanism and the six clauses:
+  `.claude/skills/role-review/SKILL.md`, its opening section (BRF-082,
+  the author's decision of 2026-08-11; the sister repository carries the
+  same wording verbatim).
 
 ## Role passes (adopted 2026-07-23)
 

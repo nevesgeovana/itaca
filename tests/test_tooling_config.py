@@ -994,6 +994,7 @@ def test_no_undeclared_test_uses_the_fast_marker() -> None:
 _GUARD_PROOF_TESTS = (
     # The mutation companions: each runs a checker's own mutants.
     "tests/test_closing_ci_check.py::test_the_closing_check_can_still_fail",
+    "tests/test_execution_guard.py::test_the_execution_guard_can_still_fail",
     "tests/test_plan_validator.py::test_the_plan_checker_can_still_fail",
     "tests/test_prepush_receipt.py::test_the_receipt_can_still_fail",
     "tests/test_release_integrity.py::test_the_release_gate_checker_can_still_fail",

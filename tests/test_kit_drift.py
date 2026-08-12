@@ -352,6 +352,66 @@ MANIFEST: dict[str, Pin] = {
     "ci_state_mutations.py": Pin(
         "7e1135337732252f7afffc5c7367769035e54bbe06a7d31df7dcfd7e2a362746", "0.2.18"
     ),
+    # 0.2.20, NEW, and the one row in this batch that CHANGES HOW A SESSION
+    # BEHAVES, so it is wired knowingly rather than dropped in. A PreToolUse
+    # hook refusing exactly two shapes, both mechanically decidable:
+    #
+    #   ARM 1, a status-bearing command piped into a line filter. A
+    #   pipeline's exit status is the LAST element's, so `pytest | tail`
+    #   reports the status of `tail`. STATUS_BEARING is deliberately SHORT
+    #   (pytest, mypy, ruff, git push, plus check_*.py, *_mutations.py and
+    #   verify_*.py by pattern), because the arm is about status and not
+    #   about danger.
+    #
+    #   ARM 2, a heredoc whose body carries a backslash or a control byte.
+    #   NOT a heredoc ban: twelve tracked files across the three trees carry
+    #   heredocs, and the kit fixed a heredoc defect at 0.2.1 by correcting
+    #   rather than forbidding. A quoted delimiter is exempt from the
+    #   backslash half, since that is the form that survives.
+    #
+    # WHAT IT COSTS THIS SESSION, measured elsewhere and taken on trust here
+    # rather than rediscovered: it refuses `pytest | tail` and
+    # `check_*.py | head`, which is how this repository's own sessions have
+    # read long output. Run them unpiped, or redirect to a file and read the
+    # status from the process. That is the behavior the guard exists to
+    # produce, so the friction is the point rather than a side effect.
+    #
+    # THREE FALSE POSITIVES ACROSS TWO REPOSITORIES, all one class: a
+    # checker named as DATA rather than executed, for example as a grep
+    # argument. Heredoc bodies and quoted spans are blanked before it scans,
+    # so an unquoted checker filename in a grep is the remaining case. That
+    # miss is stated in the body itself rather than hidden, which is why it
+    # is repeated here instead of being discovered by the next lane.
+    #
+    # It answers the two `CLAUDE.md` Execution rules that said, in place,
+    # that they had NO MECHANISM FILE. Those bullets move with this row.
+    # Both declared values agreed with the master bodies on recomputation.
+    "execution_guard.py": Pin(
+        "f309785a0c417d12be475e6f07e91458c91e5731bade1c814c67a1ee49565390", "0.2.20"
+    ),
+    "execution_guard_mutations.py": Pin(
+        "e01c203503877fe8c1ad03af3c1faf8686ff92cff5049bf3969b08dc7dda2ffd", "0.2.20"
+    ),
+    # 0.2.17, NEW, and VENDORED WITHOUT BEING WIRED, which is a state this
+    # repository normally refuses and so is stated rather than left to be
+    # noticed. `detached_gate.py` runs a long gate in a process that outlives
+    # the caller and answers from a FILE, which is what makes `ci_state.py
+    # await` affordable: a lane session cuts a command at ten minutes, and
+    # every mechanism that answers "did the gate pass" by WAITING inherits a
+    # limit it cannot see.
+    #
+    # `.claude/tools/closing_ci_check.py` still POLLS and reports, so a close
+    # over a still-queued run says NOT VERIFIED rather than waiting. That is
+    # the strict half of the kit's closing contract without the half that
+    # makes waiting cheap, and it is the most likely reason a session would
+    # start routing around the closing step. Wiring it is the open half of
+    # `ITC-20260811-2110`, kept open deliberately: the body is drift-pinned
+    # and available here, and changing what the closing check does is a
+    # design change that has not been reviewed.
+    # The declared value agreed with the master body on recomputation.
+    "detached_gate.py": Pin(
+        "86ac1759c867c6a215e9ccc44779bd4e4954efa058c54b1b3e05cbc3e70831f7", "0.2.17"
+    ),
     # 0.2.9, the INC-20260729-2355 guard: the attestation refuses while
     # TRACKED files carry uncommitted changes, and reports untracked paths
     # instead of refusing on them. RECOMPUTED from the master body with
@@ -680,7 +740,31 @@ MANIFEST: dict[str, Pin] = {
     # reach it. What drift-checks it is this pin plus its COMMITTED row,
     # which assert positively that the path exists and hashes as declared,
     # rather than asserting the absence of anything.
-    # The declared value agreed with the master body on recomputation.
+    #
+    # DELIBERATELY BEHIND THE MASTER, and this is the one pin in this file
+    # that is stale ON PURPOSE. Measured by the coordination level on
+    # 2026-08-11 and confirmed here: the master is at 0.2.17 with body
+    # 728918d8..., this copy is 0.2.15. Lane ITA-17 decided NOT to adopt it.
+    #
+    # The lane that exists to adopt 0.2.17 is ITA-14, and its recorded
+    # justification is now STALE: "the version-control skill is UNSELECTABLE
+    # in itaca until this lands". ITA-15 made it selectable by a different
+    # route, splitting the stamp into an of-record copy and deploying the
+    # body alone, so the urgent half is already delivered. What remains at
+    # 0.2.17 is CONTENT: a section on reading CI for the SHA you pushed.
+    #
+    # And the body is about to change again. `BRF-090` batches into HUB-19 a
+    # revision of this artifact's own "If the push is denied" section, which
+    # lists four denial categories while the 0.2.18 gate can print six more.
+    # Adopting 0.2.17 now means vendoring this artifact TWICE inside a week,
+    # under the two-file split, for a documentation currency gap this
+    # repository has already mitigated by listing the six sub-kinds in its
+    # own CLAUDE.md.
+    #
+    # So the staleness is a DECISION and not an oversight, which is why it is
+    # written at the pin rather than left for a reader to discover. Reported
+    # to the coordination level so ITA-14's priority can be re-cut against
+    # its actual remaining content.
     "version-control.md": Pin(
         "b8119d989a4b1acf9f3913e4f478a643f34ed1506ff4552c9518ffeb49594a0b", "0.2.15"
     ),
@@ -934,6 +1018,16 @@ COMMITTED: list[tuple[str, str]] = [
     # two rows and the gate row above are one vendoring and not three.
     ("ci_state.py", ".claude/hooks/ci_state.py"),
     ("ci_state_mutations.py", ".claude/hooks/ci_state_mutations.py"),
+    # A second PreToolUse hook, so it sits with the first, and its companion
+    # beside it exactly as the ci_state pair does.
+    ("execution_guard.py", ".claude/hooks/execution_guard.py"),
+    ("execution_guard_mutations.py", ".claude/hooks/execution_guard_mutations.py"),
+    # A kit TOOL rather than a hook, so it sits under `.claude/kit`. NOT
+    # `.claude/tools`, which holds this repository's OWN scripts
+    # (`closing_ci_check.py`) and is deliberately not swept by
+    # `test_no_unpinned_artifact_hides_in_the_vendored_dirs` below; a
+    # vendored body there would escape that sweep.
+    ("detached_gate.py", ".claude/kit/detached_gate.py"),
     ("incident-analyst.md", ".claude/kit/incident-analyst.md"),
     ("check_side_effect_guard.py", ".claude/kit/check_side_effect_guard.py"),
     (

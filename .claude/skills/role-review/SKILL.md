@@ -14,6 +14,78 @@ charter; this skill decides which passes apply, runs them, and
 enforces the update-or-fix rule on their findings. The charter
 template is documented in `ROLE_TEMPLATE.md` next to this file.
 
+## The adversarial pass is a precondition, not a round
+
+A completion claim is not made and then reviewed. The adversarial pass runs
+BEFORE the claim, and the claim is not available until it has run.
+
+Before reporting any implementation, guard, test or script as done, run one
+hostile pass over your OWN diff, whose success condition is BREAKING the
+work rather than confirming it. At minimum:
+
+- every mutation anchor is asserted PRESENT and UNIQUE before it is applied,
+  because a mutant whose anchor drifted mutates nothing and passes vacuously
+- every new test is shown to go RED when the code it covers is sabotaged; a
+  test that stays green under sabotage is not a test
+- every regex carries the flags its case needs, and every CLI flag parse
+  matches the tool's real precedence rather than the obvious one
+- every success message names ONLY properties this run evaluated. A line
+  that asserts something the code no longer checks is the defect that is
+  hardest to see, because the line looks right
+- every arm no case reaches is PRINTED as unreached, never counted as
+  covered
+
+- name what you TRIED to break and could not, not only what broke. A pass
+  reporting nothing is unfalsifiable until a reader can see which attacks
+  were attempted; with the attempts named, a reader can tell a clean diff
+  from an incurious one
+
+Report the findings of that pass ALONGSIDE the implementation, including the
+ones you fixed. A pass that reports nothing is itself a finding, and says so
+rather than staying silent.
+
+This does not replace the gated role-review, which is independent by design
+and reviews what a session cannot review about itself. It removes the rounds
+that were spent on defects the session could have found alone.
+
+### Where this wording comes from, and why no clause is trimmed
+
+BRF-082, approved by the author 2026-08-11, and taken VERBATIM. The
+identical text is in the sister pyflightstream repository: the whole point
+of the coordination level is that one wording reaches both, and two
+independently drafted versions of one rule diverge inside a month. If this
+paragraph needs to change, it changes at the coordination level and arrives
+here by brief, exactly as a kit body does.
+
+Every clause is a defect this project actually shipped rather than a
+category from a checklist. The unique-anchor rule comes from a vacuous
+mutant. The sabotage rule comes from a companion that asserted cases for
+two kit versions without ever sabotaging the body it proved. The
+regex-flags and flag-precedence lines are a missing `re.M` and a guard
+reading the first `-m` where pytest honors the last. The success-message
+line comes from a test that kept printing "all 6 declared writers are
+human-invoked only" after the check behind it was retired. The
+unreached-arm line comes from the 0.2.18 gate, whose three unreachable
+arms are printed on every run rather than counted as denied.
+
+THE SIXTH CLAUSE IS THE AUTHOR'S OWN ADDITION, made the same day: naming
+what you tried to break and could not is what makes a clean pass
+falsifiable. This repository has already paid for the alternative. Lane
+ITA-15's review found that ten of nineteen round-two findings were about
+round one's fixes, which is the exact spiral this rule exists to stop, and
+the two worst findings of round one were mechanical: an argument parser
+that answered about the wrong commit, and a success line claiming a guard
+that did not exist. Both are the kind a hostile pass over one's own diff
+catches.
+
+THE STANDING OBJECTION IS NOT ANSWERED, and is recorded rather than
+smoothed over: a session running a hostile pass over its own work shares
+its own blind spots, and that is not answerable. What this claims is
+narrower and the record supports it: most of what later rounds found here
+was MECHANICAL rather than conceptual, and mechanical defects are what such
+a pass does catch. It does not touch the round cap, which stays as the
+author set it.
+
 ## 1. Resolve the work item's diff
 
 **THE WORK MUST BE COMMITTED BEFORE THIS SKILL RUNS.** Review happens on
