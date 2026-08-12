@@ -1,4 +1,4 @@
-"""Tier-1 wiring of the execution guard (shared kit artifact, 0.2.20).
+"""Tier-1 wiring of the execution guard (shared kit artifact, 0.2.22).
 
 Usage example (TDD anchor)::
 
@@ -11,7 +11,12 @@ repositories, and refuses nothing else:
 - ARM 1, a status-bearing command piped into a line filter. A pipeline's
   exit status is the LAST element's, so `pytest | tail` reports whether
   `tail` succeeded. `STATUS_BEARING` is deliberately short, because the arm
-  is about STATUS and not about danger.
+  is about STATUS and not about danger. Since 0.2.22 the filter pattern is
+  SPLIT by shell: `head`, `tail` and `wc` case-sensitively for bash, and
+  `Select-Object`, `Measure-Object`, `select` and `measure`
+  case-insensitively for PowerShell, because each shell's case rules are
+  what that shell actually does. `Out-String` and `ForEach-Object` are a
+  NAMED gap and have their own case below.
 - ARM 2, a heredoc whose body carries a backslash or a control byte. NOT a
   heredoc ban: twelve tracked files across the three trees carry heredocs,
   and the kit fixed a heredoc defect at 0.2.1 by correcting rather than
@@ -97,66 +102,51 @@ def test_the_guard_and_its_companion_are_present() -> None:
     assert MUTATIONS.is_file(), f"its mutation companion is missing at {MUTATIONS}"
 
 
-def test_the_execution_guard_is_deliberately_not_wired_yet() -> None:
-    """VENDORED AND HELD, on the coordination level's instruction.
+def test_settings_json_wires_the_execution_guard() -> None:
+    """The guard must be REGISTERED, not merely vendored.
 
-    ITA-17 vendored kit 0.2.20's guard AND wired it. The coordination level
-    then answered two defects this lane had routed, accepted both as the
-    kit's, and cut 0.2.22 to fix them. Its instruction for tonight: hold the
-    guard, keep the body vendored and drift-pinned, do not hand-edit it, and
-    re-pin at 0.2.22.
+    Every other case here runs the script by path, so the suite would pass
+    identically with the registration deleted. It must also carry the same
+    matcher as the push gate: at 0.2.22 arm 1 refuses BOTH shells' filters,
+    so a guard wired for one of them would leave the other's shape free,
+    which is the defect `ITC-20260811-2250` closed.
 
-    THE TRADE, recorded because a disabled guard is the shape that quietly
-    stays disabled. Arm 2 refuses a heredoc opener merely NAMED inside a
-    quoted heredoc body (`ITC-20260811-2240`), and the operator has NO
-    remedy: the token is already inside the strongest quoting the shell
-    offers, and arm 2 blanks no data spans. A guard with no remedy teaches
-    people to route around guards. Against that, one night of arm 1 coverage
-    on a shell where arm 1 catches nothing anyway
-    (`ITC-20260811-2250`, `LINE_FILTERS` is bash-only while this
-    repository's primary shell is PowerShell).
-
-    THIS TEST IS THE OPPOSITE OF THE ONE IT REPLACES, deliberately. It goes
-    RED the moment anyone wires the guard, which is the signal to re-read
-    this docstring and the channel entry behind it rather than to discover
-    the held decision by being denied. When 0.2.22 is adopted, this test is
-    replaced by the wiring assertion again, in the same commit that moves
-    the two pins.
-
-    The behavior cases in this module are unaffected and still run: they
-    drive the vendored body directly, so they prove what the body does
-    whether or not the harness invokes it.
+    WIRED, UNWIRED AND REWIRED IN ONE LANE, recorded here because the
+    history is the argument. ITA-17 wired kit 0.2.20, its own reviewer panel
+    found two defects in that body, the coordination level accepted both and
+    the lane UNWIRED rather than leave a false positive with no operator
+    remedy armed overnight. Kit 0.2.22 fixed both and this assertion came
+    back. The intermediate state was a real decision, not a slip, and DD-57
+    carries it.
     """
     settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
     entries = settings["hooks"]["PreToolUse"]
     # The path is matched in full, not by the bare basename. A substring
     # match passed on any command merely CONTAINING the name, so a wrong
     # directory would have satisfied it; a QA lens found that in ITA-17
-    # round one, while this test still asserted the wiring.
+    # round one.
     expected = ".claude/hooks/execution_guard.py"
     wired = [
-        hook
+        (entry, hook)
         for entry in entries
         for hook in entry.get("hooks", [])
         if expected in hook.get("command", "").replace("\\", "/")
     ]
-    assert not wired, (
-        f"{SETTINGS} now wires execution_guard.py, which ITA-17 deliberately "
-        f"held pending kit 0.2.22. If 0.2.22 is adopted, that is correct and "
-        f"this test is what must change: replace it with the wiring assertion "
-        f"(present, matcher covering Bash and PowerShell, explicit timeout) in "
-        f"the same commit that re-pins execution_guard.py and its companion. "
-        f"If 0.2.22 is NOT adopted, unwire it: arm 2 refuses a heredoc opener "
-        f"named inside a quoted body with no remedy available to the operator "
-        f"(ITC-20260811-2240)."
+    assert wired, (
+        f"no PreToolUse hook in {SETTINGS} invokes {expected}, so the vendored "
+        f"body runs never. Wire it, or stop vendoring it."
     )
-    # And the body must still be VENDORED while it is held, or the hold has
-    # quietly become a removal and the re-pin at 0.2.22 has nothing to move.
-    assert GUARD.is_file() and MUTATIONS.is_file(), (
-        f"the guard is unwired AND its body is gone. Holding it means keeping "
-        f"it vendored and drift-pinned so 0.2.22 is a re-pin rather than a "
-        f"fresh adoption; see {GUARD} and {MUTATIONS}."
-    )
+    for entry, hook in wired:
+        matcher = entry["matcher"]
+        assert "Bash" in matcher and "PowerShell" in matcher, (
+            f"the execution guard is wired on matcher {matcher!r}. Since kit "
+            f"0.2.22 arm 1 refuses both shells' line filters, so wiring one "
+            f"shell leaves the other's shape free."
+        )
+        assert hook.get("timeout"), (
+            "the execution guard entry declares no timeout, so it runs under "
+            "the harness default this repository does not control."
+        )
 
 
 @pytest.mark.parametrize(
@@ -260,59 +250,109 @@ def test_an_ordinary_command_is_out_of_scope(command: str) -> None:
     assert decision == "silent", f"{command!r} was refused: {reason}"
 
 
-def test_a_powershell_line_filter_is_a_known_gap_not_an_exemption() -> None:
-    """PowerShell loses a status the same way and the guard does not see it.
+@pytest.mark.parametrize(
+    "command,label",
+    [
+        ("pytest -q | Select-Object -Last 5", "Select-Object"),
+        ("pytest -q | select -Last 5", "the select alias"),
+        ("pytest -q | Measure-Object -Line", "Measure-Object"),
+        ("pytest -q | measure", "the measure alias"),
+        # Case-INSENSITIVE on the PowerShell half, because PowerShell is.
+        ("pytest -q | SELECT-OBJECT -Last 5", "an upper-case spelling"),
+    ],
+)
+def test_a_powershell_line_filter_is_refused_since_0222(
+    command: str, label: str
+) -> None:
+    """The gap this repository routed, now closed, asserted as closed.
 
-    THIS IS A GAP AND NOT A DESIGN INTENT, which is the whole point of the
-    name. The first version of this case sat in the out-of-scope list
-    above, where it read as a decision that PowerShell filters are fine.
-    Two reviewer lenses found the contradiction in ITA-17 round one: the
-    wiring test justifies the `Bash|PowerShell` matcher on the ground that
-    otherwise "the shape it refuses simply moves to the other" shell, and
-    on this repository's primary shell it already has.
+    THIS CASE HAS BEEN THREE THINGS IN ONE LANE and the sequence is the
+    point. It began as an out-of-scope CONTROL, asserting that a PowerShell
+    filter is fine, one screen below a wiring test justifying the
+    `Bash|PowerShell` matcher on the ground that the refused shape must not
+    be able to move shells. Two reviewer lenses found that contradiction. It
+    became `test_a_powershell_line_filter_is_a_known_gap_not_an_exemption`,
+    written to the CURRENT behavior so it would go RED when the kit closed
+    the gap. Kit 0.2.22 closed it, the test went red exactly as designed,
+    and it is now the assertion that the gap is shut.
 
-    `LINE_FILTERS` in the vendored body matches `head|tail|wc` only.
-    `Select-Object -Last`, `Measure-Object` and the `select` and `measure`
-    aliases are PowerShell's equivalents and pass unrefused. The body is
-    drift-pinned, so the fix is a kit promotion and is routed as
-    `ITC-20260811-2250`, the execution guard's line filters are bash-only
-    while it is wired for both shells.
-
-    The assertion is deliberately written the way the CURRENT body behaves,
-    so this test goes RED the day the kit closes the gap. That is the
-    signal to delete this case and move it back up.
+    A guard that could only be tested when it was broken would not have
+    survived that transition, which is why the middle form was written to
+    flip rather than to pass forever.
     """
-    decision, _ = judge("pytest -q | Select-Object -Last 5")
+    decision, reason = judge(command)
+    assert decision == "deny", f"{label} was not refused: {command!r}"
+    assert "piped-status" in reason, reason
+
+
+@pytest.mark.parametrize(
+    "command,label",
+    [
+        ("pytest -q | Out-String", "Out-String"),
+        ("pytest -q | ForEach-Object { $_ }", "ForEach-Object"),
+    ],
+)
+def test_out_string_is_a_named_gap_with_its_reasoning(command: str, label: str) -> None:
+    """Still allowed, and the reason is written rather than left implicit.
+
+    `Out-String` and `ForEach-Object` drop no lines, and `$LASTEXITCODE`
+    survives a PowerShell pipeline, so the status a caller needs is still
+    recoverable. That is not true of `$?` in bash, which is why the bash
+    half of the pattern is wider. The kit wrote that reasoning at the line
+    rather than leaving it to be discovered.
+
+    IF THAT REASONING IS WRONG, this test is the place the disagreement
+    surfaces, and the line to change is the kit's. It is asserted rather
+    than omitted so the gap is a decision on the record instead of an
+    absence nobody can see.
+    """
+    decision, _ = judge(command)
     assert decision == "silent", (
-        "the vendored guard now refuses a PowerShell line filter. That is "
-        "the gap ITC-20260811-2250 asked the kit to close, so this test has "
-        "done its job: delete it and move the case into "
-        "test_an_ordinary_command_is_out_of_scope's refusal siblings."
+        f"{label} is now refused. If the kit widened the PowerShell half "
+        f"deliberately, that is correct and this test should become a "
+        f"refusal case; if not, it is a false positive on a cmdlet that "
+        f"loses no status."
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "ITC-20260811-2240: arm 2 does not blank data spans, so a heredoc "
-        "opener NAMED inside a quoted heredoc body is parsed as a real "
-        "opener. Arm 1 blanks them; arm 2 does not. Reproduced with a "
-        "control in ITA-17 round one, where it denied a reviewer's own "
-        "findings write. The body is drift-pinned, so this is routed to the "
-        "kit and pinned here as a known defect rather than hidden."
-    ),
-    strict=True,
-)
+def test_the_bash_half_stays_case_sensitive() -> None:
+    """Each shell's case rules are what that shell actually does.
+
+    0.2.22 split the pattern rather than making one case-insensitive rule,
+    and this is the half that would be wrong if it had not: `TAIL` is not
+    `tail` to bash, so refusing it would be a false positive.
+    """
+    decision, _ = judge("pytest -q | TAIL -5")
+    assert decision == "silent", (
+        "the bash half of the filter pattern has become case-insensitive, "
+        "which refuses a command bash would not even resolve."
+    )
+
+
 def test_a_quoted_heredoc_body_may_name_an_opener_without_being_refused() -> None:
-    """The fourth instance of the documented false-positive class.
+    """The fourth false positive, reproduced here and fixed in kit 0.2.22.
 
-    STRICT xfail, so the day the kit fixes it this test fails as XPASS and
-    forces the marker off. That is the property worth having: a known
-    defect that quietly stops being one should not stay recorded as open.
+    THE STRICT XFAIL DID ITS JOB AND IS GONE. This case was pinned as
+    `xfail(strict=True)` while `ITC-20260811-2240` was open, precisely so
+    that the day the kit fixed it the test would fail as XPASS and force the
+    marker off rather than leaving a closed defect recorded as open. That is
+    what happened, in the same night.
 
-    The control that isolates the cause is the sibling below: the same
-    quoted heredoc, same backslash, WITHOUT the opener form in its prose,
-    is out of scope. So it is the named opener that fires arm 2, not the
-    backslash and not the heredoc.
+    The defect: arm 2 did not blank data spans, so a heredoc opener merely
+    NAMED inside a quoted heredoc body was parsed as a real opener. Arm 1
+    blanked them; arm 2 did not. It denied a QA reviewer's own findings
+    write while that reviewer was writing up this very finding.
+
+    0.2.22 extracts a data mask and tests the OPENER's position against it
+    while still reading the body from the raw command, which is the right
+    shape: a real heredoc's body is exactly what this arm exists to inspect,
+    so masking the body would have broken the arm to fix the false positive.
+
+    THIS REPRODUCTION'S BACKSLASH WAS LOAD-BEARING, and the kit said so: its
+    first draft of the fix carried a case with nothing after the named
+    opener that either arm objects to, so the command was silent BEFORE and
+    AFTER the fix, a vacuous proof. The mutant refused to flip, which caught
+    it. The control below is what makes this case specific.
     """
     command = (
         f"cat {_HEREDOC}'MD' > notes.md\n"
@@ -356,4 +396,8 @@ def test_the_execution_guard_can_still_fail() -> None:
         env=child_env(),
     )
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "30/30 passed" in done.stdout, done.stdout
+    # 41 cases and 10 mutants at 0.2.22, up from 30 and 7 at 0.2.20. The
+    # count is asserted rather than merely the exit code, for the reason
+    # this repository asserts every accounting line: a companion that
+    # silently stopped building half its cases would still exit 0.
+    assert "41/41 passed" in done.stdout, done.stdout

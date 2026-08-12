@@ -1,7 +1,7 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.20
+# kit-version: 0.2.22
 # artifact: execution_guard.py
-# body-sha256: f309785a0c417d12be475e6f07e91458c91e5731bade1c814c67a1ee49565390
+# body-sha256: 2ebfc38bd69cf625971385834c05f0b189d1121ce78d324a950c568cc32ccf5b
 # canonical-source: BUILT for the kit 2026-08-11 (BRF-079 step 2). A PreToolUse guard for the two shell shapes that have actually corrupted files or produced a false green in these repositories: a status-bearing command whose exit code is read through a pipe, and a heredoc carrying a backslash or a non-printable byte. Deliberately NOT a blanket heredoc ban: 12 tracked files across the three trees carry heredocs and the kit fixed a heredoc defect at 0.2.1 by correcting rather than forbidding, and a guard that fires on ordinary use is one people learn to work around.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # END KIT PROVENANCE (body verbatim below)
@@ -78,9 +78,34 @@ STATUS_BEARING_PATTERNS = (
     re.compile(r"\bverify_[\w.\-]*\.py\b"),
 )
 
-# The line filters that discard a status. Deliberately not extended to
-# every filter that would: see the docstring.
-LINE_FILTERS = re.compile(r"\|\s*(head|tail|wc)\b")
+# The line filters that discard a status, in BOTH shells this guard is
+# wired for. Deliberately not extended to every filter that would: see the
+# docstring and the named gap below.
+#
+# 0.2.22 ADDS THE POWERSHELL HALF, routed by itaca as ITC-20260811-2250 and
+# reproduced by importing the vendored body. At 0.2.20 the pattern was
+# `head|tail|wc` alone while the hook's matcher was `Bash|PowerShell`, so on
+# a repository whose primary shell IS PowerShell the guard refused nothing it
+# could express: `pytest -q | Select-Object -Last 5` returned no offence and
+# `pytest -q | tail -5` did. A guard armed on one half of its own matcher is
+# worse to reason about than one whose scope is stated, because its silence
+# reads as a pass.
+#
+# PowerShell is case-insensitive, so its alternatives carry an inline flag
+# while the bash ones stay case-sensitive, which is what each shell actually
+# does.
+#
+# THE NAMED GAP, stated so it is falsifiable rather than discovered: in
+# PowerShell EVERY terminal cmdlet owns `$?`, so `| Out-String` and
+# `| ForEach-Object` discard a status exactly as `Select-Object` does. They
+# are NOT listed, for two reasons that are recorded rather than assumed. They
+# do not drop lines, so an operator reading the output still sees all of it;
+# and `$LASTEXITCODE` survives a PowerShell pipeline, so the native status is
+# still recoverable, which is not true of `$?` in bash. If that reasoning
+# turns out to be wrong, this is the line to change.
+_BASH_FILTERS = r"(?:head|tail|wc)"
+_PS_FILTERS = r"(?i:Select-Object|Measure-Object|select|measure)"
+LINE_FILTERS = re.compile(rf"\|\s*(?:{_BASH_FILTERS}|{_PS_FILTERS})\b")
 
 # ``<<`` or ``<<-`` then an optionally quoted delimiter.
 HEREDOC_OPEN = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
@@ -146,8 +171,40 @@ def _without_data_spans(command: str) -> str:
 
     Spans are replaced with spaces rather than removed so every offset
     the caller slices on still refers to the same position.
+
+    0.2.22 SPLITS THE MASK OUT of this function so ARM 2 can use it too.
+    See `_data_mask`; the string this returns is unchanged.
     """
-    out = list(command)
+    mask = _data_mask(command)
+    return "".join(" " if mask[i] else ch for i, ch in enumerate(command))
+
+
+def _data_mask(command: str) -> list[bool]:
+    """True at every offset that is DATA rather than a command position.
+
+    EXTRACTED AT 0.2.22 BECAUSE ARM 2 NEEDED IT AND DID NOT HAVE IT.
+    itaca routed `ITC-20260811-2250`'s sibling, `ITC-20260811-2240`: arm 1
+    called `_without_data_spans` before scanning and arm 2 called nothing,
+    so a heredoc opener merely NAMED inside an already-quoted heredoc body
+    was parsed as a real opener and refused. Reproduced with a control: the
+    same quoted heredoc WITHOUT the opener spelled in its body was silent,
+    so the refusal turned on prose and not on a shell construct.
+
+    THAT INSTANCE WAS WORSE THAN THE THREE BEFORE IT, which is why it was
+    fixed rather than documented. The other three are answered by quoting
+    the offending token, and the guard's own text says so. This one is
+    already inside the strongest quoting the shell offers, so the operator
+    had NO remedy at all. A guard with no remedy is worse than a missing
+    guard, because it teaches people to route around guards.
+
+    Newlines are never marked, so the line-anchored searches that find a
+    heredoc terminator still see the line structure they need.
+
+    An unterminated quote marks to the end of the string, which is the
+    conservative direction for both arms: the guard sees less and denies
+    less, and it never denies on text it failed to parse.
+    """
+    mask = [False] * len(command)
 
     for opener in HEREDOC_OPEN.finditer(command):
         rest = command[opener.end():]
@@ -156,12 +213,9 @@ def _without_data_spans(command: str) -> str:
         )
         stop = opener.end() + (end.start() if end else len(rest))
         for i in range(opener.end(), stop):
-            if out[i] != "\n":
-                out[i] = " "
+            if command[i] != "\n":
+                mask[i] = True
 
-    # Quoted spans, single and double. An unterminated quote blanks to the
-    # end, which is the conservative direction: the guard sees less and
-    # denies less, and it never denies on text it failed to parse.
     quote = None
     for i, ch in enumerate(command):
         if quote is None:
@@ -169,12 +223,12 @@ def _without_data_spans(command: str) -> str:
                 quote = ch
         elif ch == quote:
             quote = None
-            out[i] = " "
+            mask[i] = True
             continue
-        if quote is not None and out[i] != "\n":
-            out[i] = " "
+        if quote is not None and command[i] != "\n":
+            mask[i] = True
 
-    return "".join(out)
+    return mask
 
 
 def piped_status_offence(command: str) -> str | None:
@@ -205,8 +259,19 @@ def heredoc_offence(command: str) -> str | None:
     survives, so a backslash inside it is not the failure this arm was
     built from. No quoting protects a downstream parser from a control
     byte, so that half applies to every heredoc.
+
+    AN OPENER THAT SITS INSIDE A DATA SPAN IS NOT AN OPENER. Added at
+    0.2.22 for `ITC-20260811-2240`: this arm used to scan the raw string,
+    so `<<EOF` spelled inside an already-quoted heredoc body counted as a
+    real opener and the arm refused a command containing no such heredoc.
+    Only the OPENER's position is tested against the mask; the body is
+    still read from the raw command, because a real heredoc's body is
+    exactly what this arm exists to inspect.
     """
+    mask = _data_mask(command)
     for opener in HEREDOC_OPEN.finditer(command):
+        if mask[opener.start()]:
+            continue
         quoted = bool(opener.group(1))
         delimiter = opener.group(2)
         rest = command[opener.end():]

@@ -1,7 +1,7 @@
 # ITACA / pyflightstream shared process kit
-# kit-version: 0.2.20
+# kit-version: 0.2.22
 # artifact: execution_guard_mutations.py
-# body-sha256: e01c203503877fe8c1ad03af3c1faf8686ff92cff5049bf3969b08dc7dda2ffd
+# body-sha256: d8131f93820b1d010a219969229d2e9d5749af2bcaa812753f26ea58df5e2ffb
 # canonical-source: BUILT for the kit 2026-08-11 beside execution_guard.py. Proves both arms deny what they exist to catch, proves the exemptions are real rather than accidental, and sabotages the body to prove each clause is load bearing. The guard runs as a subprocess over real PreToolUse payloads, so what is proven is the deployed contract and not an imported function.
 # note: derived copy; canonical master at the coordination level. Do not hand-edit; the tier-1 drift test recomputes the body sha256 and fails on divergence. Changes are made in the kit and re-vendored.
 # END KIT PROVENANCE (body verbatim below)
@@ -101,7 +101,7 @@ def mutant(name: str, old: str, new: str, command: str, expect_after: str | None
 
 def main() -> int:
     r = []
-    print("execution guard, kit 0.2.20: two arms, both mechanically decidable")
+    print("execution guard, kit 0.2.22: two arms, both mechanically decidable")
     print()
     print("arm 1, the piped status:")
 
@@ -158,6 +158,25 @@ def main() -> int:
     r.append(case("an unquoted offence beside a quoted mention is caught",
                   'echo "mentions pytest" && pytest -q | tail -3', "deny"))
 
+    # 0.2.22, ITC-20260811-2250, routed by itaca and reproduced by
+    # importing the vendored body. The hook matcher is Bash|PowerShell and
+    # the filter list was bash-only, so the shape this arm exists to refuse
+    # was unrefused on the shell that repository actually uses.
+    r.append(case("a PowerShell Select-Object filter is refused",
+                  "pytest -q | Select-Object -Last 5", "deny", "[piped-status]"))
+    r.append(case("the select alias is refused",
+                  "ruff check . | select -First 3", "deny"))
+    r.append(case("Measure-Object is refused",
+                  "mypy src | Measure-Object", "deny"))
+    r.append(case("the PowerShell half is case-insensitive, as PowerShell is",
+                  "pytest -q | SELECT-OBJECT -Last 5", "deny"))
+    # THE NAMED GAP, asserted as a gap so it goes RED if anyone closes it
+    # without reading why it is open. Out-String owns $? like any terminal
+    # cmdlet, but it drops no lines and $LASTEXITCODE survives a PowerShell
+    # pipeline, so the status is still recoverable.
+    r.append(case("Out-String is a KNOWN GAP and not an exemption",
+                  "pytest -q | Out-String", None))
+
     print()
     print("arm 2, the corrupting heredoc:")
 
@@ -176,6 +195,24 @@ def main() -> int:
     r.append(case("an ordinary heredoc is out of scope",
                   "git commit -F - <<'MSG'\na message\nMSG", None))
 
+    # 0.2.22, ITC-20260811-2240, routed by itaca with a control. The
+    # refusal turned on PROSE: the same quoted heredoc without the opener
+    # spelled in its body was silent. Arm 1 blanked data spans and arm 2
+    # blanked nothing, and the operator had NO remedy because the token was
+    # already inside the strongest quoting the shell offers.
+    # THE BACKSLASH IS LOad-BEARING and its absence made the first draft
+    # of this case VACUOUS: with nothing the arm objects to after the named
+    # opener, the command was silent before and after the fix. The mutant
+    # below refused to flip, which is how it was caught.
+    r.append(case("an opener merely NAMED inside a quoted body is not an opener",
+                  "python - <<'PY'\nnaming <<EOF then C:\\\\WORK\nPY\n", None))
+    r.append(case("the control: the same body without the name is also silent",
+                  "python - <<'PY'\nnaming nothing then C:\\\\WORK\nPY\n", None))
+    # The real openers beside the named one are still found, so the mask
+    # did not become a way past this arm.
+    r.append(case("a real unquoted backslash heredoc is still refused after the mask",
+                  "cat <<PY\npath C:\\\\WORK\nPY\n", "deny", "[heredoc-content]"))
+
     print()
     print("contract:")
     r.append(case("an empty command is out of scope", "", None))
@@ -186,8 +223,27 @@ def main() -> int:
     print("mutants, each asserted present and unique before it is applied:")
 
     r.append(mutant("the filter list no longer matches tail",
-                    r'r"\|\s*(head|tail|wc)\b"', r'r"\|\s*(head|wc)\b"',
+                    r'_BASH_FILTERS = r"(?:head|tail|wc)"',
+                    r'_BASH_FILTERS = r"(?:head|wc)"',
                     "pytest -q | tail -5", None))
+    # 0.2.22, ITC-20260811-2250. The guard is wired for Bash|PowerShell
+    # and at 0.2.20 refused nothing PowerShell could express, on a
+    # repository whose primary shell IS PowerShell.
+    r.append(mutant("the PowerShell half is removed",
+                    r'_PS_FILTERS = r"(?i:Select-Object|Measure-Object|select|measure)"',
+                    r'_PS_FILTERS = r"(?i:__never_matches__)"',
+                    "pytest -q | Select-Object -Last 5", None))
+    r.append(mutant("the case-insensitive flag on the PowerShell half is dropped",
+                    r'(?i:Select-Object|Measure-Object|select|measure)',
+                    r'(?-i:Select-Object|Measure-Object|select|measure)',
+                    "pytest -q | SELECT-OBJECT -Last 5", None))
+    # 0.2.22, ITC-20260811-2240. Arm 2 scanned the raw string, so an
+    # opener merely NAMED inside an already-quoted body was refused, and
+    # the operator had no remedy because the quoting was already maximal.
+    r.append(mutant("arm 2 stops consulting the data mask",
+                    "        if mask[opener.start()]:\n            continue",
+                    "        if False:\n            continue",
+                    "python - <<'PY'\nnaming <<EOF then C:\\\\WORK\nPY\n", "deny"))
     r.append(mutant("every pipeline is judged, not just status-bearing ones",
                     "    name = _is_status_bearing(upstream)\n    if not name:\n        return None",
                     "    name = _is_status_bearing(upstream) or 'anything'",
@@ -206,8 +262,8 @@ def main() -> int:
                     "python - <<'PY'\nlog = 'verify_hub.py was piped'\nPY\n"
                     "python scripts/project_map.py --audit | head -2", "deny"))
     r.append(mutant("quoted spans stop being blanked",
-                    "        if quote is not None and out[i] != \"\\n\":\n            out[i] = \" \"",
-                    "        if False:\n            out[i] = \" \"",
+                    "        if quote is not None and command[i] != \"\\n\":\n            mask[i] = True",
+                    "        if False:\n            mask[i] = True",
                     'grep -n "run:.*pytest" ci.yml | head -20', "deny"))
     r.append(mutant("the guard denies instead of staying silent when clean",
                     "    _allow_silently()\n\n\nif __name__",

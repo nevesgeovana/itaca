@@ -2834,8 +2834,9 @@ otherwise unchanged, and DD-55 and DD-56 stand.
 body allows itself. `BRF-082`, the adversarial pass is a precondition not
 a round.
 
-**1. `execution_guard.py` IS vendored, was wired, and is now HELD UNWIRED
-pending kit 0.2.22.** DD-54 recorded, as a decision, that kit 0.2.20's
+**1. `execution_guard.py` is vendored and wired at kit 0.2.22, after being
+wired at 0.2.20, unwired the same night, and rewired.** DD-54 recorded, as
+a decision, that kit 0.2.20's
 guard was NOT taken: "wiring a second `PreToolUse` hook that refuses
 command shapes, in the same lane whose commands close two blocking
 incidents, trades a real risk for a benefit that waits at no cost." That
@@ -2855,16 +2856,34 @@ shell, `Select-Object` and `Measure-Object` pass unrefused
 (`ITC-20260811-2250`).
 
 THE TRADE, taken deliberately: one night of arm 1 coverage on a shell where
-arm 1 catches nothing, against an armed false positive with no remedy. A
+arm 1 caught nothing, against an armed false positive with no remedy. A
 guard with no remedy teaches people to route around guards, which is worse
 than no guard.
 
-WHAT IS IN THE TREE, so a reader is not surprised: the body and its
-companion are vendored and drift-pinned, the behavior tests run and pass
-because they drive the body directly, and the WIRING assertion is inverted
-into `test_the_execution_guard_is_deliberately_not_wired_yet`, which goes
-red if anyone wires it before 0.2.22. Adopting 0.2.22 re-pins both bodies,
-re-wires the hook and flips two tests in one commit.
+THEN THE KIT FIXED BOTH, AS 0.2.22, WITHIN THE SAME NIGHT, and the guard is
+re-pinned, rewired, and its two tests flipped. `2240` is fixed by extracting
+a data mask that arm 2 tests the OPENER against while still reading the body
+from the raw command, which is the right shape: a real heredoc's body is
+what that arm exists to inspect. `2250` is fixed by SPLITTING the pattern
+into a case-sensitive bash half and a case-insensitive PowerShell half
+covering `Select-Object`, `Measure-Object`, `select` and `measure`.
+`Out-String` and `ForEach-Object` remain a NAMED gap with its reasoning
+written at the line: they drop no lines and `$LASTEXITCODE` survives a
+PowerShell pipeline, so the status is recoverable.
+
+MEASURED HERE before any test was flipped, fifteen cases: the five
+PowerShell filters now deny, the two named gaps stay silent, the bash half
+stays case-sensitive so `TAIL` is not refused, the arm-2 prose case is
+silent while a real corrupting heredoc still denies, and the three
+pre-existing controls are unchanged. The companion is 41 cases and 10
+mutants, up from 30 and 7.
+
+WHY THE WHOLE SEQUENCE IS RECORDED rather than collapsed into "adopted at
+0.2.22": a guard that was armed, disarmed and rearmed inside one night is
+exactly the history a later reader needs, and the intermediate state was a
+decision rather than a slip. It also demonstrates the loop working: this
+repository found the defects, routed them without hand-editing a pinned
+body, and took the fix.
 
 WHAT IT COST WHILE IT WAS WIRED, measured rather than promised: it refused
 `pytest | tail` and `check_*.py | head`, and it refused one of this lane's

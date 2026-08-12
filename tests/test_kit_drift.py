@@ -407,11 +407,47 @@ MANIFEST: dict[str, Pin] = {
     # `tests/test_execution_guard.py` is labeled a KNOWN GAP rather than an
     # exemption, so it does not read as design intent.
     # Both declared values agreed with the master bodies on recomputation.
+    # 0.2.22, and the row moved TWICE inside one lane: vendored and wired at
+    # 0.2.20, unwired hours later when this lane's own review found two
+    # defects in it, re-pinned and re-wired at 0.2.22 when the kit fixed
+    # both. The intermediate hold is recorded in DD-57 rather than erased,
+    # because a guard that was armed, disarmed and rearmed in one night is
+    # exactly the history a later reader needs.
+    #
+    # `ITC-20260811-2240` is fixed by extracting a data mask that arm 2 now
+    # uses for the OPENER's position while still reading the body from the
+    # raw command, which is right: a real heredoc's body is what that arm
+    # exists to inspect. This repository's reproduction is in the companion
+    # verbatim.
+    #
+    # `ITC-20260811-2250` is fixed by SPLITTING the pattern: a
+    # case-sensitive bash half and a case-insensitive PowerShell half
+    # covering `Select-Object`, `Measure-Object` and the `select` and
+    # `measure` aliases, because each shell's case rules are what that shell
+    # actually does.
+    #
+    # `Out-String` and `ForEach-Object` remain a NAMED GAP with the
+    # reasoning written at the line: they drop no lines, and
+    # `$LASTEXITCODE` survives a PowerShell pipeline, so the status is still
+    # recoverable, which is not true of `$?` in bash. That reasoning is the
+    # thing to argue with if the gap ever bites, and
+    # `test_a_powershell_line_filter_is_a_known_gap_not_an_exemption` now
+    # holds only `Out-String` for it.
+    #
+    # WORTH CARRYING because it is this lane's own rule earning its keep on
+    # the first artifact written after it: the kit's first draft of the
+    # arm-2 fix carried a case that was SILENT both before and after the
+    # fix, a vacuous proof of a fix it never exercised. The new mutant
+    # refused to flip, which is how it was caught, and this repository's
+    # reproduction, whose backslash was load-bearing, is what made the case
+    # real. That is the anchor-uniqueness clause of BRF-082.
+    # Both declared values agreed with the master bodies on recomputation,
+    # and with the kit README and the channel entry announcing them.
     "execution_guard.py": Pin(
-        "f309785a0c417d12be475e6f07e91458c91e5731bade1c814c67a1ee49565390", "0.2.20"
+        "2ebfc38bd69cf625971385834c05f0b189d1121ce78d324a950c568cc32ccf5b", "0.2.22"
     ),
     "execution_guard_mutations.py": Pin(
-        "e01c203503877fe8c1ad03af3c1faf8686ff92cff5049bf3969b08dc7dda2ffd", "0.2.20"
+        "d8131f93820b1d010a219969229d2e9d5749af2bcaa812753f26ea58df5e2ffb", "0.2.22"
     ),
     # 0.2.17, NEW, and VENDORED WITHOUT BEING WIRED, which is a state this
     # repository normally refuses and so is stated rather than left to be
