@@ -28,6 +28,7 @@ would take its verdict from build output and from one machine's
 absolute paths.
 """
 
+import hashlib
 import json
 import re
 import subprocess
@@ -298,16 +299,40 @@ def test_no_british_spelling_in_a_repository_owned_file() -> None:
 #: Clauses of the BRF-082 wording, which is shared VERBATIM with the sister
 #: repository. Fragments rather than the whole text: this asserts the rule is
 #: present and un-trimmed, and it is not a second copy of the paragraph.
+#:
+#: FRAGMENTS ALONE WERE NOT ENOUGH, measured in ITA-17 round one. A QA lens
+#: applied four material inversions that every fragment survived, because
+#: each is searched anywhere in the file: reversing "runs BEFORE the claim"
+#: to after, negating clause 2 to "need not go RED", deleting the CLI
+#: flag-precedence half of clause 3, and deleting the whole "Report the
+#: findings ALONGSIDE the implementation" paragraph. Two fragments were
+#: added for the last two, and `_ADVERSARIAL_BLOCK_SHA256` below is what
+#: closes the class rather than those two instances.
 _ADVERSARIAL_CLAUSES = (
     "adversarial pass runs",
     "BEFORE the claim",
     "asserted PRESENT and UNIQUE",
     "go RED when the code it covers is sabotaged",
     "flags its case needs",
+    "real precedence",
     "names ONLY properties this run evaluated",
     "PRINTED as unreached",
     "TRIED to break and could not",
+    "ALONGSIDE the implementation",
 )
+
+#: The whole shared block, hashed. NOT a second copy of the text: a hash
+#: cannot be read as the rule, so it creates no drift risk of its own, and
+#: it is exactly what a verbatim requirement needs. Any edit inside the
+#: block fails, which is the point: this text may only change at the
+#: coordination level and arrive here by brief.
+#:
+#: Recomputed by the same slice this test takes, on 2026-08-11.
+_ADVERSARIAL_BLOCK_SHA256 = (
+    "9635a970b85dc04d79734233c2a20007fdab5090f7c38a00918a22c2afc5ec02"
+)
+_ADVERSARIAL_START = "## The adversarial pass is a precondition, not a round"
+_ADVERSARIAL_END = "### Where this wording comes from"
 
 
 def test_the_adversarial_pass_rule_is_present_in_both_of_its_places() -> None:
@@ -355,6 +380,28 @@ def test_the_adversarial_pass_rule_is_present_in_both_of_its_places() -> None:
         f"sister repository and every clause is a defect this project shipped, "
         f"so none is boilerplate. If it must change, it changes at the "
         f"coordination level and arrives here by brief."
+    )
+    # THE BLOCK ITSELF, hashed, which is what makes "verbatim" mechanical.
+    # The fragment list above catches a clause deleted wholesale; it does
+    # NOT catch a clause negated, reordered or half-removed, which a QA lens
+    # demonstrated four times over in ITA-17 round one.
+    normalized = skill.replace("\r\n", "\n").replace("\r", "\n")
+    assert _ADVERSARIAL_START in normalized and _ADVERSARIAL_END in normalized, (
+        f"the role-review skill no longer carries both markers bounding the "
+        f"shared block ({_ADVERSARIAL_START!r} .. {_ADVERSARIAL_END!r}), so "
+        f"the verbatim check below cannot run and would pass vacuously."
+    )
+    block = normalized[
+        normalized.index(_ADVERSARIAL_START) : normalized.index(_ADVERSARIAL_END)
+    ].strip()
+    digest = hashlib.sha256(block.encode("utf-8")).hexdigest()
+    assert digest == _ADVERSARIAL_BLOCK_SHA256, (
+        f"the shared BRF-082 block hashes to {digest}, not the pinned "
+        f"{_ADVERSARIAL_BLOCK_SHA256}. This text is VERBATIM across two "
+        f"repositories, so it may not be edited here at all, not even to "
+        f"improve it: two independently drafted versions of one rule diverge "
+        f"inside a month. Change it at the coordination level and re-adopt by "
+        f"brief, then move this pin in the same commit."
     )
 
 

@@ -61,6 +61,13 @@ _private/
 # it also made the house-style walk's verdict depend on one
 # developer's global git ignore rather than on this repository.
 .claude/settings.local.json
+# Detached-gate run records (kit detached_gate.py 0.2.17), for the same
+# reason as the two above: local run state that the shipped-surface and
+# house-style walks would otherwise scan. Added when the body was vendored
+# rather than when it is first wired, because the directory appears the
+# first time anyone runs `start`, and an ignore added after the fact is one
+# a walk has already tripped over (ITC-20260811-2110).
+.claude/.detached_gate/
 
 # Cygwin/MSYS crash dumps, machine junk
 *.stackdump

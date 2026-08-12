@@ -1011,8 +1011,31 @@ _GUARD_PROOF_TESTS = (
 )
 
 
+@pytest.mark.slow
 def test_no_undeclared_test_uses_the_guardproof_marker() -> None:
     """Collected-by-`guardproof` must equal the declared list, both ways.
+
+    MARKED `slow` IN ITA-17, and the demotion is a loss that is recorded
+    rather than presented as neutral. The sibling below argues that a guard
+    belongs at the gate where the mistake it catches is made, and the
+    mistake here (adding `@pytest.mark.guardproof`) is made while editing a
+    test file, so the commit tier was the right home. It runs at pre-push
+    instead, which still BLOCKS, and in CI.
+
+    WHY: this test spawns a full `--collect-only`, and it was the THIRD such
+    subprocess in the commit tier. `ITC-20260811-2120` registered the
+    problem when there were three; it then fired for real and blocked this
+    lane's own commit, at 3.03s here and 3.25s on
+    `test_the_contract_modules_stay_in_the_commit_tier`, which this lane did
+    not touch. Two reviewer lenses had measured the same class earlier in
+    the day. Removing the collection this lane ADDED is the change that
+    undoes what this lane did, rather than raising a budget its own message
+    forbids raising or demoting a test somebody else owns.
+
+    THE REAL FIX IS STILL OPEN and is `ITC-20260811-2120`: collect ONCE for
+    `-m "fast or guardproof"` and attribute each node to its marker, so one
+    subprocess serves both registries. That is a design change and this is a
+    lane closing at night, so it is registered rather than attempted here.
 
     The exact shape of `test_no_undeclared_test_uses_the_fast_marker` above,
     pointed at the marker that needs it MORE. `fast` admits a test to a tier
@@ -1022,14 +1045,9 @@ def test_no_undeclared_test_uses_the_guardproof_marker() -> None:
 
     Both directions, for the reasons the sibling states: collected minus
     declared catches a behavior test being marked to get a red push through,
-    which is the failure `pyproject.toml` calls "the failure this marker's
-    existence makes easy"; declared minus collected catches a row left behind
-    after a test is renamed or the marker dropped, which would make this list
-    silently inert.
-
-    IT RUNS IN THE COMMIT TIER, unmarked, for the sibling's reason: a guard
-    belongs at the gate where the mistake it catches is made, and the mistake
-    is made while editing a test file.
+    which is the failure `pyproject.toml` names; declared minus collected
+    catches a row left behind after a test is renamed or the marker dropped,
+    which would make this list silently inert.
     """
     argv = [
         sys.executable, "-m", "pytest", "--collect-only", "-q", "--no-cov",

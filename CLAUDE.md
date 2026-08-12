@@ -90,7 +90,15 @@ never in the room.
 
 - **Never read an exit status through a pipe, and never trust `$?` after
   a native command in PowerShell.** Mechanism:
-  `.claude/skills/version-control/SKILL.md`, steps 3 and 5.
+  `.claude/skills/version-control/SKILL.md`, steps 3 and 5. NO HOOK
+  ENFORCES THIS TONIGHT: `.claude/hooks/execution_guard.py` arm 1 would,
+  for `head`, `tail` and `wc`, and the guard is vendored but deliberately
+  NOT WIRED pending kit 0.2.22 (see the two bullets below). Even wired it
+  would not reach this repository's primary shell, where
+  `Select-Object`, `Measure-Object` and the `select` and `measure`
+  aliases lose a status identically and are not matched
+  (`ITC-20260811-2250`, the execution guard's line filters are bash-only
+  while it is wired for both shells).
 - **Verify a push on the REMOTE, never by its exit code.** Mechanism: the
   same file, step 5, which names itself the step most often skipped.
 - **Verify that it BUILDS, which no git command can tell you.** Mechanism:
@@ -107,25 +115,53 @@ never in the room.
 - **Author backslash and control-byte content with Write or Edit, not a
   heredoc.** A heredoc carrying a backslash or a non-printable byte has
   corrupted files here more than once, and a mangled regex returns zero
-  matches and reads as absence. NO MECHANISM FILE, and this bullet is the
-  whole of the rule: the kit's `version-control` skill does not carry it
-  and this repository may not add it there, since that body is
-  drift-pinned. Vendoring kit 0.2.20's `execution_guard.py` is what would
-  make it a mechanism, registered as
-  `ITC-20260811-2110-vendor-execution-guard-and-detached-gate`.
+  matches and reads as absence. NO MECHANISM ENFORCES THIS TONIGHT, and
+  this bullet is the whole of the rule. `.claude/hooks/execution_guard.py`
+  arm 2 is what will enforce it: it refuses a heredoc whose body carries a
+  backslash or a control byte, with a QUOTED delimiter exempt from the
+  backslash half only. The body is vendored and drift-pinned; the wiring
+  is HELD, see the next bullet.
+- **The execution guard is vendored and NOT wired, by decision of
+  2026-08-11.** Kit 0.2.20's body carries two defects this repository
+  found and routed, and the coordination level accepted both and cut
+  0.2.22 to fix them. Arm 2 refuses a heredoc opener merely NAMED inside a
+  quoted heredoc body, and the operator has NO remedy, because the token
+  is already inside the strongest quoting the shell offers and arm 2
+  blanks no data spans (`ITC-20260811-2240`). A guard with no remedy
+  teaches people to route around guards, which is worse than no guard. The
+  hold ends when 0.2.22 is adopted, which re-pins both bodies, re-wires
+  the hook and flips two tests in one commit;
+  `tests/test_execution_guard.py::test_the_execution_guard_is_deliberately_not_wired_yet`
+  goes red if anyone wires it before then.
+- **When a guard refuses a checker you were NAMING rather than running,
+  quote it.** Arm 1 matches `check_*.py`, `*_mutations.py` and
+  `verify_*.py` on the basename, so an unquoted checker filename used as
+  DATA (a grep pattern, a filename argument, a commit message) is refused
+  with a reason that does not apply. Quoting it puts it in a data span the
+  guard blanks before scanning. Written here rather than only in the body
+  because the refusal message does not say it, and it applies again the
+  moment the guard is wired.
+- **The push gate fails CLOSED and the execution guard fails OPEN.** The
+  gate denies on its own missing configuration; the guard allows silently
+  on anything it cannot parse. Both are right for what they do, and the
+  consequence is one sentence: a silence from the execution guard is
+  never evidence that a command is sound.
+- **A long gate can outlive the caller, and the body for it is here but
+  not wired.** `.claude/kit/detached_gate.py` runs a command in a process
+  that outlives the invocation and answers from a file, with the verbs
+  `start`, `state` and `report`; `start` returns at once and must never be
+  branched on. Nothing in this repository calls it yet, so the pre-push
+  tier is still bounded by whoever runs it. Wiring is the open half of
+  `ITC-20260811-2110`, vendor the execution guard and the detached gate.
 - **A completion claim carries fresh command output in the same message.**
   No "done", "passing" or "ready to push" without the evidence a reader
   can see, and no closure claim at all while CI is not green. NO MECHANISM
   beyond the closing check above, which covers only the CI half; the rest
   is a convention, and this sentence is all of it.
 - **The adversarial pass is a PRECONDITION of the completion claim, not a
-  round after it.** Before reporting any implementation, guard, test or
-  script as done, run one hostile pass over your own diff whose success
-  condition is BREAKING the work, and name what you tried to break and
-  could not. Mechanism and the six clauses:
-  `.claude/skills/role-review/SKILL.md`, its opening section (BRF-082,
-  the author's decision of 2026-08-11; the sister repository carries the
-  same wording verbatim).
+  round after it.** It runs BEFORE the claim, never after. Mechanism and
+  its clauses: `.claude/skills/role-review/SKILL.md`, its opening section
+  (`BRF-082`, the adversarial pass is a precondition not a round).
 
 ## Role passes (adopted 2026-07-23)
 

@@ -143,7 +143,10 @@ _ROUNDS_MUTATIONS = _KIT / "check_review_rounds_mutations.py"
 #: BEFORE the guard fired, because the previous entry said it would. That
 #: is the whole return on writing the failure down: the constant is now a
 #: known step of closing a lane rather than a surprise in a pre-commit run.
-_LANE = "ITA-15"
+#: MOVED AGAIN TO `ITA-17`, before the guard fired for the second lane
+#: running. Two consecutive lanes have now paid nothing for it, which is
+#: what a known step looks like once it is written down.
+_LANE = "ITA-17"
 
 #: The convention the kit writes down at 0.2.16. ONE copy of the fact:
 #: both the glob and the per-lane filename derive from it, because two

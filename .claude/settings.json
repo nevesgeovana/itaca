@@ -11,17 +11,6 @@
             "statusMessage": "Checking the role-review push gate"
           }
         ]
-      },
-      {
-        "matcher": "Bash|PowerShell",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/execution_guard.py\"",
-            "timeout": 15,
-            "statusMessage": "Checking the execution guard"
-          }
-        ]
       }
     ]
   }

@@ -2816,3 +2816,104 @@ were each re-verified in round two and stand. The five calls of DD-54
 stand. No decision in this lane has been reversed by either superseding
 entry; every correction in both is a claim about a measurement or a
 mechanism, never about a choice.
+
+---
+
+## DD-57: Three calls ITA-17 took, two of which reverse decisions DD-54 recorded
+
+**Date:** 2026-08-11
+**Status:** confirmed
+**Context:** Lane ITA-17, opened after ITA-15 closed and pushed at
+`6352e78`. A separate lane deliberately: ITA-15 closed with an attestation
+covering a specific range, and adding work under its id would make that
+attestation describe something other than what it attested.
+**Supersedes:** DD-54, in the two respects below only. Its five calls are
+otherwise unchanged, and DD-55 and DD-56 stand.
+**Requirements:** REQ-96
+**Related:** `BRF-089`, the push gate is wired with less time than its own
+body allows itself. `BRF-082`, the adversarial pass is a precondition not
+a round.
+
+**1. `execution_guard.py` IS vendored, was wired, and is now HELD UNWIRED
+pending kit 0.2.22.** DD-54 recorded, as a decision, that kit 0.2.20's
+guard was NOT taken: "wiring a second `PreToolUse` hook that refuses
+command shapes, in the same lane whose commands close two blocking
+incidents, trades a real risk for a benefit that waits at no cost." That
+reasoning was about TIMING, and the condition it named passed when ITA-15
+closed, so ITA-17 vendored and wired it.
+
+THEN THE GUARD ITSELF FAILED ITS OWN REVIEW, which is why this item reads
+as it does rather than as a clean adoption. This lane's reviewer panel
+found two defects in the 0.2.20 body and routed both; the coordination
+level accepted both as the kit's, cut 0.2.22 to fix them, and instructed
+this lane to hold. Arm 2 refuses a heredoc opener merely NAMED inside a
+quoted heredoc body, with NO remedy available to the operator, because the
+token already sits inside the strongest quoting the shell offers and arm 2
+blanks no data spans (`ITC-20260811-2240`). Arm 1's `LINE_FILTERS` matches
+`head|tail|wc` only, so on PowerShell, which is this repository's primary
+shell, `Select-Object` and `Measure-Object` pass unrefused
+(`ITC-20260811-2250`).
+
+THE TRADE, taken deliberately: one night of arm 1 coverage on a shell where
+arm 1 catches nothing, against an armed false positive with no remedy. A
+guard with no remedy teaches people to route around guards, which is worse
+than no guard.
+
+WHAT IS IN THE TREE, so a reader is not surprised: the body and its
+companion are vendored and drift-pinned, the behavior tests run and pass
+because they drive the body directly, and the WIRING assertion is inverted
+into `test_the_execution_guard_is_deliberately_not_wired_yet`, which goes
+red if anyone wires it before 0.2.22. Adopting 0.2.22 re-pins both bodies,
+re-wires the hook and flips two tests in one commit.
+
+WHAT IT COST WHILE IT WAS WIRED, measured rather than promised: it refused
+`pytest | tail` and `check_*.py | head`, and it refused one of this lane's
+own tool calls during the probe that proved it live. That friction is the
+behavior it exists to produce, and it is not the reason for the hold.
+
+**2. `detached_gate.py` IS vendored, and is NOT wired, which is half of
+what DD-54 recorded.** That entry said the closing check polls rather than
+waits and registered the gap. The body is now present and drift-pinned;
+`.claude/tools/closing_ci_check.py` still polls. Vendoring without wiring
+is a state this repository normally refuses, so it is stated at the pin and
+here rather than left to be discovered, and the wiring stays open as
+`ITC-20260811-2110`.
+
+**3. `version-control.md` was HELD at 0.2.15 and is ADOPTED at 0.2.21, both
+inside this lane.** The hold is recorded rather than erased because its
+reasoning was sound and its premise expired within the hour, which is more
+useful to a later reader than a pin that looks like it was never in doubt.
+
+The hold: ITA-14 exists to adopt 0.2.17 and its recorded justification,
+that the skill is unselectable until it lands, was made false by ITA-15's
+two-file split; what remained was content; and a further kit revision of
+the same artifact was pending, so adopting would vendor one artifact twice
+in a week. The release: that revision shipped as 0.2.21, promoted so that
+no repository vendors this artifact twice, so adopting IS the "once" the
+hold was protecting. Nothing in the reasoning was overruled.
+
+It takes the TWO-FILE shape, which is now the KIT RULE and not this
+repository's local arrangement: `OQ-56`, answered by the author on
+2026-08-11, promoting the arrangement ITA-15 invented here. The alternative
+this repository had proposed, teaching the guard to skip the provenance
+banner, was refused with its reason: the loader is Claude Code's, so the
+guard would pass while the skill stayed unloadable.
+
+Recorded as `ITC-20260811-2300` so the decision resolves from this tree,
+which the first version of it did not: it cited only ids a reader of the
+public repository cannot open. That traceability criticism came from this
+lane's architect lens, and the coordination level accepted it as its own
+fault across every brief it has written here.
+
+**The measurement that made item 1 urgent is NOT this entry's, and is
+recorded so the two are not confused.** `BRF-089` found the push gate wired
+with a 30 second harness deadline while its own body budgets 50 for CI work
+plus 15 per git call. That is fixed in `a3d007f` with a guard that READS
+both numbers rather than restating them. The fail-closed premise behind it,
+that a killed `PreToolUse` hook reads as PERMISSION, is the gate author's
+prose claim and is held by no case in any of the three repositories; this
+lane does not assert it, and proving it is the coordination level's
+`HUB-19` step one. An earlier commit body in this lane stated that premise
+unhedged in its opening sentence and hedged it correctly four paragraphs
+later; the code and the test docstring are accurate, and this sentence is
+the correction of the prose.

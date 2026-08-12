@@ -686,11 +686,19 @@ def test_the_wired_timeout_is_not_below_the_gate_s_own_budget() -> None:
         f"could not read CI_BUDGET_SECONDS out of {HOOK}; this guard cannot "
         f"say whether the wired timeout is enough."
     )
-    required = float(budget.group(1))
-    if git_timeout is not None:
-        # The CI budget does not cover the gate's own git calls, which run
-        # before and around it, so one of them is the honest minimum margin.
-        required += float(git_timeout.group(1))
+    # BOTH READS ARE REQUIRED, and the optional one was a defect. The first
+    # version treated GIT_TIMEOUT_SECONDS as optional, so a kit rename would
+    # have silently dropped the floor from 65 to 50 with nothing failing:
+    # the same shape as BRF-089 itself, one level down. Two lenses found it
+    # in ITA-17 round one.
+    assert git_timeout is not None, (
+        f"could not read GIT_TIMEOUT_SECONDS out of {HOOK}. It is part of the "
+        f"floor this test computes, so a rename must FAIL here rather than "
+        f"quietly lower the requirement. Find its new name and use it."
+    )
+    # The CI budget does not cover the gate's own git calls, which run
+    # before and around it, so one of them is the honest minimum margin.
+    required = float(budget.group(1)) + float(git_timeout.group(1))
     settings = json.loads(
         (HOOK.parents[1] / "settings.json").read_text(encoding="utf-8")
     )

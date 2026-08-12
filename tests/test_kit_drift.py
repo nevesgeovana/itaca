@@ -383,8 +383,29 @@ MANIFEST: dict[str, Pin] = {
     # miss is stated in the body itself rather than hidden, which is why it
     # is repeated here instead of being discovered by the next lane.
     #
-    # It answers the two `CLAUDE.md` Execution rules that said, in place,
-    # that they had NO MECHANISM FILE. Those bullets move with this row.
+    # It gives a mechanism to two `CLAUDE.md` Execution rules that had one
+    # each in prose only: arm 2 answers the heredoc bullet, which said in
+    # place that it had NO MECHANISM FILE, and arm 1 gives the pipe-status
+    # bullet a second mechanism beside the `version-control` skill.
+    #
+    # THAT SENTENCE PREVIOUSLY CLAIMED THE BULLETS MOVED WITH THIS ROW AND
+    # THEY DID NOT. Four reviewer lenses found it independently in ITA-17
+    # round one: the charter went on saying no mechanism existed and that
+    # the vendoring was still registered as future work, in the same commit
+    # that vendored and wired it, while this comment asserted an edit the
+    # diff did not contain. The bullets are corrected now. It is recorded
+    # rather than quietly fixed because the failure is the one this lane's
+    # own new rule names: a success line asserting something the change did
+    # not do.
+    #
+    # ARM 1 IS NARROWER THAN THE BULLET IT ANSWERS, on this repository's
+    # primary shell. `LINE_FILTERS` matches `head|tail|wc` only, so
+    # PowerShell's `Select-Object` and `Measure-Object` are not refused
+    # although they lose a status the same way. Routed as
+    # `ITC-20260811-2250`, the execution guard's line filters are bash-only
+    # while it is wired for both shells; the control case in
+    # `tests/test_execution_guard.py` is labeled a KNOWN GAP rather than an
+    # exemption, so it does not read as design intent.
     # Both declared values agreed with the master bodies on recomputation.
     "execution_guard.py": Pin(
         "f309785a0c417d12be475e6f07e91458c91e5731bade1c814c67a1ee49565390", "0.2.20"
@@ -741,32 +762,46 @@ MANIFEST: dict[str, Pin] = {
     # which assert positively that the path exists and hashes as declared,
     # rather than asserting the absence of anything.
     #
-    # DELIBERATELY BEHIND THE MASTER, and this is the one pin in this file
-    # that is stale ON PURPOSE. Measured by the coordination level on
-    # 2026-08-11 and confirmed here: the master is at 0.2.17 with body
-    # 728918d8..., this copy is 0.2.15. Lane ITA-17 decided NOT to adopt it.
+    # 0.2.21, adopted in ITA-17 after this pin was HELD at 0.2.15 earlier in
+    # the same lane. The hold and its release are both recorded, because the
+    # reasoning was sound and its premise expired within the hour, which is
+    # worth more to a later reader than a clean-looking pin.
     #
-    # The lane that exists to adopt 0.2.17 is ITA-14, and its recorded
-    # justification is now STALE: "the version-control skill is UNSELECTABLE
-    # in itaca until this lands". ITA-15 made it selectable by a different
-    # route, splitting the stamp into an of-record copy and deploying the
-    # body alone, so the urgent half is already delivered. What remains at
-    # 0.2.17 is CONTENT: a section on reading CI for the SHA you pushed.
+    # THE HOLD: ITA-14 exists to adopt 0.2.17 and its recorded justification
+    # was already stale, "the version-control skill is UNSELECTABLE in itaca
+    # until this lands", because ITA-15 had made it selectable by splitting
+    # the stamp from the deployed body. What remained at 0.2.17 was content.
+    # And a further kit revision of this artifact's own "If the push is
+    # denied" section was pending, which lists four denial categories while
+    # the 0.2.18 gate can print six more. Adopting 0.2.17 would have vendored
+    # one artifact twice in a week.
     #
-    # And the body is about to change again. `BRF-090` batches into HUB-19 a
-    # revision of this artifact's own "If the push is denied" section, which
-    # lists four denial categories while the 0.2.18 gate can print six more.
-    # Adopting 0.2.17 now means vendoring this artifact TWICE inside a week,
-    # under the two-file split, for a documentation currency gap this
-    # repository has already mitigated by listing the six sub-kinds in its
-    # own CLAUDE.md.
+    # THE RELEASE: that revision shipped as 0.2.21, promoted specifically so
+    # that no repository vendors this artifact twice. So adopting now IS the
+    # "once" the hold was protecting; the hold was discharged rather than
+    # overruled. 0.2.21 carries the six CI denial sub-kinds AND section 6,
+    # read CI for the SHA you pushed. `ITC-20260811-2300` records it.
     #
-    # So the staleness is a DECISION and not an oversight, which is why it is
-    # written at the pin rather than left for a reader to discover. Reported
-    # to the coordination level so ITA-14's priority can be re-cut against
-    # its actual remaining content.
+    # TWO FILES, AND THAT IS NOW THE KIT RULE rather than this repository's
+    # local arrangement: `OQ-56`, answered by the author on 2026-08-11. A kit
+    # artifact carrying frontmatter and deployed as a live skill is vendored
+    # as the stamped copy of record here plus the body alone at the deployed
+    # path, tied by `test_the_runtime_skill_body_matches_the_of_record_copy`.
+    # This repository's own arrangement was promoted, and the alternative it
+    # had proposed, teaching the guard to skip the banner, was refused with
+    # its reason: the loader is Claude Code's, so the guard would pass while
+    # the skill stayed unloadable.
+    #
+    # MEASURED WHILE PROMOTING, and worth carrying because it is the case
+    # against trusting a version header: the master reached 0.2.17 and NOT
+    # ONE deployment took it. This repository's of-record copy and the
+    # coordination level's own deployed skill both still hashed to the 0.2.15
+    # body, and nothing in any of the three trees compares a deployed skill
+    # body against its master. That is the currency gap `OQ-53` names, met
+    # again on a different artifact.
+    # The declared value agreed with the master body on recomputation.
     "version-control.md": Pin(
-        "b8119d989a4b1acf9f3913e4f478a643f34ed1506ff4552c9518ffeb49594a0b", "0.2.15"
+        "a4a219dea812abef16cfed55cac02a83d2f7d1d1525238cc9ee87bd46400ec59", "0.2.21"
     ),
     # 0.2.13 turned two rules into six, and the sixth is the one the
     # rehearsal paid for: GitHub EVALUATES the `description` of a
@@ -1554,16 +1589,26 @@ def test_no_unpinned_artifact_hides_in_the_vendored_dirs() -> None:
                     f"manifest and the drift test, or it is neither linted nor "
                     f"drift-checked."
                 )
-    workflows = _ROOT / ".github" / "workflows"
-    for artifact in sorted(workflows.glob("*")):
-        if not artifact.is_file():
-            continue
-        if _MARKER not in _normalize(artifact.read_text(encoding="utf-8")):
-            continue
-        assert artifact.resolve() in committed, (
-            f"{artifact} carries the kit provenance marker but is not a "
-            f"pinned COMMITTED kit copy. A vendored body outside "
-            f"'.claude' escapes the directory sweep above, so it is pinned "
-            f"by this marker rule instead; add it to the manifest and to "
-            f"COMMITTED."
-        )
+    # The MARKER rule, for directories that hold a MIX of vendored copies
+    # and this repository's own files, where a suffix sweep would be wrong.
+    #
+    # `.claude/tools` joined this list in ITA-17, on an architect finding.
+    # It holds `closing_ci_check.py`, which this repository wrote and which
+    # must NOT be pinned, so the directory cannot be swept by suffix. But it
+    # is also one of the places the gate's own `CI_STATE_SEARCH` looks, so a
+    # vendored body could legitimately be dropped there and would escape
+    # both layers exactly as `release_gate.yml` once did.
+    marker_swept = (_ROOT / ".github" / "workflows", _ROOT / ".claude" / "tools")
+    for folder in marker_swept:
+        for artifact in sorted(folder.glob("*")):
+            if not artifact.is_file():
+                continue
+            if _MARKER not in _normalize(artifact.read_text(encoding="utf-8")):
+                continue
+            assert artifact.resolve() in committed, (
+                f"{artifact} carries the kit provenance marker but is not a "
+                f"pinned COMMITTED kit copy. A vendored body in a directory "
+                f"that also holds this repository's own files escapes the "
+                f"suffix sweep above, so it is pinned by this marker rule "
+                f"instead; add it to the manifest and to COMMITTED."
+            )
