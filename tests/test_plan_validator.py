@@ -524,3 +524,71 @@ def test_the_classifier_names_every_shape_a_plan_run_can_take(
         f"{detail!r}; every outcome but 'validated' must carry a fix to "
         f"suggest, and 'validated' must carry none"
     )
+
+
+# ---------------------------------------------------------------------------
+# THE VENDORED COPY, added by ITA-18.
+#
+# Everything above resolves through `ITACA_PLAN_VALIDATOR` and SKIPS when it
+# is unset, which is correct for the DEPLOYED copy: it lives outside this
+# repository and a clone that configured nothing has none. The consequence,
+# stated rather than discovered, is that on such a clone none of this file
+# ran at all.
+#
+# The vendored copy has no such dependency, so these two cases run
+# EVERYWHERE. That is the whole reason for vendoring an artifact this
+# repository already reached by variable.
+# ---------------------------------------------------------------------------
+
+_VENDORED_CHECKER = _REPO / ".claude" / "kit" / _CHECKER_NAME
+_VENDORED_COMPANION = _REPO / ".claude" / "kit" / _COMPANION_NAME
+
+
+def test_the_vendored_plan_checker_refuses_an_empty_ledger(tmp_path: Path) -> None:
+    """An empty plan directory exits 2, CANNOT VERIFY, and never zero.
+
+    The 0.2.10 behavior the adoption brief told this lane to know before
+    wiring, asserted against the copy every clone carries rather than only
+    against a configured deployment.
+
+    It is the fix for `ITC-20260727-1612`: an empty folder used to print
+    `no entries` and exit ZERO, so a run against the wrong path looked like
+    a pass. Two exit codes now separate the causes, and the OUTPUT is what
+    tells them apart, which is why this asserts the text and not only the
+    status: 1 is a path refused with a cause, 2 covers an empty walk, an
+    unreadable `legacy_ids.txt` and a bad invocation.
+    """
+    empty = tmp_path / "plan"
+    empty.mkdir()
+    done = subprocess.run(
+        [sys.executable, str(_VENDORED_CHECKER), str(empty)],
+        capture_output=True,
+        text=True,
+        env=child_env(),
+    )
+    assert done.returncode == 2, (
+        f"an empty plan folder exited {done.returncode}, expected 2. Exit 0 "
+        f"here is ITC-20260727-1612 returning: a run against the wrong path "
+        f"reads as a pass.\n{done.stdout}{done.stderr}"
+    )
+    combined = done.stdout + done.stderr
+    assert "CANNOT VERIFY" in combined, combined
+
+
+# NOT VENDORED, and the reason is a defect in the master rather than a
+# choice. `check_plan_kit_mutations.py` carries, in a COMMENT, a
+# drive-lettered absolute path into the coordination tree, quoted as an
+# example of the very thing the kit forbids. The literal is NOT reproduced
+# here, and that is the point rather than caution: this repository is
+# PUBLIC, and `tests/test_management_root.py` refuses any tracked file
+# carrying one, in the case named
+# `test_no_committed_file_carries_a_machine_absolute_path`. That is the
+# rule CLAUDE.md gives as the reason all three locator variables exist.
+#
+# So vendoring it would publish one machine's layout, and the body is
+# drift-pinned so it cannot be corrected here. Routed to the coordination
+# level as `ITC-20260812-0100`; the checker itself is clean and IS vendored
+# above. The companion is still proven against the DEPLOYED copy by
+# `test_the_plan_checker_can_still_fail`, which is the guardproof case near
+# the top of this file, so the guard on the guard exists wherever
+# `ITACA_PLAN_VALIDATOR` is configured.

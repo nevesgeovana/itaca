@@ -577,6 +577,18 @@ MANIFEST: dict[str, Pin] = {
     "release_gate.yml": Pin(
         "1081d686ccf6b89a4af612ebc9c4ea3202a52a27068c00459a82e07187751511", "0.2.14"
     ),
+    # PRESENT UNDER AN ALIAS, and this note exists because a scan matching on
+    # FILENAME has now reported this row absent from this repository twice.
+    # It is not absent. The manifest key is `release_caller.yml`; the tracked
+    # path is `.github/workflows/release.yml.template`; the body hashes to
+    # `be93714d94cb3678...`, identical to the master, and the COMMITTED row
+    # below is what checks it.
+    #
+    # The rename is not incidental, which is why the alias cannot simply be
+    # removed: a file named `release_caller.yml` under `.github/workflows`
+    # would be RUN by GitHub, and `check_release_gate.py` would scan it as a
+    # live workflow. The `.yml.template` suffix is what stops both.
+    #
     # The publishing caller, vendored as `.yml.template` rather than `.yml`
     # so GitHub does not run it and `check_release_gate.py` does not scan it.
     # It is a TEMPLATE: `.github/workflows/release.yml` was copied from this
@@ -736,8 +748,70 @@ MANIFEST: dict[str, Pin] = {
     "check_spawn_env_mutations.py": Pin(
         "133ffcab519c483d598aa6ab9cb67feeb22546b4b2a85aaa0f063851646d713b", "0.2.16"
     ),
-    # `check_citations.py` and its companion are rows 4 and 5 of the kit
-    # 0.2.16 adoption and are DELIBERATELY ABSENT from this manifest. They
+    # `check_citations.py` at 0.2.17 and its companion at 0.2.16, VENDORED BY
+    # ITA-18 AND DELIBERATELY UNWIRED. The mixed pair of versions is the
+    # manifest being per file, not a lag.
+    #
+    # THE BLOCKER THAT KEPT THEM OUT IS DISCHARGED, and the whole note below
+    # is kept because it is the record of why they were absent and of what
+    # ended it. ITA-12 refused to vendor them because the 0.2.16 master
+    # carried an EM DASH and an EN DASH, and `tests/test_house_style.py`
+    # walks every vendored body for exactly that while `CLAUDE.md` says "No
+    # exceptions". An exemption was considered and refused. The kit fixed the
+    # master instead, which is what that note predicted would happen and what
+    # it asked for. MEASURED HERE at 0.2.17 before vendoring: zero dash
+    # characters in either body, by code point over the body text.
+    #
+    # UNWIRED, and the reason is recorded beside the row because an unwired
+    # checker with no stated reason reads as an oversight. Citations are
+    # ADVISORY here by the author's decision (DD-50), and this repository's
+    # own corpus is what measured why: advisory mode REFUSES 25 constructions
+    # over the prose and every one is FALSE, produced by the citation form
+    # meeting ordinary English. Its largest authority is LaTeX `reqbox`
+    # environments in `docs/srs/`, which none of the checker's index forms
+    # can read, so REQ, the most-cited prefix here, cannot be resolved at all
+    # and is covered by `tests/test_requirement_trace.py` instead.
+    #
+    # WHAT VENDORING BUYS WITH NO WIRING: the drift test now covers both
+    # bodies, so the pair cannot rot silently before the lane that wires
+    # them, and the row exists rather than being an absence someone has to
+    # rediscover. That is the same trade `detached_gate.py` takes one row
+    # over.
+    "check_citations.py": Pin(
+        "e295e4781f0f073caa90ea4920b09b597042824ccb534008c85550910672d395", "0.2.17"
+    ),
+    "check_citations_mutations.py": Pin(
+        "97a46d08ea2b39fe13403048f22d96f9f4189af768ac2483f037bcafbf0d32aa", "0.2.16"
+    ),
+    # 0.2.17, NEW: the mechanism `ITC-20260811-2120` needs. That entry
+    # records the commit-tier budget firing intermittently on tests nobody
+    # touched, including once on this lane's predecessor's own commit, and
+    # `budget_isolation.py` exists so a budget guard measures its tier only
+    # in the conditions that tier actually runs in. Vendored here; USING it
+    # to close 2120 is that entry's work and is not done by arrival.
+    "budget_isolation.py": Pin(
+        "59fb39d9fdb814455ea9a5f8009fb466e1e0fe5b02a02b37c44b4f721d2a6d96", "0.2.17"
+    ),
+    # 0.2.18, NEW: the guard evidence for the gate this repository already
+    # runs. It should pass on arrival, because the gate body here is
+    # byte-identical to the 0.2.18 master whose companion ran at the
+    # coordination level. What it buys is LOCAL: until now the assurance
+    # existed somewhere else, and an assurance that exists somewhere else is
+    # not evidence in this tree.
+    #
+    # TIERED `guardproof`, which is the BRF-076 policy and not a cost dodge,
+    # although the cost is why the decision had to be made rather than
+    # drifted into: the sister repository measured this artifact at 244
+    # seconds, 99 percent of its new tier-1 file. Its subject is a guard's
+    # own machinery, so it runs in CI and not at pre-push, exactly like the
+    # other nine mutation companions.
+    "role_review_gate_mutations.py": Pin(
+        "fe9ecec7baed9a488a7609f9daab0465f4a35798b282435600a5720062ca791d", "0.2.18"
+    ),
+    # SUPERSEDED NOTE, kept because it is the record of a deliberate absence
+    # and of what ended it:
+    # `check_citations.py` and its companion were rows 4 and 5 of the kit
+    # 0.2.16 adoption and were DELIBERATELY ABSENT from this manifest. They
     # are the one pair lane ITA-12 could not vendor, and the reason is
     # recorded here rather than in a lane document, because the next lane to
     # read this file is the one that will try again.
@@ -1049,6 +1123,22 @@ MANIFEST: dict[str, Pin] = {
     "check_incidents.py": Pin(
         "f6d3430a6d0ee44b4843f7d297a3454ce40d34cd83dc182a2ef840952c5c9c0a", "0.1.0"
     ),
+    # DECIDED OUT rather than missing, by ITA-18, and the reason was already
+    # written in `CLAUDE.md` as prose about a backup rather than as an
+    # adoption decision. `snap.sh` snapshots `_private/`, which the
+    # 2026-07-27 migration emptied, so in THIS repository it guards nothing
+    # and the migrated content relies on the hub's git instead. Vendoring a
+    # tool that protects an empty directory is dead weight with a written
+    # reason to skip it.
+    #
+    # The pin below stays, and that is not a contradiction: it is checked
+    # BEST-EFFORT by `_snap_if_present` wherever the deployed copy happens to
+    # sit beside a configured plan validator. So the row is covered where it
+    # exists and is not vendored where it would do nothing.
+    #
+    # REVISIT IF `_private/` IS EVER REPOPULATED. That is the condition, and
+    # it is stated so the decision can be reopened on a fact rather than on a
+    # mood.
     "snap.sh": Pin(
         "0835e6ae1bd43d05e213a88552bcd94a1b91ebec946f9dabb5411d7595b265d1", "0.2.5"
     ),
@@ -1093,6 +1183,32 @@ COMMITTED: list[tuple[str, str]] = [
     # beside it exactly as the ci_state pair does.
     ("execution_guard.py", ".claude/hooks/execution_guard.py"),
     ("execution_guard_mutations.py", ".claude/hooks/execution_guard_mutations.py"),
+    # The gate's guard evidence, beside the gate it proves.
+    ("role_review_gate_mutations.py", ".claude/hooks/role_review_gate_mutations.py"),
+    # ITA-18. The plan-checker pair now has a COMMITTED copy as well as the
+    # env-located deployed one, and BOTH are checked against the same
+    # manifest key: the committed row below, and `_env_located` for whatever
+    # `ITACA_PLAN_VALIDATOR` names. That is deliberate rather than
+    # redundant. The deployed copy is what the plan skill runs and it lives
+    # outside this repository, so a clone that configures nothing could not
+    # check the pin at all; the committed copy makes the row verifiable
+    # everywhere, and the two agreeing is itself the useful signal.
+    # The CHECKER only. Its mutation companion is NOT vendored: it quotes a
+    # drive-lettered absolute path in a comment, and this repository is
+    # public, so `tests/test_management_root.py` refuses it. Routed as
+    # `ITC-20260812-0100`; the pin below still covers the env-located
+    # deployed companion through `_env_located`.
+    ("check_plan_kit.py", ".claude/kit/check_plan_kit.py"),
+    ("budget_isolation.py", ".claude/kit/budget_isolation.py"),
+    # Vendored and deliberately UNWIRED; the manifest comments say why.
+    ("check_citations.py", ".claude/kit/check_citations.py"),
+    ("check_citations_mutations.py", ".claude/kit/check_citations_mutations.py"),
+    # Vendored and NEVER the copy that runs: the push gate resolves the
+    # incident checker INSIDE the directory `COORD_INCIDENT_LEDGER` names,
+    # so this row exists for drift coverage and consistency with the sister
+    # repository, which carries it on the same terms. An earlier brief said
+    # no repository vendors it, which was false and has been corrected.
+    ("check_incidents.py", ".claude/kit/check_incidents.py"),
     # A kit TOOL rather than a hook, so it sits under `.claude/kit`. NOT
     # `.claude/tools`, which holds this repository's OWN scripts
     # (`closing_ci_check.py`) and is deliberately not swept by

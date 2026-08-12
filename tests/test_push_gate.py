@@ -1271,3 +1271,45 @@ def test_a_shell_wrapped_attested_push_is_allowed(repo: Path) -> None:
     head = add_commit(repo, "one")
     attest(repo, [head])
     assert decide(repo, f'bash -c "{PUSH} origin main"') == "allow"
+
+
+@pytest.mark.guardproof
+def test_the_push_gate_can_still_fail() -> None:
+    """The gate's own mutation companion, vendored by ITA-18.
+
+    Until now this repository's assurance about the gate was that its body
+    is byte-identical to a master whose companion ran at the coordination
+    level. That is real and it is not evidence HERE: a drift pin detects
+    CHANGE, never BEHAVIOR, so a gate that stopped refusing would pass every
+    check this tree could make.
+
+    SCOPE, and it is narrower than the gate: the companion covers the
+    CI-green release arm only, 16 cases and 6 mutants. The rest of the gate
+    is covered by this module's own end-to-end cases, which drive the real
+    hook on scratch repositories.
+
+    IT PRINTS THREE ARMS NO CASE REACHES rather than counting them denied,
+    and that honesty is the reason the count is asserted rather than the
+    exit code alone: `_ci_state`'s OSError arm, its TimeoutExpired arm, and
+    the CI_BUDGET_SECONDS exhaustion arm. Two cost a full timeout of wall
+    clock per case and one cannot be provoked without breaking the running
+    interpreter. This repository's own manifest comment already says no test
+    here reaches `[ci-budget]`, and this is the artifact that prints it.
+
+    MEASURED AT 214 SECONDS in this tree, which is why it is `guardproof`
+    and runs in CI rather than at pre-push. The sister repository measured
+    244s for the same body. That tiering is the BRF-076 policy applied, not
+    a cost dodge: its subject is a guard's own machinery.
+    """
+    done = subprocess.run(
+        [sys.executable, str(HOOK.parent / "role_review_gate_mutations.py")],
+        capture_output=True,
+        text=True,
+        env=hook_env(None),
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "all 6 mutants are denied" in done.stdout, done.stdout
+    # The unreached arms must still be PRINTED. If this line goes missing the
+    # companion has started counting them as covered, which is the exact
+    # claim this repository refuses to make about them.
+    assert "arms NO case here reaches" in done.stdout, done.stdout

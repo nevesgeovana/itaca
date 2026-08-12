@@ -83,6 +83,19 @@ jobs:
       # twine`, so the tools that produced every published artifact were
       # whatever the index held that minute.
       build-toolchain: pip==26.2 build==1.5.0 twine==7.0.0
+      # The bare `pytest` gate is what makes the `guardproof` marker a
+      # routing decision rather than an exemption: it runs EVERYTHING,
+      # including the tests the pre-push tier deselects.
+      #
+      # AN ISOLATED BUDGET GATE BELONGS HERE AND IS NOT ADDED YET. ITA-18
+      # vendored `budget_isolation.py`, whose consumer must run alone with
+      # `KIT_BUDGET_ISOLATED=1` on that step and nowhere wider. Adding it to
+      # this call alone breaks
+      # `test_house_style.py::test_every_gate_call_passes_the_same_checks_and_toolchain`,
+      # which requires the THREE release-gate calls to carry identical
+      # inputs, so it would also have to be added to `release.yml`'s two
+      # calls. That is the release path, which ITA-18 was told not to touch.
+      # Registered as `ITC-20260812-0030`; do not add it here alone.
       gates: |
         [
           {"name": "lint", "run": "ruff check . && ruff format --check ."},

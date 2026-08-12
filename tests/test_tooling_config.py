@@ -25,6 +25,7 @@ rationale lives next to the setting in ``pyproject.toml``.
 """
 
 import importlib.metadata
+import importlib.util
 import itertools
 import json
 import re
@@ -529,13 +530,24 @@ def test_the_guardproof_marker_has_a_tier_behind_it() -> None:
         "them to pre-push or give CI a pytest gate; a marker with no tier "
         "behind it is an exemption."
     )
-    for run in pytest_gates:
-        assert run.strip() == "pytest", (
-            f"a CI pytest gate runs {run!r} rather than a bare `pytest`. The "
-            f"`guardproof` marker is only legitimate because CI runs "
-            f"everything the pre-push tier now skips. A marker selection "
-            f"here would leave those tests running nowhere."
-        )
+    # AT LEAST ONE BARE `pytest`, not EVERY gate bare. The property is that
+    # CI runs EVERYTHING, and one unrestricted run establishes it; extra
+    # gates are additive and cannot subtract from it.
+    #
+    # The first version required every pytest gate to be exactly `pytest`,
+    # which was right when there was one and became wrong in ITA-18: the
+    # budget guard now needs its own ISOLATED step, because
+    # `budget_isolation.py` refuses to measure a tier from inside a suite.
+    # Under the old assertion, adopting that mechanism would have failed
+    # this guard, and the tempting fix would have been to drop the isolated
+    # step, which is the measurement defect the mechanism exists to prevent.
+    bare = [run for run in pytest_gates if run.strip() == "pytest"]
+    assert bare, (
+        f"no CI gate runs a BARE `pytest`; they are {pytest_gates}. The "
+        f"`guardproof` marker is only legitimate because CI runs everything "
+        f"the pre-push tier skips, and a narrowed run cannot establish that. "
+        f"Additional targeted gates are fine, but one must be unrestricted."
+    )
 
 
 @pytest.mark.parametrize(
@@ -996,6 +1008,7 @@ _GUARD_PROOF_TESTS = (
     "tests/test_closing_ci_check.py::test_the_closing_check_can_still_fail",
     "tests/test_execution_guard.py::test_the_execution_guard_can_still_fail",
     "tests/test_plan_validator.py::test_the_plan_checker_can_still_fail",
+    "tests/test_push_gate.py::test_the_push_gate_can_still_fail",
     "tests/test_prepush_receipt.py::test_the_receipt_can_still_fail",
     "tests/test_release_integrity.py::test_the_release_gate_checker_can_still_fail",
     "tests/test_release_integrity.py::test_the_version_identity_checker_can_still_fail",
@@ -1084,6 +1097,27 @@ def test_no_undeclared_test_uses_the_guardproof_marker() -> None:
     )
 
 
+def _budget_isolation() -> Any:
+    """Load the vendored `budget_isolation.py` by path.
+
+    Loaded rather than imported because `.claude/kit` is not on `sys.path`
+    and must not be put there: every other kit body in this repository is
+    invoked as a SUBPROCESS, and adding a vendored directory to the import
+    path would make any of them importable by accident. This one is
+    documented as an import, so it is loaded explicitly and only here.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "budget_isolation", ROOT / ".claude" / "kit" / "budget_isolation.py"
+    )
+    assert spec is not None and spec.loader is not None, (
+        "could not load .claude/kit/budget_isolation.py; the budget guard "
+        "below cannot decide whether it is isolated."
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @pytest.mark.slow
 @pytest.mark.guardproof
 def test_the_commit_tier_subset_is_actually_fast() -> None:
@@ -1104,6 +1138,26 @@ def test_the_commit_tier_subset_is_actually_fast() -> None:
     pretend otherwise: it is a ceiling that catches drift, and the p95 is
     measured deliberately when the tiers change. The margin is generous
     for that reason.
+
+    NOT YET ROUTED THROUGH `budget_isolation.py`, and the reason is a
+    dependency this lane could not take. ITA-18 vendored that body, which
+    is the right mechanism: a budget guard measures its tier only in the
+    conditions that tier runs in, and inside the full suite this test spawns
+    its child after minutes of artifact building, so the child pays cold
+    imports against a budget that never expected them.
+
+    WHAT BLOCKS THE WIRING, measured rather than assumed. Its contract is
+    that in CI an undeclared skip is a CONFIGURATION ERROR rather than a
+    skip, so wiring it REQUIRES a CI step that runs this test alone with
+    `KIT_BUDGET_ISOLATED=1`. Adding that step to `ci.yml` alone fails
+    `test_house_style.py::test_every_gate_call_passes_the_same_checks_and_toolchain`,
+    which requires the three release-gate calls to carry identical inputs,
+    so it would also have to go into `release.yml`'s two calls. That is the
+    release path, which ITA-18 was told not to touch.
+
+    Registered as `ITC-20260812-0030`. Until then this measures in every
+    session it is collected in, which is exactly the defect the mechanism
+    exists to remove, and the 60 s ceiling is generous for that reason.
     """
     # `child_env()` strips the COV_CORE_* variables. Without it the nested
     # run inherits the parent's coverage subprocess hooks, which is how a
@@ -1315,4 +1369,41 @@ def test_every_module_the_suite_spawns_is_declared_in_the_dev_extra() -> None:
         f"declares {sorted(declared)}; a tool the tests run must be installed "
         'by `pip install -e ".[dev]"`, or the test errors wherever the author '
         "did not already have it (ITACA-015's class)."
+    )
+
+
+def test_the_vendored_budget_isolation_decides_the_way_its_contract_says() -> None:
+    """The mechanism ITC-20260811-2120 needs, proven to work in this tree.
+
+    ITA-18 vendored `budget_isolation.py` and did NOT wire it into
+    `test_the_commit_tier_subset_is_actually_fast`, because wiring requires
+    a CI step that would have to be added to the release path as well; that
+    is `ITC-20260812-0030`. A body vendored and called by nothing is the
+    shape this repository already names for `ITACA-006`, so it is exercised
+    here instead: loadable, and correct on the two decisions that matter.
+
+    ONE ITEM MEASURES, a suite SKIPS. Those are the two branches a consumer
+    depends on, and the boundary between them is the body's own constant
+    rather than anything this test restates.
+
+    NOT ASSERTED HERE: the CI branch, where an undeclared skip becomes a
+    CONFIGURATION ERROR. Reaching it means setting `CI` in this process,
+    which would change the behavior of anything else reading it in the same
+    session. It is the branch `ITC-20260812-0030` will exercise for real
+    when the isolated step exists.
+    """
+    module = _budget_isolation()
+    assert module.reason_to_skip(1) is None, (
+        "an isolated invocation must MEASURE. If this returns a reason, the "
+        "budget guard would never run anywhere and the mechanism deletes the "
+        "guard it exists to protect."
+    )
+    suite = module.reason_to_skip(1500)
+    assert suite, (
+        "a suite-sized session must SKIP, or the guard measures a tier under "
+        "conditions that tier never runs in, which is ITC-20260802-2200."
+    )
+    assert "isolation" in suite and "KIT_BUDGET_ISOLATED" in suite, (
+        f"the skip reason must name the remedy, or a reader sees a skip with "
+        f"no way to act on it: {suite!r}"
     )

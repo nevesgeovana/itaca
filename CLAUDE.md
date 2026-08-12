@@ -266,14 +266,24 @@ mode, which is why advisory is not the same as quiet. That number is
 reproducible only from the invocation it came from, which is recorded with
 it in `ITC-20260802-1705`, not here.
 
-WHY IT IS NOT VENDORED YET: the master's body carries an em dash and an en
-dash, and the rule above is "No exceptions", so vendoring it would put the
-house-style guard and the drift pin in contradiction on a body this
-repository is forbidden to hand-edit. The exemption was considered and
-refused. `tests/test_kit_drift.py`, at the deliberately absent
-`check_citations.py` rows, carries the measurement, the precedent that
-decided it and the routing; read it there. The decision above stands, and
-the next lane vendors and wires rather than deciding again.
+VENDORED SINCE 2026-08-11 (ITA-18) AND STILL NOT WIRED, which are two
+different facts and were one before that date.
+
+It was NOT VENDORED because the 0.2.16 master's body carried an em dash and
+an en dash, and the rule above is "No exceptions", so vendoring it would
+have put the house-style guard and the drift pin in contradiction on a body
+this repository may not hand-edit. An exemption was considered and refused,
+and the defect was routed instead. The kit fixed the master, which is what
+that refusal asked for. MEASURED at 0.2.17 before vendoring: zero dash
+characters in either body, by code point.
+
+It is still NOT WIRED, and that is the decision above rather than an
+oversight: advisory mode over this corpus refuses 25 constructions and every
+one is FALSE, and this repository's largest authority is LaTeX `reqbox`
+environments that none of the checker's index forms can read.
+`tests/test_kit_drift.py` carries the measurement and the reasoning at the
+rows themselves. What vendoring buys with no wiring is drift coverage: the
+pair cannot rot before the lane that wires it.
 
 WRITE CITATIONS WITH THEIR TITLES ANYWAY, and starting now rather than
 when the checker lands. Advisory is what the machine will enforce, not
@@ -418,7 +428,17 @@ exemption, not enforcement), so the invariant above that no proprietary
 material enters this repository in any form is unchanged in force and in
 meaning.
 
-On the backup that the migration displaced: as of 2026-07-27 the kit's
+`snap.sh` IS DECIDED OUT OF THIS REPOSITORY'S VENDORED SET, adopted
+2026-08-11 (ITA-18), and this paragraph is the decision rather than a note
+about a backup. It snapshots `_private/`, which the migration emptied, so
+here it guards nothing; vendoring a tool that protects an empty directory
+is dead weight. It remains PINNED in `tests/test_kit_drift.py` and is
+drift-checked best-effort wherever the deployed copy sits beside a
+configured plan validator, so the row is covered where it exists and absent
+where it would do nothing. REVISIT IF `_private/` IS EVER REPOPULATED; that
+is the condition, and it is written down so the decision reopens on a fact.
+
+The measurement behind it: as of 2026-07-27 the kit's
 `snap.sh` snapshotted `_private/`, which is now empty, so it protects
 nothing here and the migrated content relies on the hub's git instead.
 The pre-migration history remains in the local snapshot repository that
